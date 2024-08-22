@@ -1,0 +1,13 @@
+
+*.env
+
+*.pyc
+
+youtube_channels/
+
+venv
+
+.idea
+
+
+.DS_Store
