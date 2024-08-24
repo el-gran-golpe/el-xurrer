@@ -11,7 +11,9 @@ from gradio_client.exceptions import AppError
 from proxy_spinner import ProxySpinner
 
 class Flux:
-	def __init__(self, load_on_demand: bool = False):
+	def __init__(self, src_model: str = "black-forest-labs/FLUX.1-dev", api_name: str = '/infer', load_on_demand: bool = False):
+		self._src_model = src_model
+		self._api_name = api_name
 		self.proxy = ProxySpinner(proxy=None)
 		if load_on_demand:
 			self._client = None
@@ -30,7 +32,7 @@ class Flux:
 		for retry in range(3):
 			try:
 				with self.proxy:
-					client = Client(src="black-forest-labs/FLUX.1-dev")
+					client = Client(src=self._src_model)
 				break
 			except (ReadTimeout, ProxyError) as e:
 				logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
@@ -64,7 +66,7 @@ class Flux:
 						height=height,
 						guidance_scale=guidance_scale,
 						num_inference_steps=num_inference_steps,
-						api_name="/infer"
+						api_name=self._api_name
 					)
 					break
 			except (AppError, ConnectionError) as e:
@@ -85,3 +87,11 @@ class Flux:
 
 		return True
 
+
+if __name__ == '__main__':
+
+	flux = Flux()
+	prompt = "A girl pouring oil on her feet with colored nails. Erotic, sensual, and sexy."
+	output_path = "./output.jpg"
+	flux.generate_image(prompt, output_path)
+	print(f"Image saved to {output_path}")
