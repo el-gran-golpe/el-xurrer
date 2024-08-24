@@ -15,3 +15,5 @@ https://github.com/schmiph2/pysepm/archive/master.zip
 kaiser
 gradio_client
 proxy-spinner
+slugify
+moviepy

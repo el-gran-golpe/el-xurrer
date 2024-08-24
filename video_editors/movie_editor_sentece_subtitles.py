@@ -3,7 +3,7 @@ from loguru import logger
 import moviepy.editor as mp
 from moviepy.video.tools.subtitles import SubtitlesClip
 
-from pipeline.movie_editor.movie_editor_base import MovieEditorBase
+from video_editors.movie_editor_base import MovieEditorBase
 
 
 class MovieEditorSentenceSubtitles(MovieEditorBase):

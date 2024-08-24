@@ -6,7 +6,7 @@ from time import time
 from tqdm import tqdm
 from slugify import slugify
 
-from pipeline.movie_editor.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
+from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
 from generation_tools.voice_generator.xtts.xtts import Xtts
 from generation_tools.image_generator.flux.flux import Flux
 from generation_tools.subtitles_generator.whisper.whisper_stt import Whisper
