@@ -4,6 +4,8 @@ from uuid import uuid4
 import os
 from loguru import logger
 from shutil import rmtree
+
+from generation_tools.voice_generator.denoising.denoiser import Denoiser
 from generation_tools.voice_generator.xtts.constants import SAMPLE_VOICES
 from generation_tools.subtitles_generator.whisper.whisper_stt import Whisper
 # Get device
@@ -17,6 +19,7 @@ class Xtts:
         else:
             self._tts = self.load_model()
             self._transcriber = None
+        self.denoiser = Denoiser()
 
     @property
     def tts(self):
@@ -31,7 +34,8 @@ class Xtts:
         return self._transcriber
 
     def generate_audio_cloning_voice_to_file(self, text: str, output_path: str,  language: str = 'en', speaker_wav: str = SAMPLE_VOICES['random_girl'],
-                                             speed: float = 1.75, retries: int = 1, quality_threshold: float = 0.8) -> str:
+                                             speed: float = 1.75, retries: int = 1, quality_threshold: float = 0.8,
+                                             denoise: bool = True) -> str:
 
         assert isinstance(retries, int) and 0 <= retries <= 10, \
             "Retries must be an integer between 0 and 10"
@@ -66,6 +70,10 @@ class Xtts:
             best_file = max(generated_files, key=generated_files.get)
             os.rename(best_file, output_path)
             rmtree(temp_out_dir)
+
+            if denoise:
+                denoised_output_path = f"{output_dir}/denoised_{os.path.basename(output_path)}"
+                self.denoiser.denoise_audio(audio_path=output_path, output_path=denoised_output_path)
 
         return True
 
