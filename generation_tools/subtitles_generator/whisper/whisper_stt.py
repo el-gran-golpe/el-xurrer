@@ -7,9 +7,8 @@ from nltk.metrics import edit_distance
 from nltk.tokenize import sent_tokenize, word_tokenize
 from loguru import logger
 
-# If punkt is not downloaded, download it
-if not nltk.data.find('tokenizers/punkt'):
-    nltk.download('punkt')
+# If punkt_tab is not downloaded, download it
+nltk.download('punkt_tab')
 
 class Whisper:
     def __init__(self):
