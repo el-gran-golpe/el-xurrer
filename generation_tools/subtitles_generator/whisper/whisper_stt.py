@@ -30,7 +30,7 @@ class Whisper:
         difference = abs(len(expected_sentences) - len(segments))
         missmatch_penalty = min(0.8, 0.4 * difference)
         if len(expected_sentences) != len(segments):
-            segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences)
+            segments = self._adjust_segments_to_sentences_alt(segments=segments, sentences=expected_sentences)
 
 
         # Calculate the difference in audio length. Penalty 0.3 by second
@@ -87,7 +87,7 @@ class Whisper:
             logger.warning("Sentence count does not match segment count. Adjusting segments to match sentences.")
             logger.warning(f"Segments: {' - '.join([segment['text'] for segment in segments])}"\
                            f"\nSentences: {' - '.join(sentences)}")
-            segments = self._adjust_segments_to_sentences(segments=segments, sentences=sentences)
+            segments = self._adjust_segments_to_sentences_alt(segments=segments, sentences=sentences)
         assert len(sentences) == len(segments), "Sentence count does not match segment count"
         words_from_sentences = [word for sentence in sentences for word in sentence.split(" ")]  # Flatten all words
         word_index = 0
@@ -122,6 +122,65 @@ class Whisper:
             segment['text'] = true_sentence
 
             return segments
+
+    import nltk
+    from nltk.metrics import edit_distance
+    from copy import deepcopy
+
+    def _adjust_segments_to_sentences_alt(self, segments, sentences):
+        """
+        Adjusts the segments to ensure the count matches the sentence count.
+        This involves iteratively creating segments with increasing words until
+        the lowest edit distance is found for each sentence.
+        """
+
+        if len(segments) == len(sentences):
+            return segments  # No adjustment needed
+
+        # Function to calculate edit distance between a segment and a sentence
+        def calculate_edit_distance(segment_text, sentence_text):
+            return edit_distance(segment_text.strip().lower(), sentence_text.strip().lower())
+
+        adjusted_segments = []
+        remaining_words = [word for segment in segments for word in segment['words']]
+
+        for sentence in sentences[:-1]:
+            best_segment, best_distance = None, float('inf')
+            words_to_use = []
+
+            # Iteratively build the segment by adding words and checking the edit distance
+            for i in range(1, len(remaining_words) + 1):
+                candidate_segment_text = "".join(word['word'] for word in remaining_words[:i]).strip()
+                distance = calculate_edit_distance(candidate_segment_text.lower(), sentence.strip().lower())
+
+                if distance < best_distance:
+                    best_distance, words_to_use = distance, remaining_words[:i]
+                    best_segment = {
+                        'start': words_to_use[0]['start'],
+                        'end': words_to_use[-1]['end'],
+                        'text': candidate_segment_text,
+                        'words': words_to_use
+                    }
+
+            # Update the adjusted segments with the best found segment
+            adjusted_segments.append(best_segment)
+
+            # Remove the used words from remaining words
+            remaining_words = remaining_words[len(words_to_use):]
+
+        assert len(remaining_words) > 0, "Remaining words should not be empty, there is still one sentence left."
+        # For the last sentence, just take all remaining words
+        if remaining_words:
+            last_segment_text = "".join(word['word'] for word in remaining_words)
+            adjusted_segments.append({
+                'start': remaining_words[0]['start'],
+                'end': remaining_words[-1]['end'],
+                'text': last_segment_text,
+                'words': remaining_words
+            })
+
+        return adjusted_segments
+
 
     def _adjust_segments_to_sentences(self, segments, sentences):
         """
@@ -180,30 +239,6 @@ class Whisper:
             if total_distance < best_distance:
                 best_distance, best_combination = total_distance, combination
 
-        """
-        # Create new segments based on the best combination
-        adjusted_segments = []
-        segment_index = 0
-        for combined_text in best_combination:
-            start_time = segments[segment_index]['start']
-            end_time = segments[segment_index]['end']
-            merged_words = segments[segment_index]['words']
-
-            while len(" ".join([s['text'] for s in
-                                segments[segment_index:segment_index + len(combined_text.split())]]).split()) < len(
-                    combined_text.split()):
-                segment_index += 1
-                merged_words.extend(segments[segment_index]['words'])
-                end_time = segments[segment_index]['end']
-
-            adjusted_segments.append({
-                'start': start_time,
-                'end': end_time,
-                'text': combined_text,
-                'words': merged_words
-            })
-            segment_index += 1
-        """
         return best_combination
 
 
