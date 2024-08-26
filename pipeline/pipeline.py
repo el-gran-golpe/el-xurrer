@@ -6,10 +6,12 @@ from time import time
 from tqdm import tqdm
 from slugify import slugify
 
+from utils.utils import time_between_two_words_in_srt
 from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
 from generation_tools.voice_generator.xtts.xtts import Xtts
 from generation_tools.image_generator.flux.flux import Flux
 from generation_tools.subtitles_generator.whisper.whisper_stt import Whisper
+from generation_tools.sounds_generator.audio_ldm import AudioLDM
 
 WH_BY_ASPECT_RATIO = {
     "16:9": (1280, 720),
@@ -23,7 +25,8 @@ class Pipeline:
 
         self.voice_generator = Xtts(load_on_demand=True)
         self.image_generator = Flux(load_on_demand=True)
-        self.subtitle_generator = Whisper()
+        self.subtitle_generator = Whisper(load_on_demand=True)
+        self.sounds_generator = AudioLDM(load_on_demand=True)
 
         self.prepare_output_folder(output_folder=output_folder)
         self.output_folder = output_folder
@@ -39,9 +42,10 @@ class Pipeline:
         lang = self.script["lang"]
         w, h = WH_BY_ASPECT_RATIO[self.script["aspect_ratio"]]
         for item in tqdm(self.script["content"]):
-            _id, text, image_prompt = item["id"], item["text"], item["image"]
+            _id, text, image_prompt, sound = item["id"], item["text"], item["image"], item["sound"]
             audio_path = os.path.join(self.output_folder, 'audio', f"{_id}.wav")
             image_path = os.path.join(self.output_folder, 'images', f"{_id}.png")
+            sounds_path = os.path.join(self.output_folder, 'sounds', f"{_id}.wav")
             subtitle_sentence_path = os.path.join(self.output_folder, 'subtitles', 'sentence', f"{_id}.srt")
             subtitle_word_path = os.path.join(self.output_folder, 'subtitles', 'word', f"{_id}.srt")
 
@@ -66,6 +70,17 @@ class Pipeline:
                 assert os.path.isfile(subtitle_sentence_path), f"Sentence subtitle file {subtitle_sentence_path} was not generated"
                 assert os.path.isfile(subtitle_word_path), f"Word subtitle file {subtitle_word_path} was not generated"
 
+            if sound is not None and not os.path.isfile(sounds_path):
+                start = time()
+                from_word, to_word, prompt = sound['from'], sound['to'], sound['prompt']
+                sound_length = time_between_two_words_in_srt(srt_file_path=subtitle_word_path,
+                                                             word1=from_word, word2=to_word, max_distance=1) or 5.0
+
+                self.sounds_generator.generate_audio(prompt=sound['prompt'], output_path=sounds_path,
+                                                     num_inference_steps=200,
+                                                     audio_length_in_s=sound_length, num_waveforms_per_prompt=3)
+                logger.info(f"Sound generation: {time() - start:.2f}s")
+                assert os.path.isfile(sounds_path), f"Sound file {sounds_path} was not generated"
 
         self.generate_video_from_clips(output_video_path=os.path.join(self.output_folder, 'video', f"video.mp4"))
 
@@ -103,6 +118,8 @@ class Pipeline:
             os.makedirs(os.path.join(output_folder, 'subtitles', 'word'))
         if not os.path.isdir(os.path.join(output_folder, 'video')):
             os.makedirs(os.path.join(output_folder, 'video'))
+        if not os.path.isdir(os.path.join(output_folder, 'sounds')):
+            os.makedirs(os.path.join(output_folder, 'sounds'))
 
     def check_script_validity(self, script) -> None:
         assert "lang" in script, "Script must contain a lang key"
@@ -113,3 +130,8 @@ class Pipeline:
         assert isinstance(content, list), "Content must be a list"
         assert all("text" in item for item in content), "All items in content must contain a text key"
         assert all("image" in item for item in content), "All items in content must contain an image key"
+        assert all("sound" in item for item in content), "All items in content must contain a sound key"
+        for item in content:
+            if item["sound"] is not None:
+                assert all(key in item["sound"] for key in ["from", "to", "prompt"]), \
+                    "Sound must contain from, to and prompt keys"

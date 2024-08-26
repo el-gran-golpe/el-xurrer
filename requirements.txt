@@ -17,3 +17,4 @@ gradio_client
 proxy-spinner
 python-slugify
 moviepy
+pysrt

@@ -1,21 +1,45 @@
 import scipy
 from diffusers import AudioLDM2Pipeline
+import torch
+import os
+from uuid import uuid4
+from loguru import logger
 
-repo_id = "cvssp/audioldm2"
-pipe = AudioLDM2Pipeline.from_pretrained(repo_id)
+class AudioLDM:
+    def __init__(self, load_on_demand: bool = False):
+        self.repo_id = "cvssp/audioldm2"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if load_on_demand:
+            self._pipe = None
+        else:
+            self._pipe = self.load_model()
 
-# define the prompts
-prompt = "The sound of a hammer hitting a wooden surface."
-negative_prompt = "Low quality."
+    def load_model(self):
+        return AudioLDM2Pipeline.from_pretrained(self.repo_id).to(self.device)
 
-# run the generation
-audio = pipe(
-    prompt,
-    negative_prompt=negative_prompt,
-    num_inference_steps=100,
-    audio_length_in_s=5,
-    num_waveforms_per_prompt=1,
-).audios
+    @property
+    def pipe(self):
+        if self._pipe is None:
+            self._pipe = self.load_model()
+        return self._pipe
 
-# save the best audio sample (index 0) as a .wav file
-scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
+    def generate_audio(self, prompt: str, output_path: str, negative_prompt: str = "noise, bad quality, artifacts", num_inference_steps: int = 100, audio_length_in_s: int = 5, num_waveforms_per_prompt: int = 3):
+        output_dir = os.path.dirname(output_path)
+        assert os.path.isdir(output_dir), f"Output folder {output_dir} does not exist"
+
+        audio = self.pipe(
+            prompt,
+            negative_prompt=negative_prompt,
+            num_inference_steps=num_inference_steps,
+            audio_length_in_s=audio_length_in_s,
+            num_waveforms_per_prompt=num_waveforms_per_prompt,
+        ).audios
+
+        scipy.io.wavfile.write(output_path, rate=16000, data=audio[0])
+        return output_path
+
+
+if __name__ == '__main__':
+    audio_ldm = AudioLDM()
+    audio_ldm.generate_audio(prompt="The sound of crackling fire", output_path="./output-test.wav", num_inference_steps=100,
+                             audio_length_in_s=3, num_waveforms_per_prompt=3)
