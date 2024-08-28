@@ -1,5 +1,5 @@
 from copy import deepcopy
-import wave
+
 import whisper
 import os
 import nltk
@@ -7,18 +7,40 @@ from nltk.metrics import edit_distance
 from nltk.tokenize import sent_tokenize, word_tokenize
 from loguru import logger
 
+from utils.utils import get_audio_length
+import string
+
+PUNCTUATION = f"{string.punctuation}“”‘’¿¡"
 # If punkt_tab is not downloaded, download it
 nltk.download('punkt_tab')
 
 class Whisper:
-    def __init__(self):
-        self.model = whisper.load_model("small")
+    def __init__(self, size: str = "small", load_on_demand: bool = False):
+        self._size = size
+        if load_on_demand:
+            self._model = None
+        else:
+            self._model = whisper.load_model(size)
+
+    @property
+    def model(self):
+        if self._model is None:
+            self._model = whisper.load_model(self._size)
+        return self._model
 
     def _transcribe(self, audio_path: str, prompt: str = None) -> dict:
         assert any(audio_path.endswith(ext) for ext in
                    [".wav", ".mp3", ".flac"]), "Audio file must be in .wav, .mp3 or .flac format"
         assert os.path.isfile(audio_path), f"Audio file {audio_path} does not exist"
-        result = self.model.transcribe(audio_path, word_timestamps=True, initial_prompt=prompt)
+        # Try with and without prompt and get the closer result
+        if prompt is None:
+            result = self.model.transcribe(audio_path, word_timestamps=True)
+        else:
+            result_prompt = self.model.transcribe(audio_path, word_timestamps=True, initial_prompt=prompt)
+            prompt_dist = edit_distance(prompt.strip().lower(), result_prompt['text'].strip().lower())
+            result_no_prompt = self.model.transcribe(audio_path, word_timestamps=True)
+            no_prompt_dist = edit_distance(prompt.strip().lower(), result_no_prompt['text'].strip().lower())
+            result = result_prompt if prompt_dist < no_prompt_dist else result_no_prompt
         return result
 
     def check_audio_quality(self, audio_path: str, expected_text: str) -> float:
@@ -26,15 +48,16 @@ class Whisper:
         segments = result['segments']
         expected_sentences = sent_tokenize(expected_text)
         original_segments_count = len(segments)
+        original_segments = deepcopy(segments)
         # Calculate the difference in sentence count. Penalty 0.4 by sentence
         difference = abs(len(expected_sentences) - len(segments))
         missmatch_penalty = min(0.8, 0.4 * difference)
         if len(expected_sentences) != len(segments):
-            segments = self._adjust_segments_to_sentences_alt(segments=segments, sentences=expected_sentences)
+            segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences)
 
 
         # Calculate the difference in audio length. Penalty 0.3 by second
-        audio_length = get_audio_length(audio_path)
+        audio_length = get_audio_length(audio_path=audio_path)
         start_difference, end_difference = abs(segments[0]['start'] - 0.), abs(segments[-1]['end'] - audio_length)
         audio_length_penalty = 0.1 * (start_difference + end_difference)
 
@@ -46,7 +69,8 @@ class Whisper:
         if text_penalty > 1.0:
             logger.warning(f"Text mismatch penalty is too high: {text_penalty:.2f}. "
                             f"Expected: {expected_text} "
-                            f"Transcribed: {' '.join([segment['text'] for segment in segments])}")
+                            f"Transcribed: {' - '.join([segment['text'] for segment in segments])}")
+            self._adjust_segments_to_sentences(segments=original_segments, sentences=expected_sentences)
         # Calculate the final quality score (1.0 best quality, 0.0 worst quality)
         penalties = min(1.0, missmatch_penalty + audio_length_penalty + text_penalty)
         score = 1.0 - penalties
@@ -87,7 +111,7 @@ class Whisper:
             logger.warning("Sentence count does not match segment count. Adjusting segments to match sentences.")
             logger.warning(f"Segments: {' - '.join([segment['text'] for segment in segments])}"\
                            f"\nSentences: {' - '.join(sentences)}")
-            segments = self._adjust_segments_to_sentences_alt(segments=segments, sentences=sentences)
+            segments = self._adjust_segments_to_sentences(segments=segments, sentences=sentences)
         assert len(sentences) == len(segments), "Sentence count does not match segment count"
         words_from_sentences = [word for sentence in sentences for word in sentence.split(" ")]  # Flatten all words
         word_index = 0
@@ -127,7 +151,7 @@ class Whisper:
     from nltk.metrics import edit_distance
     from copy import deepcopy
 
-    def _adjust_segments_to_sentences_alt(self, segments, sentences):
+    def _adjust_segments_to_sentences(self, segments, sentences):
         """
         Adjusts the segments to ensure the count matches the sentence count.
         This involves iteratively creating segments with increasing words until
@@ -151,7 +175,9 @@ class Whisper:
             # Iteratively build the segment by adding words and checking the edit distance
             for i in range(1, len(remaining_words) + 1):
                 candidate_segment_text = "".join(word['word'] for word in remaining_words[:i]).strip()
-                distance = calculate_edit_distance(candidate_segment_text.lower(), sentence.strip().lower())
+                clean_segment_text = candidate_segment_text.translate(str.maketrans('', '', PUNCTUATION)).strip().lower()
+                clean_sentence = sentence.translate(str.maketrans('', '', PUNCTUATION)).strip().lower()
+                distance = calculate_edit_distance(clean_segment_text, clean_sentence)
 
                 if distance < best_distance:
                     best_distance, words_to_use = distance, remaining_words[:i]
@@ -174,110 +200,12 @@ class Whisper:
             last_segment_text = "".join(word['word'] for word in remaining_words)
             adjusted_segments.append({
                 'start': remaining_words[0]['start'],
-                'end': remaining_words[-1]['end'],
+                'end': segments[-1]['end'],
                 'text': last_segment_text,
                 'words': remaining_words
             })
 
         return adjusted_segments
-
-
-    def _adjust_segments_to_sentences(self, segments, sentences):
-        """
-        Adjusts the segments to ensure the count matches the sentence count.
-        This involves merging segments if there are more segments than sentences,
-        or distributing sentences if there are more sentences than segments.
-        """
-
-        if len(segments) == len(sentences):
-            return segments # No adjustment needed
-
-        # More segments than sentences, need to merge segments
-        if len(segments) > len(sentences):
-            logger.info("Merging segments to match sentence count.")
-            # Generate all possible combinations of merging segments
-            best_combination = self._find_best_segment_combination(segments=segments, sentences=sentences)
-            return best_combination
-
-        # More sentences than segments, need to split sentences across segments
-        elif len(segments) < len(sentences):
-            logger.info("Splitting sentences to match segment count.")
-            adjusted_segments = []
-            sentence_index = 0
-
-            for segment in segments:
-                # Calculate the number of words in the segment and split sentences accordingly
-                segment_word_count = len(segment['text'].split())
-                current_sentence_words = sentences[sentence_index].split()
-
-                while segment_word_count > len(current_sentence_words) and sentence_index < len(sentences) - 1:
-                    sentence_index += 1
-                    current_sentence_words.extend(sentences[sentence_index].split())
-
-                adjusted_segments.append({
-                    'start': segment['start'],
-                    'end': segment['end'],
-                    'text': " ".join(current_sentence_words),
-                    'words': segment['words']  # Keep the original words
-                })
-                sentence_index += 1
-
-            return adjusted_segments
-
-    def _find_best_segment_combination(self, segments, sentences):
-        """
-        Generate all possible combinations of merged segments to match the number of sentences.
-        Then, select the combination with the lowest total edit distance to the sentences.
-        """
-        segment_texts = [segment['text'].strip() for segment in segments]
-        possible_combinations = self._generate_combinations(segments, len(sentences))
-        best_combination, best_distance = None, float('inf')
-
-        for combination in possible_combinations:
-            total_distance = sum(edit_distance(combination[i]['text'].strip().lower(),
-                                               sentences[i].strip().lower()) for i in range(len(sentences)))
-            if total_distance < best_distance:
-                best_distance, best_combination = total_distance, combination
-
-        return best_combination
-
-
-    def _generate_combinations(self, segments, target_length):
-        """
-        Generate all possible combinations of merging segments to reduce the number of segments
-        to match the number of sentences.
-        """
-
-        def combine_segments(segments, target_length):
-            if len(segments) == target_length:
-                return [segments]
-
-            result = []
-            for i in range(1, len(segments)):
-                for j in range(i + 1, len(segments) + 1):
-                    merged_segment = self.segments_merge(segments[i-1:j])
-                    remaining_segments = segments[:i - 1] + [merged_segment] + segments[j:]
-                    if len(remaining_segments) == target_length:
-                        result.append(remaining_segments)
-                    elif len(remaining_segments) > target_length:
-                        result.extend(combine_segments(remaining_segments, target_length))
-            return result
-
-        return combine_segments(segments, target_length)
-
-    def segments_merge(self, segments_list: list[dict[str, str]]) -> dict[str, str]:
-        """
-        Merge segments that are too short or too long.
-        """
-        current_segment = deepcopy(segments_list[0])
-        for segment in segments_list[1:]:
-            current_segment['text'] = f"{current_segment['text'].strip()} {segment['text'].strip()}"
-            current_segment['end'] = segment['end']
-            current_segment['words'].extend(segment['words'])
-            current_segment['tokens'].extend(segment['tokens'])
-
-
-        return current_segment
 
     def _format_time_srt(self, time_in_seconds: float) -> str:
         hours, remainder = divmod(time_in_seconds, 3600)
@@ -307,13 +235,6 @@ class Whisper:
                     f.write(f"{self._format_time_srt(start_time)} --> {self._format_time_srt(end_time)}\n")
                     f.write(f"{text}\n\n")
                     index += 1
-
-def get_audio_length(audio_path: str) -> float:
-    with wave.open(audio_path, 'r') as audio_file:
-        frames = audio_file.getnframes()
-        rate = audio_file.getframerate()
-        duration = frames / float(rate)
-    return duration
 
 if __name__ == '__main__':
     file = 'audio-test.wav'

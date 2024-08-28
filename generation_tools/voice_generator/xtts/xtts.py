@@ -15,10 +15,9 @@ class Xtts:
     def __init__(self, load_on_demand: bool = False):
         if load_on_demand:
             self._tts = None
-            self._transcriber = None
         else:
             self._tts = self.load_model()
-            self._transcriber = None
+        self.transcriber = Whisper(load_on_demand=True)
         self.denoiser = Denoiser()
 
     @property
@@ -27,15 +26,10 @@ class Xtts:
             self._tts = self.load_model()
         return self._tts
 
-    @property
-    def transcriber(self):
-        if self._transcriber is None:
-            self._transcriber = Whisper()
-        return self._transcriber
 
     def generate_audio_cloning_voice_to_file(self, text: str, output_path: str,  language: str = 'en', speaker_wav: str = SAMPLE_VOICES['random_girl'],
                                              speed: float = 1.75, retries: int = 1, quality_threshold: float = 0.8,
-                                             denoise: bool = True) -> str:
+                                             denoise: bool = False) -> str:
 
         assert isinstance(retries, int) and 0 <= retries <= 10, \
             "Retries must be an integer between 0 and 10"
@@ -72,8 +66,7 @@ class Xtts:
             rmtree(temp_out_dir)
 
             if denoise:
-                denoised_output_path = f"{output_dir}/denoised_{os.path.basename(output_path)}"
-                self.denoiser.denoise_audio(audio_path=output_path, output_path=denoised_output_path)
+                self.denoiser.denoise_audio(audio_path=output_path, output_path=output_path)
 
         return True
 
