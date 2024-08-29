@@ -22,6 +22,12 @@ def find_word_timing(srt_file_path: str, word: str, max_distance: int = 1, retri
     assert max_distance >= 0, "max_distance must be a non-negative integer"
     assert isinstance(word, str) and word != "", "word must be a non-empty string"
 
+    #TODO: Accept complete phrases
+    # By the moment, if it is a phrase just keep the last word if retrieve_last and the first word if not retrieve_last
+    if " " in word:
+        words = word.split()
+        word = words[-1] if retrieve_last else words[0]
+
     # Normalize the search word: strip, lowercase, remove punctuation
     normalized_word = word.strip().lower().translate(str.maketrans('', '', PUNCTUATION))
 
