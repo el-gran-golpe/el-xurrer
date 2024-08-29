@@ -17,7 +17,7 @@ class MovieEditorBase:
             self.check_script_validity(self.script)
 
     def _build_clip(self, item: dict):
-        _id, sound = item["id"], item["sound"]
+        _id, sound, screen_text = item["id"], item.get("sound"), item.get("screen_text")
         audio_path = os.path.join(self.output_folder, 'audio', f"{_id}.wav")
         image_path = os.path.join(self.output_folder, 'images', f"{_id}.png")
         sounds_path = os.path.join(self.output_folder, 'sounds', f"{_id}.wav")
@@ -61,6 +61,18 @@ class MovieEditorBase:
 
             # Merge the audio and sound clips
             audio_clip = mp.CompositeAudioClip([audio_clip, sound_clip])
+
+        if screen_text is not None:
+            from_word, to_word, text = screen_text['from'], screen_text['to'], screen_text['text']
+            start, _ = find_word_timing(srt_file_path=word_subtitles_path, word=from_word, retrieve_last=False)
+            assert start is not None, f"Could not find word {from_word} in subtitle file {word_subtitles_path}"
+            _, end = find_word_timing(srt_file_path=word_subtitles_path, word=to_word, retrieve_last=True)
+            assert end is not None, f"Could not find word {to_word} in subtitle file {word_subtitles_path}"
+            end = min(end, clip_length)
+
+            text_clip = mp.TextClip(text, fontsize=24, color='white', bg_color='black').set_duration(end - start)
+            text_clip = text_clip.set_position(('center', 'bottom')).set_start(start)
+            image_clip = mp.CompositeVideoClip([image_clip, text_clip])
 
         return image_clip.set_audio(audio_clip)
 

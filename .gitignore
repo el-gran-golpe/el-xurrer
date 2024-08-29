@@ -13,3 +13,5 @@ venv
 .DS_Store
 
 *.jpg
+
+uploading_apis/youtube/youtube-api-secret.json
