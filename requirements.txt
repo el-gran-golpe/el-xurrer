@@ -1,6 +1,6 @@
 tts
 loguru
-git+https://github.com/huggingface/diffusers.git
+diffusers
 accelerate
 sentencepiece
 pillow
@@ -11,10 +11,11 @@ pytorch-lightning
 pedalboard
 pesq
 wandb
-https://github.com/schmiph2/pysepm/archive/master.zip
 kaiser
 gradio_client
 proxy-spinner
 python-slugify
 moviepy
 pysrt
+openai
+python-dotenv
