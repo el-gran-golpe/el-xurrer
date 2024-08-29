@@ -52,8 +52,7 @@ class Whisper:
         # Calculate the difference in sentence count. Penalty 0.4 by sentence
         difference = abs(len(expected_sentences) - len(segments))
         missmatch_penalty = min(0.8, 0.4 * difference)
-        if len(expected_sentences) != len(segments):
-            segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences)
+        segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences, force_reassignment=True)
 
 
         # Calculate the difference in audio length. Penalty 0.3 by second
@@ -70,7 +69,7 @@ class Whisper:
             logger.warning(f"Text mismatch penalty is too high: {text_penalty:.2f}. "
                             f"Expected: {expected_text} "
                             f"Transcribed: {' - '.join([segment['text'] for segment in segments])}")
-            self._adjust_segments_to_sentences(segments=original_segments, sentences=expected_sentences)
+            segments = self._adjust_segments_to_sentences(segments=original_segments, sentences=expected_sentences, force_reassignment=True)
         # Calculate the final quality score (1.0 best quality, 0.0 worst quality)
         penalties = min(1.0, missmatch_penalty + audio_length_penalty + text_penalty)
         score = 1.0 - penalties
@@ -111,7 +110,7 @@ class Whisper:
             logger.warning("Sentence count does not match segment count. Adjusting segments to match sentences.")
             logger.warning(f"Segments: {' - '.join([segment['text'] for segment in segments])}"\
                            f"\nSentences: {' - '.join(sentences)}")
-            segments = self._adjust_segments_to_sentences(segments=segments, sentences=sentences)
+        segments = self._adjust_segments_to_sentences(segments=segments, sentences=sentences, force_reassignment=True)
         assert len(sentences) == len(segments), "Sentence count does not match segment count"
         words_from_sentences = [word for sentence in sentences for word in sentence.split(" ")]  # Flatten all words
         word_index = 0
@@ -151,14 +150,14 @@ class Whisper:
     from nltk.metrics import edit_distance
     from copy import deepcopy
 
-    def _adjust_segments_to_sentences(self, segments, sentences):
+    def _adjust_segments_to_sentences(self, segments:list[dict], sentences: list[str], force_reassignment: bool = False):
         """
         Adjusts the segments to ensure the count matches the sentence count.
         This involves iteratively creating segments with increasing words until
         the lowest edit distance is found for each sentence.
         """
 
-        if len(segments) == len(sentences):
+        if not force_reassignment and len(segments) == len(sentences):
             return segments  # No adjustment needed
 
         # Function to calculate edit distance between a segment and a sentence
