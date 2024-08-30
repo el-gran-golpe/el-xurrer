@@ -15,3 +15,5 @@ venv
 *.jpg
 
 uploading_apis/youtube/youtube-api-secret.json
+
+uploading_apis/youtube/token.json
