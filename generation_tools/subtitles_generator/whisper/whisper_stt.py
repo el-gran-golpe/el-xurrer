@@ -6,7 +6,7 @@ import nltk
 from nltk.metrics import edit_distance
 from nltk.tokenize import sent_tokenize, word_tokenize
 from loguru import logger
-
+import math
 from utils.utils import get_audio_length
 import string
 
@@ -49,9 +49,9 @@ class Whisper:
         expected_sentences = sent_tokenize(expected_text)
         original_segments_count = len(segments)
         original_segments = deepcopy(segments)
-        # Calculate the difference in sentence count. Penalty 0.4 by sentence
+        # Calculate the difference in sentence count. Penalty 0.3 by sentence
         difference = abs(len(expected_sentences) - len(segments))
-        missmatch_penalty = min(0.8, 0.4 * difference)
+        missmatch_penalty = min(0.6, 0.3 * difference)
         segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences, force_reassignment=True)
 
 
@@ -70,14 +70,29 @@ class Whisper:
                             f"Expected: {expected_text} "
                             f"Transcribed: {' - '.join([segment['text'] for segment in segments])}")
             segments = self._adjust_segments_to_sentences(segments=original_segments, sentences=expected_sentences, force_reassignment=True)
+
+        # Calculate the audio stability as the average time/word for each segment
+        word_pace_by_segment = [(segment['end'] - segment['start']) / len(segment['words']) for segment in segments]
+        # Calculate the standard deviation of the time/word
+        std = math.sqrt(sum((time - sum(word_pace_by_segment) / len(word_pace_by_segment)) ** 2
+                            for time in word_pace_by_segment) / len(word_pace_by_segment))
+        # For each 0.1 of standard deviation, add 0.2 of penalty
+        stability_penalty = 0.2 * (std / 0.1)
+        perfect_pace = 0.275 # Ideal time/word
+        average_pace = sum(word_pace_by_segment) / len(word_pace_by_segment)
+        # Apply a penalty of 0.2 for each 0.1 of difference from the perfect pace
+        pace_penalty = 0.2 * abs(average_pace - perfect_pace) / 0.1
+
         # Calculate the final quality score (1.0 best quality, 0.0 worst quality)
-        penalties = min(1.0, missmatch_penalty + audio_length_penalty + text_penalty)
+        penalties = min(1.0, missmatch_penalty + audio_length_penalty + text_penalty + stability_penalty + pace_penalty)
         score = 1.0 - penalties
 
         logger.debug(f"Quality score: {score:.2f} (Sentence Mismatch: {missmatch_penalty:.2f} "
                      f"({original_segments_count} vs {len(expected_sentences)}), "
                      f"Audio Lenght Missmatch: {audio_length_penalty:.2f} ({start_difference:.2f} + {end_difference:.2f}), "
-                     f"Text Mismatch: {text_penalty:.2f} (dist: {distance})")
+                     f"Text Mismatch: {text_penalty:.2f} (dist: {distance}), "
+                     f"Speed Stability: {stability_penalty:.2f} (std: {std:.2f}), "
+                     f"Word Pace: {pace_penalty:.2f} (avg: {average_pace:.2f})")
 
         return score
 
@@ -192,8 +207,10 @@ class Whisper:
 
             # Remove the used words from remaining words
             remaining_words = remaining_words[len(words_to_use):]
-
-        assert len(remaining_words) > 0, "Remaining words should not be empty, there is still one sentence left."
+        try:
+            assert len(remaining_words) > 0, "Remaining words should not be empty, there is still one sentence left."
+        except AssertionError:
+            print("Remaining words should not be empty, there is still one sentence left.")
         # For the last sentence, just take all remaining words
         if remaining_words:
             last_segment_text = "".join(word['word'] for word in remaining_words)

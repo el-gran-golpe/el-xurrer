@@ -18,17 +18,32 @@ class MovieEditorSentenceSubtitles(MovieEditorBase):
         subtitles_path = os.path.join(self.output_folder, 'subtitles', 'sentence', f"{item['id']}.srt")
 
         if os.path.isfile(subtitles_path):
-            # Load and overlay subtitles with better styling
+            # Calculate the padded width
+            padded_width = clip.w * 0.9
+            padded_height = clip.h * 0.9
+
+            # Load and overlay subtitles with better styling and padding
             generator = lambda txt: mp.TextClip(txt, font='Arial-Bold', fontsize=32, color='white',
-                                                stroke_color='black', stroke_width=1, method='caption', size=(clip.w, None))
+                                                stroke_color='black', stroke_width=1, method='caption',
+                                                size=(padded_width, None))
             subtitles = SubtitlesClip(subtitles_path, generator)
 
-            # Add padding to the bottom to avoid cropping
+            # Create a dummy two-line TextClip for height estimation
+            dummy_clip = generator("Line 1\nLine 2")
+            subtitle_height = dummy_clip.h
+            dummy_clip.close()  # Close the dummy clip to free resources
+
+            # Calculate the y position to keep the entire subtitle block within the padded height
+            position_x = (clip.w - padded_width) / 2
+            position_y = padded_height - subtitle_height + (clip.h - padded_height) / 2
+
+            # Overlay the subtitles clip onto the main clip with padding
             clip = mp.CompositeVideoClip([
                 clip,
-                subtitles.set_position(('center', 'bottom'))
+                subtitles.set_position((position_x, position_y))
             ])
         else:
             logger.warning(f"Missing subtitles file for ID: {item['id']}")
 
         return clip
+

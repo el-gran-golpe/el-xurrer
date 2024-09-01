@@ -16,7 +16,7 @@ class MovieEditorBase:
             self.script = json.load(f)
             self.check_script_validity(self.script)
 
-    def _build_clip(self, item: dict):
+    def _build_clip(self, item: dict, include_screen_text_from_start: bool = True) -> mp.CompositeVideoClip:
         _id, sound, screen_text = item["id"], item.get("sound"), item.get("screen_text")
         audio_path = os.path.join(self.output_folder, 'audio', f"{_id}.wav")
         image_path = os.path.join(self.output_folder, 'images', f"{_id}.png")
@@ -54,24 +54,34 @@ class MovieEditorBase:
             sound_end = min(sound_end, sound_clip_duration)
 
             # Create the subclip with the original sound clip duration
-            sound_clip = sound_clip.subclip(0, sound_clip_duration).volumex(0.4)
+            sound_clip = sound_clip.subclip(0, sound_clip_duration).volumex(0.3)
 
             # Position the sound clip at the desired time range in the main audio
-            sound_clip = sound_clip.set_start(10).set_end(12)
+            sound_clip = sound_clip.set_start(sound_start).set_end(sound_end)
 
             # Merge the audio and sound clips
             audio_clip = mp.CompositeAudioClip([audio_clip, sound_clip])
 
         if screen_text is not None:
             from_word, to_word, text = screen_text['from'], screen_text['to'], screen_text['text']
-            start, _ = find_word_timing(srt_file_path=word_subtitles_path, word=from_word, retrieve_last=False)
-            assert start is not None, f"Could not find word {from_word} in subtitle file {word_subtitles_path}"
+            if include_screen_text_from_start:
+                start = 0.
+            else:
+                start, _ = find_word_timing(srt_file_path=word_subtitles_path, word=from_word, retrieve_last=False)
+                assert start is not None, f"Could not find word {from_word} in subtitle file {word_subtitles_path}"
             _, end = find_word_timing(srt_file_path=word_subtitles_path, word=to_word, retrieve_last=True)
             assert end is not None, f"Could not find word {to_word} in subtitle file {word_subtitles_path}"
             end = min(end, clip_length)
 
-            text_clip = mp.TextClip(text, fontsize=24, color='white', bg_color='black').set_duration(end - start)
-            text_clip = text_clip.set_position(('center', 'bottom')).set_start(start)
+            # Define the text generator, similar to how SubtitlesClip would generate the text
+            generator = lambda txt: mp.TextClip(txt, font='Arial-Bold', fontsize=64, color='white',
+                                                stroke_color='black', stroke_width=2, method='caption',
+                                                size=(image_clip.w * 0.6, None))
+
+            # Generate the text clip for the given text
+            text_clip = generator(text).set_start(start).set_duration(end - start).set_position(('center', 'center'))
+
+            # Overlay the text clip onto the image clip
             image_clip = mp.CompositeVideoClip([image_clip, text_clip])
 
         return image_clip.set_audio(audio_clip)
