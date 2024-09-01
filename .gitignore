@@ -17,3 +17,7 @@ venv
 uploading_apis/youtube/youtube-api-secret.json
 
 uploading_apis/youtube/token.json
+
+generation_tools/voice_generator/xtts/voice_test/
+
+generation_tools/voice_generator/xtts/voice_test_english/

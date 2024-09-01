@@ -19,3 +19,4 @@ moviepy
 pysrt
 openai
 python-dotenv
+pydub

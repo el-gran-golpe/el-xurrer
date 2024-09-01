@@ -6,6 +6,7 @@ from time import time
 from tqdm import tqdm
 from slugify import slugify
 
+from generation_tools.thumbnails_generator.templated import Templated
 from utils.utils import time_between_two_words_in_srt
 from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
 from generation_tools.voice_generator.xtts.xtts import Xtts
@@ -27,6 +28,7 @@ class Pipeline:
         self.image_generator = Flux(load_on_demand=True)
         self.subtitle_generator = Whisper(load_on_demand=True)
         self.sounds_generator = AudioLDM(load_on_demand=True)
+        self.thumbnail_generator = Templated()
 
         self.prepare_output_folder(output_folder=output_folder)
         self.output_folder = output_folder
@@ -41,6 +43,9 @@ class Pipeline:
     def generate_video(self):
         lang = self.script["lang"]
         w, h = WH_BY_ASPECT_RATIO[self.script["aspect_ratio"]]
+
+        self._generate_thumbnail_if_not_exists()
+
         for item in tqdm(self.script["content"]):
             _id, text, image_prompt, sound = item["id"], item["text"], item["image"], item["sound"]
             audio_path = os.path.join(self.output_folder, 'audio', f"{_id}.wav")
@@ -85,6 +90,26 @@ class Pipeline:
         self.generate_video_from_clips(output_video_path=os.path.join(self.output_folder, 'video', f"video.mp4"))
 
 
+    def _generate_thumbnail_if_not_exists(self) -> bool:
+        thumbnail_path = os.path.join(self.output_folder, 'thumbnail', 'thumbnail.png')
+        thumbnail_background_path = os.path.join(self.output_folder, 'thumbnail', 'background.png')
+        if os.path.isfile(thumbnail_path):
+            return False
+
+        thumbnail_prompt, thumbnail_text = self.script["thumbnail_prompt"], self.script["thumbnail_text"]
+
+        if not os.path.isfile(thumbnail_background_path):
+            # Generate the background image
+            self.image_generator.generate_image(prompt=thumbnail_prompt, output_path=thumbnail_background_path, width=1280, height=720)
+            assert os.path.isfile(thumbnail_background_path), f"Thumbnail background file {thumbnail_background_path} was not generated"
+
+        # Generate the thumbnail
+        self.thumbnail_generator.generate_thumbnail(image=thumbnail_background_path, text=thumbnail_text,
+                                                    output_path=thumbnail_path)
+
+        assert os.path.isfile(thumbnail_path), f"Thumbnail file {thumbnail_path} was not generated"
+        return True
+
     def generate_video_from_clips(self, output_video_path: str):
         movie_editor = MovieEditorSentenceSubtitles(output_folder=self.output_folder)
         movie_editor.generate_video_from_clips(output_video_path=output_video_path)
@@ -120,6 +145,8 @@ class Pipeline:
             os.makedirs(os.path.join(output_folder, 'video'))
         if not os.path.isdir(os.path.join(output_folder, 'sounds')):
             os.makedirs(os.path.join(output_folder, 'sounds'))
+        if not os.path.isdir(os.path.join(output_folder, 'thumbnail')):
+            os.makedirs(os.path.join(output_folder, 'thumbnail'))
 
     def check_script_validity(self, script) -> None:
         assert "lang" in script, "Script must contain a lang key"

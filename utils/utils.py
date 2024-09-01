@@ -4,6 +4,10 @@ from nltk.metrics import edit_distance
 from loguru import logger
 import wave
 import string
+from datetime import datetime, timedelta
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
+
 
 PUNCTUATION = f"{string.punctuation}“”‘’¿¡"
 
@@ -77,3 +81,33 @@ def get_audio_length(audio_path: str) -> float:
         rate = audio_file.getframerate()
         duration = frames / float(rate)
     return duration
+
+def trim_silence_from_audio(input_file, output_file, silence_thresh=-40, min_silence_len=500, keep_silence=350):
+    # Load the audio file
+    audio = AudioSegment.from_wav(input_file)
+
+    # Split the audio where silence is detected
+    chunks = split_on_silence(audio,
+                              min_silence_len=min_silence_len,
+                              silence_thresh=silence_thresh,
+                              keep_silence=keep_silence)
+
+    # Combine the chunks together
+    trimmed_audio = AudioSegment.silent(duration=0)
+    for chunk in chunks:
+        trimmed_audio += chunk
+
+    # Export the trimmed audio
+    trimmed_audio.export(output_file, format="wav")
+    print(f"Trimmed audio saved to: {output_file}")
+
+
+
+def get_closest_monday():
+    """
+    Get the closest Monday to today's date.
+    """
+
+    today = datetime.now()
+    closest_monday = today + timedelta(days=(0 - today.weekday()))
+    return closest_monday
