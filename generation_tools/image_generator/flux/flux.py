@@ -2,10 +2,11 @@ from gradio_client import Client
 from PIL import Image
 import os
 
-from httpx import ReadTimeout
+from httpx import ReadTimeout, ConnectError
 from loguru import logger
 import json
-from requests.exceptions import ConnectionError, ProxyError
+from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
+from httpx import ConnectTimeout as httpxConnectTimeout
 from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
@@ -34,14 +35,14 @@ class Flux:
 				with self.proxy:
 					client = Client(src=self._src_model)
 				break
-			except (ReadTimeout, ProxyError) as e:
+			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout) as e:
 				logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
 				self.proxy.renew_proxy()
 				continue
 		return client
 
 	def generate_image(self, prompt, output_path: str, seed: int|None = None, width=512, height=512,
-					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3,
+					   guidance_scale=3.5, num_inference_steps=20, retries: int = 5,
 					   token_rotation: bool = True):
 
 		assert isinstance(prompt, str), "Prompt must be a string"
@@ -69,7 +70,7 @@ class Flux:
 						api_name=self._api_name
 					)
 					break
-			except (AppError, ConnectionError) as e:
+			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout) as e:
 				logger.error(f"Error generating image: {e}. Retry {i + 1}/{retries}")
 				if i == retries - 1:
 					raise e
