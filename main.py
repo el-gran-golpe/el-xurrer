@@ -72,14 +72,17 @@ def generate_videos():
                            if template.endswith('.json')]
     assert len(available_plannings) > 0, "No planning files found, please generate a planning first"
     print("Available planning files:")
-    for i, channel in enumerate(available_plannings):
-        output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_VIDEOS, channel)
-        if not os.path.isdir(output_path):
-            subtext = "(New)"
-        else:
-            subtext = f"(Existent lists: {len(os.listdir(output_path))})"
-        print(f"{i + 1}: {channel} {subtext}")
-    channel_index = int(input("Select a channel number: ")) - 1
+    if len(available_plannings) == 1:
+        channel_index = 0
+    else:
+        for i, channel in enumerate(available_plannings):
+            output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_VIDEOS, channel)
+            if not os.path.isdir(output_path):
+                subtext = "(New)"
+            else:
+                subtext = f"(Existent lists: {len(os.listdir(output_path))})"
+            print(f"{i + 1}: {channel} {subtext}")
+        channel_index = int(input("Select a channel number: ")) - 1
     assert 0 <= channel_index < len(available_plannings), "Invalid channel number"
     channel_name = available_plannings[channel_index]
 

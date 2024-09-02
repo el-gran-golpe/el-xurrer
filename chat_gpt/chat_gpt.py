@@ -17,12 +17,34 @@ class ChatGPT:
         # Load the API key from the api_key.env file
         load_dotenv(ENV_FILE)
 
-        self.client = OpenAI(
-            # This is the default and can be omitted
-            api_key=os.getenv('OPENAI_API_KEY'),
-        )
-
+        self.api_keys = {
+            'GITHUB': [api_key for api_key in [os.getenv('GITHUB_API_KEY_HARU')] if api_key],
+            'OPENAI': os.getenv('OPENAI_API_KEY'),
+        }
+        self._original_base_model = base_model
         self.base_model = base_model
+
+        self.client = self.get_new_client()
+
+    def get_new_client(self, force_best_model_when_free: bool = True):
+        # First of all, try to use the GitHub API key if available (Is free)
+        github_api_keys = self.api_keys['GITHUB']
+        if len(github_api_keys) > 0:
+            self.client = OpenAI(
+                base_url="https://models.inference.ai.azure.com",
+                api_key=self.api_keys['GITHUB'].pop(0)
+            )
+            if force_best_model_when_free:
+                self.base_model = "gpt-4o"
+        else:
+            self.client = OpenAI(
+                api_key=self.api_keys['OPENAI']
+            )
+            self.base_model = self._original_base_model
+
+        return self.client
+
+
 
     def generate_script(self, prompt_template_path: str, theme_prompt: str, thumbnail_text: str,
                         title: str, duration: int = 5, lang: str= 'en', base_model: str = None) -> dict:
@@ -123,3 +145,10 @@ class ChatGPT:
 
 
 
+if __name__ == '__main__':
+    chat_gpt = ChatGPT()
+    # Generate a script for a video
+    planning = chat_gpt.generate_youtube_planing(
+        prompt_template_path=os.path.join(os.path.dirname(__file__), 'prompts', 'youtube', 'planning', 'mitos-y-ritos.json'),
+        video_count=10, lang='es')
+    print(planning)
