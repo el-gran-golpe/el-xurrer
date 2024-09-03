@@ -65,8 +65,8 @@ class ChatGPT:
 
         # Format the first prompt
         prompts[0] = prompts[0].format(duration=duration, prompt=theme_prompt)
-        prompts[2] = prompts[2].format(thumbnail_text=thumbnail_text)
-        prompts[3] = prompts[3].replace('{thumbnail_text}', thumbnail_text).replace('{title}', title)
+        prompts[3] = prompts[3].format(thumbnail_text=thumbnail_text)
+        prompts[4] = prompts[4].replace('{thumbnail_text}', thumbnail_text).replace('{title}', title)
 
         return self._generate_dict_from_prompts(prompts=prompts, base_model = base_model, desc="Generating script")
 
