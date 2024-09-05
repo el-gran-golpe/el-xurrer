@@ -1,14 +1,14 @@
 import os
 from pipeline.pipeline import Pipeline
-from chat_gpt.chat_gpt import ChatGPT
+from llm.youtube.youtube_llm import YoutubeLLM as ChatGPT
 from loguru import logger
 import json
 from slugify import slugify
 from tqdm import tqdm
 
 EXECUTE_PLANNING = False
-PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'chat_gpt', 'prompts', 'youtube', 'planning')
-VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'chat_gpt', 'prompts', 'youtube', 'videos')
+PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'prompts', 'youtube', 'planning')
+VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'prompts', 'youtube', 'videos')
 VIDEOS_COUNT = 40
 
 OUTPUT_FOLDER_BASE_PATH_VIDEOS = os.path.join('.', 'youtube_channels', 'videos')
@@ -33,28 +33,15 @@ def generate_planning():
 
     channel_name = available_plannings[template_index][:-len('.json')]
 
-    # Read the template
-    with open(template_path, 'r') as file:
-        template = json.load(file)
-
-    available_langs = list(template.keys())
-    if len(available_langs) == 1:
-        lang = available_langs[0]
-    else:
-        print("Available languages:")
-        for i, lang in enumerate(available_langs):
-            print(f"{i + 1}: {lang}")
-        lang_index = int(input("Select a language number: ")) - 1
-        assert 0 <= lang_index < len(available_langs), "Invalid language number"
-        lang = available_langs[lang_index]
 
     # Generate the planning
     planning = ChatGPT(base_model='gpt-4o').generate_youtube_planing(prompt_template_path=template_path,
-                                                                     video_count=VIDEOS_COUNT, lang=lang)
+                                                                     video_count=VIDEOS_COUNT)
 
     # Save the planning
     output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, channel_name)
     os.makedirs(output_path, exist_ok=True)
+
     if os.path.isfile(os.path.join(output_path, 'mitos-y-ritos.json')):
         print(f"Warning: The planning file already exists in the folder: {output_path}")
         overwrite = input("Do you want to overwrite it? (y/n): ")
@@ -87,22 +74,7 @@ def generate_videos():
     channel_name = available_plannings[channel_index]
 
     prompt_template_path =  os.path.join(VIDEOS_TEMPLATE_FOLDER, f"{channel_name}.json")
-    assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template}"
-    # Get the lang
-    with open(prompt_template_path, 'r') as file:
-        prompt_template = json.load(file)
-    available_langs = list(prompt_template.keys())
-    if len(available_langs) == 1:
-        lang = available_langs[0]
-    else:
-        print("Available languages:")
-        for i, lang in enumerate(available_langs):
-            print(f"{i + 1}: {lang}")
-        lang_index = int(input("Select a language number: ")) - 1
-        assert 0 <= lang_index < len(available_langs), "Invalid language number"
-        lang = available_langs[lang_index]
-
-
+    assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
 
     output_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_VIDEOS, channel_name)
     os.makedirs(output_folder, exist_ok=True)
@@ -122,7 +94,7 @@ def generate_videos():
                 os.makedirs(output_path)
             script_path = os.path.join(output_path, 'script.json')
             if not os.path.isfile(script_path):
-                script = ChatGPT().generate_script(duration=duration, lang=lang, theme_prompt=theme_prompt,
+                script = ChatGPT(base_model='gpt-4o-mini').generate_script(duration=duration, theme_prompt=theme_prompt,
                                                    thumbnail_text=thumbnail_text, title=video_name,
                                                    prompt_template_path=prompt_template_path)
                 with open(script_path, 'w') as f:
@@ -131,7 +103,7 @@ def generate_videos():
             assert os.path.isfile(script_path), "Script file not found"
 
             # If the video file already exists, skip it
-            video_path = os.path.join(output_path, 'videos', 'video.mp4')
+            video_path = os.path.join(output_path, 'video.mp4')
             if os.path.isfile(video_path):
                 continue
             Pipeline(output_folder=output_path).generate_video()

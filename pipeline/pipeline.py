@@ -56,8 +56,8 @@ class Pipeline:
 
             if text and not os.path.isfile(audio_path):
                 start = time()
-                self.voice_generator.generate_audio_cloning_voice_to_file(text=text, output_path=audio_path,
-                                                                          language=lang, retries=3)
+                self.voice_generator.generate_audio_to_file(text=text, output_path=audio_path,
+                                                            language=lang, retries=3)
                 logger.info(f"Audio generation: {time() - start:.2f}s")
                 assert os.path.isfile(audio_path), f"Audio file {audio_path} was not generated"
 
@@ -87,7 +87,7 @@ class Pipeline:
                 logger.info(f"Sound generation: {time() - start:.2f}s")
                 assert os.path.isfile(sounds_path), f"Sound file {sounds_path} was not generated"
 
-        self.generate_video_from_clips(output_video_path=os.path.join(self.output_folder, 'video', f"video.mp4"))
+        self.generate_video_from_clips(output_video_path=os.path.join(self.output_folder, f"video.mp4"))
 
 
     def _generate_thumbnail_if_not_exists(self) -> bool:

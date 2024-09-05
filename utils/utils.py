@@ -99,7 +99,6 @@ def trim_silence_from_audio(input_file, output_file, silence_thresh=-40, min_sil
 
     # Export the trimmed audio
     trimmed_audio.export(output_file, format="wav")
-    print(f"Trimmed audio saved to: {output_file}")
 
 
 

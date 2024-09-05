@@ -29,10 +29,10 @@ class Xtts:
         return self._tts
 
 
-    def generate_audio_cloning_voice_to_file(self, text: str, output_path: str,  language: str = 'en',
-                                             speaker: str = 'random_girl',
-                                             speed: float = 1.75, retries: int = 1, quality_threshold: float = 0.8,
-                                             denoise: bool = False) -> str:
+    def generate_audio_to_file(self, text: str, output_path: str, language: str = 'en',
+                               speaker: str = 'Gitta Nikolina',
+                               speed: float = 1.75, retries: int = 1, quality_threshold: float = 0.8,
+                               denoise: bool = False) -> str:
 
         assert isinstance(retries, int) and 0 <= retries <= 10, \
             "Retries must be an integer between 0 and 10"
@@ -95,10 +95,11 @@ class Xtts:
 
 if __name__ == '__main__':
     xtts = Xtts()
-    for speaker in AVAILABLE_SPEAKERS:
-        xtts._generate_audio_file(text="Ahora, hablemos de su reino: Helheim. Este es el lugar adonde van aquellos que no murieron en combate. Imagina un paisaje helado y árido, a veces considerado como un lugar de tristeza.",
-                                  output_path=f"voice_test/{speaker}.wav", language='es', speaker=speaker)
 
-    for speaker in AVAILABLE_SPEAKERS:
-        xtts._generate_audio_file(text="Now, let's talk about your kingdom: Helheim. This is the place where those who did not die in combat go. Imagine an icy and barren landscape, sometimes considered a place of sadness.",
-                                  output_path=f"voice_test_english/{speaker}.wav", language='en', speaker=speaker)
+    for speaker in DECENT_SPEAKERS_ENGLISH:
+        xtts._generate_audio_file(text="Thousands of years ago, in a Greece ruled by gods and monsters, a hero was born whose legend lives on to this day. Hercules, son of Zeus and a mortal, was destined for greatness from the moment he opened his eyes. But his path was not easy; his life was marked by tragedy and the fury of Hera, the queen of the gods.",
+                                  output_path=f"voice_test_english/{speaker}_1.wav", language='en', speaker=speaker)
+        xtts._generate_audio_file(text="Hello, mythology lovers, welcome to a new journey through time! Today we will unravel the life of Hercules, that hero who not only lifted weights in the gym, but also faced monsters from another world.",
+                                    output_path=f"voice_test_english/{speaker}_2.wav", language='en', speaker=speaker)
+        xtts._generate_audio_file(text="But, of course, in mythology nothing is easy and much less for Hercules, who had to face 12 challenging tasks that would test even the strongest.",
+                                    output_path=f"voice_test_english/{speaker}_3.wav", language='en', speaker=speaker)
