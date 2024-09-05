@@ -1,13 +1,14 @@
 import os
 import json
 from llm.base_llm import BaseLLM
+from llm.constants import DEFAULT_PREFERRED_MODELS
 
 from utils.utils import get_closest_monday
 
 
 
 class YoutubeLLM(BaseLLM):
-    def __init__(self, preferred_models: list|tuple = ('gpt-4o', 'gpt-4o-mini')):
+    def __init__(self, preferred_models: list|tuple = DEFAULT_PREFERRED_MODELS):
         super().__init__(preferred_models=preferred_models)
 
     def generate_script(self, prompt_template_path: str, theme_prompt: str, thumbnail_text: str,

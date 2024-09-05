@@ -16,14 +16,14 @@ from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage, StreamingChatCompletionsUpdate, ChatCompletions, AssistantMessage
 from azure.core.credentials import AzureKeyCredential
 
-from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS
+from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
 
 
 class BaseLLM:
-    def __init__(self, preferred_models: list[str]|str=("Mistral-large",)):
+    def __init__(self, preferred_models: list[str]|str=DEFAULT_PREFERRED_MODELS):
         assert os.path.isfile(ENV_FILE), (f"Missing API key file: {ENV_FILE}. "
                                           f"This file should have the following format:\n"
                                           f"GITHUB_API_KEY=<your-api-key>")
