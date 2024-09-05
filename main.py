@@ -1,14 +1,14 @@
 import os
 from pipeline.pipeline import Pipeline
-from llm.youtube.youtube_llm import YoutubeLLM as ChatGPT
+from llm.youtube.youtube_llm import YoutubeLLM
 from loguru import logger
 import json
 from slugify import slugify
 from tqdm import tqdm
 
 EXECUTE_PLANNING = False
-PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'prompts', 'youtube', 'planning')
-VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'prompts', 'youtube', 'videos')
+PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'planning')
+VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'videos')
 VIDEOS_COUNT = 40
 
 OUTPUT_FOLDER_BASE_PATH_VIDEOS = os.path.join('.', 'youtube_channels', 'videos')
@@ -35,7 +35,7 @@ def generate_planning():
 
 
     # Generate the planning
-    planning = ChatGPT(base_model='gpt-4o').generate_youtube_planing(prompt_template_path=template_path,
+    planning = YoutubeLLM(preferred_models=('gpt-4o', 'gpt-4o-mini')).generate_youtube_planning(prompt_template_path=template_path,
                                                                      video_count=VIDEOS_COUNT)
 
     # Save the planning
@@ -94,7 +94,7 @@ def generate_videos():
                 os.makedirs(output_path)
             script_path = os.path.join(output_path, 'script.json')
             if not os.path.isfile(script_path):
-                script = ChatGPT(base_model='gpt-4o-mini').generate_script(duration=duration, theme_prompt=theme_prompt,
+                script = YoutubeLLM(preferred_models=('gpt-4o', 'gpt-4o-mini')).generate_script(duration=duration, theme_prompt=theme_prompt,
                                                    thumbnail_text=thumbnail_text, title=video_name,
                                                    prompt_template_path=prompt_template_path)
                 with open(script_path, 'w') as f:

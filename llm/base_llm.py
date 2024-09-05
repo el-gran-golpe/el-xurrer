@@ -5,6 +5,7 @@ import json
 import time
 from typing import Iterable
 
+from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
 from openai import OpenAI, APIStatusError, Stream
 from openai.types.chat import ChatCompletionChunk, ChatCompletion
@@ -15,7 +16,7 @@ from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage, StreamingChatCompletionsUpdate, ChatCompletions, AssistantMessage
 from azure.core.credentials import AzureKeyCredential
 
-from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI
+from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -33,20 +34,25 @@ class BaseLLM:
 
         self.preferred_models = preferred_models
         self.api_keys = {
-            'GITHUB': os.getenv('GITHUB_API_KEY_HARU'),
+            'GITHUB': [os.getenv('GITHUB_API_KEY_HARU')],
             'OPENAI': os.getenv('OPENAI_API_KEY'),
         }
 
         self.exhausted_models = []
         self.client, self.active_backend = None, None
-    def get_client(self, model: str):
+        self.using_paid_api = False
+    def get_client(self, model: str, paid_api: bool = False):
         assert model in MODEL_BY_BACKEND, f"Model not found: {model}"
         backend = MODEL_BY_BACKEND[model]
-        if self.active_backend == backend and self.client is not None:
+        if paid_api:
+            assert backend == OPENAI, "Paid API is only available for OpenAI models"
+
+        if (self.active_backend == backend and self.client is not None
+                and self.using_paid_api == paid_api):
             return self.client
 
         if backend == OPENAI:
-            return self.get_new_client_openai()
+            return self.get_new_client_openai(paid_api=paid_api)
         elif backend == AZURE:
             return self.get_new_client_azure()
         else:
@@ -62,13 +68,17 @@ class BaseLLM:
                 credential=AzureKeyCredential(github_api_key)
             )
         self.active_backend = AZURE
+        self.using_paid_api = False
         return self.client
 
-    def get_new_client_openai(self):
+    def get_new_client_openai(self, paid_api: bool = False):
         # First of all, try to use the GitHub API key if available (Is free)
-        github_api_keys = self.api_keys['GITHUB']
-        base_url = "https://models.inference.ai.azure.com" if len(github_api_keys) > 0 else None
-        api_key = random.choice(github_api_keys) if len(github_api_keys) > 0 else self.api_keys['OPENAI']
+        if not paid_api:
+            assert len(self.api_keys['GITHUB']) > 0, "No GitHub API keys found"
+            api_key, base_url = random.choice(self.api_keys['GITHUB']), "https://models.inference.ai.azure.com"
+        else:
+            assert self.api_keys['OPENAI'] is not None, "No OpenAI API key found"
+            api_key, base_url = self.api_keys['OPENAI'], None
 
         self.client = OpenAI(
             base_url=base_url,
@@ -76,14 +86,14 @@ class BaseLLM:
         )
 
         self.active_backend = OPENAI
+        self.using_paid_api = paid_api
         return self.client
 
 
-    def _generate_dict_from_prompts(self, prompts, preferred_model: list = None, desc: str = "Generating",
-                                    system_prompt: str | None = None, improvement_prompts: list | tuple = (),
-                                    force_models: dict = {}) -> dict:
+    def _generate_dict_from_prompts(self, prompts, preferred_models: list = None, desc: str = "Generating",
+                                    system_prompt: str | None = None, improvement_prompts: list | tuple = ()) -> dict:
 
-        if preferred_model is None:
+        if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 
@@ -95,9 +105,9 @@ class BaseLLM:
         for i, user_prompt in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
             # Append the user's prompt to the conversation
             conversation.append({"role": "user", "content": user_prompt})
-            models = preferred_models if i not in force_models else force_models[i]
             # Get the assistant's response
-            assistant_reply, finish_reason = self.get_stream_response(conversation=conversation, preferred_models=models)
+            assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
+                                                                     preferred_models=preferred_models)
 
             # If it was an improvement prompt, remove the previous message and answer
             if i in improvement_prompts:
@@ -118,7 +128,7 @@ class BaseLLM:
         return output_dict
 
 
-    def get_stream_response(self, conversation: list[dict], preferred_models: list = None, verbose: bool = True) -> tuple:
+    def get_model_response(self, conversation: list[dict], preferred_models: list = None, verbose: bool = True) -> tuple:
 
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
@@ -138,45 +148,70 @@ class BaseLLM:
                 finish_reason = current_finish_reason
 
         assert finish_reason is not None, "Finish reason not found"
+
         if finish_reason == "length":
             continue_conversation = deepcopy(conversation)
             continue_conversation.append({"role": "assistant", "content": assistant_reply})
             continue_conversation.append({"role": "user", "content": "Continue EXACTLY where we left off"})
-            new_assistant_reply, finish_reason = self.__get_response_stream(conversation=continue_conversation,
-                                                                            preferred_models=preferred_models)
+            new_assistant_reply, finish_reason = self.get_model_response(conversation=continue_conversation,
+                                                                        preferred_models=preferred_models)
             assistant_reply += new_assistant_reply
 
+        elif finish_reason == 'content_filter':
+            print()
+            logger.debug("Content filter triggered. Retrying with a different model")
+            assert len(preferred_models) > 1, "No more models to try"
+            assistant_reply, finish_reason = self.get_model_response(conversation=conversation, preferred_models=preferred_models[1:])
+
+        assert finish_reason == "stop", f"Unexpected finish reason: {finish_reason}"
         return assistant_reply, finish_reason
 
-    def __get_response_stream(self, conversation: list[dict], preferred_models: list) -> (
+    def __get_response_stream(self, conversation: list[dict], preferred_models: list, use_paid_api: bool = False) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
         # Select the best model
         preferred_models = [model for model in preferred_models if model not in self.exhausted_models]
         assert len(preferred_models) > 0, "No models available"
         model = preferred_models[0]
-        self.client = self.get_client(model=model)
-        if self.active_backend == AZURE:
-            stream = self.client.complete(
-                messages=self.conversation_to_azure_format(conversation=conversation),
-                model=model,
-                stream=True
-            )
-        elif self.active_backend == OPENAI:
-            try:
+
+        self.client = self.get_client(model=model, paid_api=use_paid_api)
+
+        try:
+            if self.active_backend == AZURE:
+                stream = self.client.complete(
+                    messages=self.conversation_to_azure_format(conversation=conversation),
+                    model=model,
+                    stream=True
+                )
+            elif self.active_backend == OPENAI:
                 stream = self.client.chat.completions.create(
                     model=model,
                     messages=conversation,
                     stream=True
                 )
-            except APIStatusError as e:
+            else:
+                raise NotImplementedError(f"Backend not implemented: {self.active_backend}")
+        except (APIStatusError, HttpResponseError) as e:
+            if isinstance(e, APIStatusError):
                 error_code, error_message = e.code, e.message
-                if error_code == "tokens_limit_reached":
-                    raise NotImplementedError("Tokens limit reached, we'll have to change the model")
-                    # Move to a different model
-                else:
-                    raise NotImplementedError(f"Error: {error_code} - {error_message}")
-        else:
-            raise NotImplementedError(f"Backend not implemented: {self.active_backend}")
+            elif isinstance(e, HttpResponseError):
+                error_code, error_message = e.error.code, e.error.message
+            else:
+                raise e
+
+            if error_code == "tokens_limit_reached":
+                # Context token limit reached. So we'll have to move to the OpenAI paid API for this
+                assert not use_paid_api, "This error should not happen when using the paid API"
+                print()
+                logger.warning(f"Request size exceeded free github API limit. Retrying with "
+                               f"OpenAI paid API ({PREFERRED_PAID_MODELS[0]})")
+                stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
+                                           use_paid_api=True)
+                # Move to a different model
+            elif error_code == 'unauthorized':
+                raise PermissionError(f"Unauthorized: {error_message}")
+            else:
+                raise NotImplementedError(f"Error: {error_code} - {error_message}")
+
 
         return stream
 
