@@ -94,7 +94,7 @@ def generate_videos():
                 os.makedirs(output_path)
             script_path = os.path.join(output_path, 'script.json')
             if not os.path.isfile(script_path):
-                script = YoutubeLLM(preferred_models=('gpt-4o', 'gpt-4o-mini')).generate_script(duration=duration, theme_prompt=theme_prompt,
+                script = YoutubeLLM().generate_script(duration=duration, theme_prompt=theme_prompt,
                                                    thumbnail_text=thumbnail_text, title=video_name,
                                                    prompt_template_path=prompt_template_path)
                 with open(script_path, 'w') as f:

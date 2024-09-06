@@ -2,8 +2,9 @@ import os
 import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
-
+from tqdm import tqdm
 from utils.utils import get_closest_monday
+import re
 
 
 
@@ -20,21 +21,11 @@ class YoutubeLLM(BaseLLM):
         with open(prompt_template_path, 'r') as file:
             prompt_template = json.load(file)
 
-        system_prompt = prompt_template.pop('system_prompt', None)
-        prompts = prompt_template["prompts"]
-        force_models = prompt_template.get('force_models', {})
-        force_models = {int(k): v for k, v in force_models.items()}
+        prompts_definition = prompt_template["prompts"]
+        prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(prompt=theme_prompt, duration=duration)
 
-        assert isinstance(prompts, list), "Prompts must be a list"
-        assert len(prompts) > 0, "No prompts found in the prompt template file"
-
-        prompts[0] = prompts[0].format(duration=duration, prompt=theme_prompt)
-        prompts[3] = prompts[3].format(thumbnail_text=thumbnail_text)
-        prompts[4] = prompts[4].replace('{thumbnail_text}', thumbnail_text).replace('{title}', title)
-
-        return self._generate_dict_from_prompts(prompts=prompts, preferred_models=self.preferred_models, desc="Generating script",
-                                                system_prompt=system_prompt,
-                                                improvement_prompts=(1,))
+        return self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
+                                                desc="Generating script")
 
     def generate_youtube_planning(self, prompt_template_path: str, video_count: int, base_model: str = None) -> dict:
         assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
@@ -59,3 +50,50 @@ class YoutubeLLM(BaseLLM):
                                                     system_prompt=system_prompt,
                                                     desc="Generating planning")
         return planning
+
+
+    def _replace_prompt_placeholders(self, prompt: str, cache: dict[str, str]) -> str:
+        """
+        Replace the placeholders in the prompt with the values in the cache
+        :param prompt: The prompt to replace the placeholders
+        :param cache: The cache with the values to replace
+        :return: The prompt with the placeholders replaced
+        """
+        placeholders = re.findall(r'{(\w+)}', prompt)
+        for placeholder in placeholders:
+            assert placeholder in cache, f"Placeholder '{placeholder}' not found in the cache"
+            prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
+        return prompt
+
+    def _generate_dict_from_prompts(self, prompts: list[dict], preferred_models: list = None,
+                                    desc: str = "Generating") -> dict:
+
+        if preferred_models is None:
+            assert len(self.preferred_models) > 0, "No preferred models found"
+            preferred_models = self.preferred_models
+
+        cache = {}
+
+        # Loop through each prompt and get a response
+        for i, prompt_definition in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
+            assert all(key in prompt_definition for key in ('prompt', 'cache_key')), "Invalid prompt definition"
+            prompt, cache_key = prompt_definition['prompt'], prompt_definition['cache_key']
+            system_prompt = prompt_definition.get('system_prompt', None)
+            conversation = []
+            if system_prompt is not None:
+                conversation.append({'role': 'system', 'content': system_prompt})
+            prompt = self._replace_prompt_placeholders(prompt=prompt, cache=cache)
+            conversation.append({'role': 'user', 'content': prompt})
+
+            # Get the assistant's response
+            assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
+                                                                     preferred_models=preferred_models)
+
+            # Add the assistant's response to the cache
+            cache[cache_key] = assistant_reply
+
+
+        assert isinstance(assistant_reply, str) and len(assistant_reply) > 0, "Assistant response not found"
+        # Decode the JSON object for the last assistant_reply
+        output_dict = self.decode_json_from_message(message=assistant_reply)
+        return output_dict

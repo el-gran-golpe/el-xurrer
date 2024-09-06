@@ -89,9 +89,19 @@ class BaseLLM:
         self.using_paid_api = paid_api
         return self.client
 
+    def _update_conversation_before_model_pass(self, conversation_history: list[dict], new_user_message: str, step: int = None) -> list[dict]:
+        conversation = deepcopy(conversation_history)
+        conversation.append({"role": "user", "content": new_user_message})
+        return conversation
+
+    def _update_conversation_after_model_pass(self, conversation_history: list[dict], output_assistant_message: str,
+                                              step: int = None) -> list[dict]:
+        conversation = deepcopy(conversation_history)
+        conversation.append({"role": "assistant", "content": output_assistant_message})
+        return conversation
 
     def _generate_dict_from_prompts(self, prompts, preferred_models: list = None, desc: str = "Generating",
-                                    system_prompt: str | None = None, improvement_prompts: list | tuple = ()) -> dict:
+                                    system_prompt: str | None = None) -> dict:
 
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
@@ -104,22 +114,16 @@ class BaseLLM:
         # Loop through each prompt and get a response
         for i, user_prompt in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
             # Append the user's prompt to the conversation
-            conversation.append({"role": "user", "content": user_prompt})
+            conversation = self._update_conversation_before_model_pass(conversation_history=conversation,
+                                                                       new_user_message=user_prompt, step=i)
             # Get the assistant's response
             assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
                                                                      preferred_models=preferred_models)
 
             # If it was an improvement prompt, remove the previous message and answer
-            if i in improvement_prompts:
-                improvement_prompt = conversation.pop()
-                assert improvement_prompt["role"] == "user", "Improvement prompt must be a user prompt"
-                worse_answer = conversation.pop()
-                assert worse_answer["role"] == "assistant", "Worse answer must be an assistant answer"
             # Append the assistant's reply to the conversation
-            conversation.append({"role": "assistant", "content": assistant_reply})
-
-            # Pause between requests to avoid hitting rate limits
-            time.sleep(1)
+            conversation = self._update_conversation_after_model_pass(conversation_history=conversation,
+                                                                      output_assistant_message=assistant_reply, step=i)
 
         # The last message contains a json object with the script
         last_message = conversation[-1]["content"]
@@ -168,8 +172,9 @@ class BaseLLM:
 
     def __get_response_stream(self, conversation: list[dict], preferred_models: list, use_paid_api: bool = False) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
-        # Select the best model
-        preferred_models = [model for model in preferred_models if model not in self.exhausted_models]
+        # Select the best model that is not exhausted
+        if not use_paid_api:
+            preferred_models = [model for model in preferred_models if model not in self.exhausted_models]
         assert len(preferred_models) > 0, "No models available"
         model = preferred_models[0]
 
@@ -207,6 +212,18 @@ class BaseLLM:
                 stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
                                            use_paid_api=True)
                 # Move to a different model
+            elif error_code == "RateLimitReached":
+                # We have exhausted the free API limit for this model
+                self.exhausted_models.append(model)
+                print()
+                logger.warning(f"Exhausted free API limit for model {model}. Retrying with a different model")
+                if len(preferred_models) == 1 and not use_paid_api:
+                    logger.warning("No more models to try. Retrying with the paid API")
+                    stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
+                                             use_paid_api=True)
+                else:
+                    stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models[1:],
+                                                        use_paid_api=use_paid_api)
             elif error_code == 'unauthorized':
                 raise PermissionError(f"Unauthorized: {error_message}")
             else:
