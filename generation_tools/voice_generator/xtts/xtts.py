@@ -80,7 +80,7 @@ class Xtts:
                                    speaker=speaker_name,
                                    language=language,
                                    speed=speed,
-                                   split_sentences=False)
+                                   split_sentences=len(text) > 235)
         # Trim silences
         trim_silence_from_audio(input_file=output_path, output_file=output_path)
 
