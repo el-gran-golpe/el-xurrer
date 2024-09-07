@@ -2,7 +2,7 @@ import os
 import random
 from copy import deepcopy
 import json
-import time
+import re
 from typing import Iterable
 
 from azure.core.exceptions import HttpResponseError
@@ -100,7 +100,7 @@ class BaseLLM:
         conversation.append({"role": "assistant", "content": output_assistant_message})
         return conversation
 
-    def _generate_dict_from_prompts(self, prompts, preferred_models: list = None, desc: str = "Generating",
+    def _generate_dict_from_plain_string_prompts(self, prompts, preferred_models: list = None, desc: str = "Generating",
                                     system_prompt: str | None = None) -> dict:
 
         if preferred_models is None:
@@ -257,3 +257,51 @@ class BaseLLM:
 
         message = message.strip('"')
         return json.loads(message)
+
+
+    def _replace_prompt_placeholders(self, prompt: str, cache: dict[str, str]) -> str:
+        """
+        Replace the placeholders in the prompt with the values in the cache
+        :param prompt: The prompt to replace the placeholders
+        :param cache: The cache with the values to replace
+        :return: The prompt with the placeholders replaced
+        """
+        placeholders = re.findall(r'{(\w+)}', prompt)
+        for placeholder in placeholders:
+            assert placeholder in cache, f"Placeholder '{placeholder}' not found in the cache"
+            prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
+        return prompt
+
+    def _generate_dict_from_prompts(self, prompts: list[dict], preferred_models: list = None,
+                                    desc: str = "Generating") -> dict:
+
+        if preferred_models is None:
+            assert len(self.preferred_models) > 0, "No preferred models found"
+            preferred_models = self.preferred_models
+
+        cache = {}
+
+        # Loop through each prompt and get a response
+        for i, prompt_definition in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
+            assert all(key in prompt_definition for key in ('prompt', 'cache_key')), "Invalid prompt definition"
+            prompt, cache_key = prompt_definition['prompt'], prompt_definition['cache_key']
+            system_prompt = prompt_definition.get('system_prompt', None)
+            conversation = []
+            if system_prompt is not None:
+                conversation.append({'role': 'system', 'content': system_prompt})
+            prompt = self._replace_prompt_placeholders(prompt=prompt, cache=cache)
+            conversation.append({'role': 'user', 'content': prompt})
+
+            # Get the assistant's response
+            assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
+                                                                     preferred_models=preferred_models)
+            if assistant_reply == "I'm sorry, I can't assist with that":
+                raise Exception("Assistant can't assist with the current prompt")
+            # Add the assistant's response to the cache
+            cache[cache_key] = assistant_reply
+
+
+        assert isinstance(assistant_reply, str) and len(assistant_reply) > 0, "Assistant response not found"
+        # Decode the JSON object for the last assistant_reply
+        output_dict = self.decode_json_from_message(message=assistant_reply)
+        return output_dict

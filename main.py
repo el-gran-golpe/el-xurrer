@@ -2,6 +2,7 @@ import os
 from pipeline.pipeline import Pipeline
 from llm.youtube.youtube_llm import YoutubeLLM
 from loguru import logger
+from time import sleep
 import json
 from slugify import slugify
 from tqdm import tqdm
@@ -35,8 +36,7 @@ def generate_planning():
 
 
     # Generate the planning
-    planning = YoutubeLLM(preferred_models=('gpt-4o', 'gpt-4o-mini')).generate_youtube_planning(prompt_template_path=template_path,
-                                                                     video_count=VIDEOS_COUNT)
+    planning = YoutubeLLM().generate_youtube_planning(prompt_template_path=template_path, list_count=6)
 
     # Save the planning
     output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, channel_name)
@@ -95,7 +95,7 @@ def generate_videos():
             script_path = os.path.join(output_path, 'script.json')
             if not os.path.isfile(script_path):
                 script = YoutubeLLM().generate_script(duration=duration, theme_prompt=theme_prompt,
-                                                   thumbnail_text=thumbnail_text, title=video_name,
+                                                   title=video_name,
                                                    prompt_template_path=prompt_template_path)
                 with open(script_path, 'w') as f:
                     json.dump(script, f, indent=4, ensure_ascii=False)
@@ -116,3 +116,10 @@ if __name__ == '__main__':
         generate_planning()
     else:
         generate_videos()
+        """
+        while True:
+            try:
+
+            except Exception as e:
+                sleep(60*60*2)
+        """
