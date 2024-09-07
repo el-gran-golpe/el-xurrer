@@ -20,3 +20,4 @@ pysrt
 openai
 python-dotenv
 pydub
+azure-ai-inference
