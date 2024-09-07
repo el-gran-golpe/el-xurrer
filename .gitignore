@@ -25,3 +25,7 @@ generation_tools/voice_generator/xtts/voice_test_english/
 generation_tools/image_generator/flux/kaggle.json
 
 instagram_profiles/laura_vigne/
+
+.vs/
+
+.vscode/
