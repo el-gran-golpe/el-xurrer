@@ -7,6 +7,8 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
+from utils.exceptions import WaitAndRetryError
+
 EXECUTE_PLANNING = False
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'planning')
 VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'videos')
@@ -115,7 +117,14 @@ def generate_videos():
             video_path = os.path.join(output_path, 'video.mp4')
             if os.path.isfile(video_path):
                 continue
-            Pipeline(output_folder=output_path).generate_video()
+
+            for retrial in range(25):
+                try:
+                    Pipeline(output_folder=output_path).generate_video()
+                    break
+                except WaitAndRetryError as e:
+                    logger.error(f"Error generating video: {e}. Retry {retrial + 1}/25")
+                    sleep(e.suggested_wait_time)
 
 
 
