@@ -59,7 +59,7 @@ def generate_planning():
             return
 
     with open(os.path.join(output_path, 'mitos-y-ritos.json'), 'w') as file:
-        json.dump(planning, file, indent=4, ensure_ascii=False)
+        json.dump(planning, file, indent=4, ensure_ascii=True)
 
 def generate_videos():
     assert os.path.isdir(OUTPUT_FOLDER_BASE_PATH_PLANNING), f"Planning folder not found: {OUTPUT_FOLDER_BASE_PATH_PLANNING}"
@@ -107,7 +107,7 @@ def generate_videos():
                                                    title=video_name,
                                                    prompt_template_path=prompt_template_path)
                 with open(script_path, 'w') as f:
-                    json.dump(script, f, indent=4, ensure_ascii=False)
+                    json.dump(script, f, indent=4, ensure_ascii=True)
 
             assert os.path.isfile(script_path), "Script file not found"
 

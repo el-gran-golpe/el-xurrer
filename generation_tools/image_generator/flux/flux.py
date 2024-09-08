@@ -42,7 +42,7 @@ class Flux:
 		return client
 
 	def generate_image(self, prompt, output_path: str, seed: int|None = None, width=512, height=512,
-					   guidance_scale=3.5, num_inference_steps=20, retries: int = 5,
+					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3,
 					   token_rotation: bool = True):
 
 		assert isinstance(prompt, str), "Prompt must be a string"
@@ -53,6 +53,8 @@ class Flux:
 		assert 0 < num_inference_steps <= 100, "Number of inference steps must be between 0 and 100"
 
 		assert 0 < retries <= 10, "Number of retries must be between 0 and 10"
+
+		recommended_waiting_time = None
 
 		randomize_seed = seed is None
 

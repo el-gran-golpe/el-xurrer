@@ -219,10 +219,10 @@ if __name__ == '__main__':
 
     # List channels (example usage)
     channels = youtube_api.list_channels()
-    print(json.dumps(channels, indent=4))
+    print(json.dumps(channels, indent=4, ensure_ascii=True))
 
     # List videos (example usage)
     videos = youtube_api.list_videos(max_results=50)
-    print(json.dumps(videos, indent=4))
+    print(json.dumps(videos, indent=4, ensure_ascii=True))
 
     get_video_categories = youtube_api.get_video_categories()
