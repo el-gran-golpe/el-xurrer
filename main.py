@@ -61,7 +61,7 @@ def generate_planning():
             return
 
     with open(os.path.join(output_path, 'mitos-y-ritos.json'), 'w') as file:
-        json.dump(planning, file, indent=4, ensure_ascii=True)
+        json.dump(planning, file, indent=4)
 
 def generate_videos():
     assert os.path.isdir(OUTPUT_FOLDER_BASE_PATH_PLANNING), f"Planning folder not found: {OUTPUT_FOLDER_BASE_PATH_PLANNING}"
@@ -91,7 +91,7 @@ def generate_videos():
     os.makedirs(output_folder, exist_ok=True)
 
     # Read the planning
-    with open(os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, f"{channel_name}.json"), 'r') as file:
+    with open(os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, f"{channel_name}.json"), 'r', encoding='utf-8') as file:
         planning = json.load(file)
 
     for list_name, videos_in_list in planning.items():
@@ -109,7 +109,7 @@ def generate_videos():
                                                    title=video_name,
                                                    prompt_template_path=prompt_template_path)
                 with open(script_path, 'w') as f:
-                    json.dump(script, f, indent=4, ensure_ascii=True)
+                    json.dump(script, f, indent=4)
 
             assert os.path.isfile(script_path), "Script file not found"
 

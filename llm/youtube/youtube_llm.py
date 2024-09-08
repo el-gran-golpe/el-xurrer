@@ -18,7 +18,7 @@ class YoutubeLLM(BaseLLM):
         assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
         assert isinstance(duration, (int, float)) and duration > 0, "Duration must be a positive number"
 
-        with open(prompt_template_path, 'r') as file:
+        with open(prompt_template_path, 'r', encoding='utf-8') as file:
             prompt_template = json.load(file)
 
         prompts_definition = prompt_template["prompts"]
@@ -31,7 +31,7 @@ class YoutubeLLM(BaseLLM):
         assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
         assert isinstance(list_count, int) and list_count > 0, "Videos count must be a positive integer"
 
-        with open(prompt_template_path, 'r') as file:
+        with open(prompt_template_path, 'r', encoding='utf-8') as file:
             prompt_template = json.load(file)
 
         prompts = prompt_template["prompts"]

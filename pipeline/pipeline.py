@@ -34,7 +34,7 @@ class Pipeline:
         self.output_folder = output_folder
 
         # Read the script file
-        with open(os.path.join(output_folder, 'script.json'), 'r') as f:
+        with open(os.path.join(output_folder, 'script.json'), 'r', encoding='utf-8') as f:
             script = json.load(f)
             self.check_script_validity(script=script)
 
@@ -125,7 +125,7 @@ class Pipeline:
 
         if override or new_content:
             with open(os.path.join(self.output_folder, 'script.json'), 'w') as f:
-                json.dump(script, f, indent=4, ensure_ascii=True)
+                json.dump(script, f, indent=4)
         return script
 
 

@@ -12,7 +12,7 @@ class MovieEditorBase:
         self.output_folder = output_folder
 
         # Load the script as before
-        with open(os.path.join(output_folder, 'script.json'), 'r') as f:
+        with open(os.path.join(output_folder, 'script.json'), 'r', encoding='utf-8') as f:
             self.script = json.load(f)
             self.check_script_validity(self.script)
 
