@@ -34,7 +34,6 @@ class YoutubeLLM(BaseLLM):
         with open(prompt_template_path, 'r') as file:
             prompt_template = json.load(file)
 
-        system_prompt = prompt_template.pop('system_prompt', None)
         prompts = prompt_template["prompts"]
         lang = prompt_template["lang"]
         assert isinstance(prompts, list), "Prompts must be a list"

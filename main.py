@@ -12,8 +12,17 @@ PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'plann
 VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'videos')
 VIDEOS_COUNT = 40
 
-OUTPUT_FOLDER_BASE_PATH_VIDEOS = os.path.join('.', 'youtube_channels', 'videos')
-OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'youtube_channels', 'planning')
+PROBABLE_OUTPUT_FOLDER_BASE_PATHS = [os.path.join('.', 'youtube_channels'), os.path.join('H:', 'Otros ordenadores', 'My Mac', 'youtube_channels')]
+for output_folder in PROBABLE_OUTPUT_FOLDER_BASE_PATHS:
+    if os.path.isdir(output_folder):
+        OUTPUT_FOLDER_BASE_PATH = output_folder
+        logger.info(f"Output folder: {output_folder}")
+        break
+else:
+    raise FileNotFoundError("Output folder not found")
+
+OUTPUT_FOLDER_BASE_PATH_VIDEOS = os.path.join(OUTPUT_FOLDER_BASE_PATH, 'videos')
+OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join(OUTPUT_FOLDER_BASE_PATH, 'planning')
 
 
 def generate_planning():
