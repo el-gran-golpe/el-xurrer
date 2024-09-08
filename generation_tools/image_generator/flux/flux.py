@@ -11,6 +11,10 @@ from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
 
+from generation_tools.image_generator.flux.constants import SPACE_IS_DOWN_ERRORS, ALTERNATIVE_FLUX_DEV_SPACE
+from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
+
+
 class Flux:
 	def __init__(self, src_model: str = "black-forest-labs/FLUX.1-dev", api_name: str = '/infer', load_on_demand: bool = False):
 		self._src_model = src_model
@@ -21,24 +25,40 @@ class Flux:
 		else:
 			self._client = self.get_new_client()
 
+
 	@property
 	def client(self):
 		if self._client is None:
 			self._client = self.get_new_client()
 		return self._client
 
-	def get_new_client(self):
+	def get_new_client(self, retries: int = 3):
 		self.__client_predictions = 0
+		suggested_wait_time, space_down_retries = None, 0
 		# Create a custom session with the proxy
-		for retry in range(3):
+		for retry in range(retries):
 			try:
 				with self.proxy:
 					client = Client(src=self._src_model)
 				break
 			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout) as e:
-				logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
-				self.proxy.renew_proxy()
-				continue
+				reason = e.args[0]
+				if reason in SPACE_IS_DOWN_ERRORS:
+					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
+					space_down_retries += 1
+				else:
+					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
+					self.proxy.renew_proxy()
+		else:
+			if space_down_retries >= 3 and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
+				# Space is down, try the alternative space
+				logger.error("Space is down, trying alternative space")
+				self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
+				client = self.get_new_client()
+
+			else:
+				raise WaitAndRetryError(message=f"Failed to create client after {retries} retries",
+										suggested_wait_time=suggested_wait_time or 60*60)
 		return client
 
 	def generate_image(self, prompt, output_path: str, seed: int|None = None, width=512, height=512,
