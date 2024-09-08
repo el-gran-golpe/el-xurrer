@@ -124,8 +124,8 @@ class Pipeline:
                 new_content = True
 
         if override or new_content:
-            with open(os.path.join(self.output_folder, 'script.json'), 'w') as f:
-                json.dump(script, f, indent=4)
+            with open(os.path.join(self.output_folder, 'script.json'), 'w', encoding='utf-8') as f:
+                json.dump(script, f, indent=4, ensure_ascii=False)
         return script
 
 
