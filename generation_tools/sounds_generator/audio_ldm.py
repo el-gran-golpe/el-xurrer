@@ -7,7 +7,7 @@ from loguru import logger
 
 class AudioLDM:
     def __init__(self, load_on_demand: bool = False):
-        self.repo_id = "cvssp/audioldm2"
+        self.repo_id = 'cvssp/audioldm2-large'#"cvssp/audioldm2"
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         if load_on_demand:
             self._pipe = None
@@ -42,4 +42,4 @@ class AudioLDM:
 if __name__ == '__main__':
     audio_ldm = AudioLDM()
     audio_ldm.generate_audio(prompt="The sound of crackling fire", output_path="./output-test.wav", num_inference_steps=500,
-                             audio_length_in_s=3, num_waveforms_per_prompt=5)
+                             audio_length_in_s=3, num_waveforms_per_prompt=3)
