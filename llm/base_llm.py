@@ -16,7 +16,8 @@ from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage, StreamingChatCompletionsUpdate, ChatCompletions, AssistantMessage
 from azure.core.credentials import AzureKeyCredential
 
-from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS
+from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS, \
+    CANNOT_ASSIST_PHRASES
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -295,8 +296,12 @@ class BaseLLM:
             # Get the assistant's response
             assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
                                                                      preferred_models=preferred_models)
-            if assistant_reply == "I'm sorry, I can't assist with that":
-                raise Exception("Assistant can't assist with the current prompt")
+            if any(cant_assist.lower() in assistant_reply.lower() for cant_assist in CANNOT_ASSIST_PHRASES):
+                if len(preferred_models) == 0:
+                    raise RuntimeError(f"No models can assist with prompt: {prompt}")
+                logger.warning(f"Assistant cannot assist with prompt: {prompt}. Retrying with a different model")
+                assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
+                                                                         preferred_models=preferred_models[1:])
             # Add the assistant's response to the cache
             cache[cache_key] = assistant_reply
 

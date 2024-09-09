@@ -1,17 +1,19 @@
 from gradio_client import Client
 from PIL import Image
 import os
-
+import re
 from httpx import ReadTimeout, ConnectError
 from loguru import logger
 import json
 from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
 from httpx import ConnectTimeout as httpxConnectTimeout
+from httpx import ProxyError as httpxProxyError
 from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
 
-from generation_tools.image_generator.flux.constants import SPACE_IS_DOWN_ERRORS, ALTERNATIVE_FLUX_DEV_SPACE
+from generation_tools.image_generator.flux.constants import SPACE_IS_DOWN_ERRORS, ALTERNATIVE_FLUX_DEV_SPACE, \
+	QUOTA_EXCEEDED_ERRORS
 from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
 
 
@@ -74,7 +76,7 @@ class Flux:
 
 		assert 0 < retries <= 10, "Number of retries must be between 0 and 10"
 
-		recommended_waiting_time = None
+		recommended_waiting_time_seconds, recommended_waiting_time_str = None, None
 
 		randomize_seed = seed is None
 
@@ -92,10 +94,28 @@ class Flux:
 						api_name=self._api_name
 					)
 					break
-			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout) as e:
-				logger.error(f"Error generating image: {e}. Retry {i + 1}/{retries}")
+			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout, httpxProxyError) as e:
+				error_message = e.args[0]
+				if any(error_message.startswith(error) for error in QUOTA_EXCEEDED_ERRORS):
+					logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
+					# Get the waiting time like 1:35:06 at the end of the message
+					waiting_time = re.search(r'\d+:\d+:\d+', error_message)
+					if waiting_time:
+						waiting_time = waiting_time.group()
+						hours, minutes, seconds = map(int, waiting_time.split(':'))
+						recommended_waiting_time_str = waiting_time
+						recommended_waiting_time = hours*60*60 + minutes*60 + seconds
+					else:
+						logger.warning(f"Quota exceeded error message does not contain waiting time: {error_message}")
+				else:
+					logger.error(f"Error generating image: {e}. Retry {i + 1}/{retries}")
 				if i == retries - 1:
-					raise e
+					if recommended_waiting_time is not None:
+						raise WaitAndRetryError(message=f"Failed to generate image after {retries} retries. Wait for {recommended_waiting_time_str}",
+												suggested_wait_time=recommended_waiting_time or 60*60)
+					else:
+						raise e
+
 				if token_rotation:
 					self.proxy.renew_proxy()
 					self._client = self.get_new_client()

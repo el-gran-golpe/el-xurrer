@@ -15,3 +15,4 @@ DEFAULT_PREFERRED_MODELS = ('gpt-4o', 'gpt-4o-mini', 'mistral-large', 'meta-llam
                             'Phi-3-medium-128k-instruct', 'AI21-Jamba-Instruct', 'Phi-3.5-mini-instruct')
 PREFERRED_PAID_MODELS = ('gpt-4o-mini', 'gpt-4o')
 
+CANNOT_ASSIST_PHRASES = ("I'm sorry, I can't assist with that", "Lo siento, no puedo procesar esa solicitud")
