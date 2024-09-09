@@ -57,7 +57,7 @@ class Whisper:
             segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences, force_reassignment=True)
         except AssertionError as e:
             logger.warning(f"Error adjusting segments to sentences. Probably there is a lost phrase. {e}")
-            return 0.0
+            return -1.0
 
 
         # Calculate the difference in audio length. Penalty 0.3 by second
