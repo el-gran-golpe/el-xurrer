@@ -23,12 +23,12 @@ def process_folder_for_date(date_folder):
     images_folder = os.path.join(date_path, "images")
 
     if os.path.isdir(images_folder) and os.path.isfile(caption_file):
-        with open(caption_file, 'r') as file:
+        with open(caption_file, 'r', encoding='utf-8') as file:
             caption = file.read()
 
         location = None
         if os.path.isfile(location_file):
-            with open(location_file, 'r') as file:
+            with open(location_file, 'r', encoding='utf-8') as file:
                 location = file.read()
 
         image_files = [os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(('jpg', 'jpeg', 'png'))]

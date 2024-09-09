@@ -234,7 +234,7 @@ class Whisper:
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02},{milliseconds:03}"
 
     def _generate_sentence_srt(self, segments, srt_file_path):
-        with open(srt_file_path, 'w') as f:
+        with open(srt_file_path, 'w', encoding='utf-8') as f:
             for i, segment in enumerate(segments, start=1):
                 start_time = segment['start']
                 end_time = segment['end']
@@ -244,7 +244,7 @@ class Whisper:
                 f.write(f"{text}\n\n")
 
     def _generate_word_srt(self, segments, srt_file_path):
-        with open(srt_file_path, 'w') as f:
+        with open(srt_file_path, 'w', encoding='utf-8') as f:
             index = 1
             for segment in segments:
                 for word_info in segment['words']:
