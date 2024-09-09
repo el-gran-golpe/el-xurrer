@@ -9,23 +9,24 @@ from loguru import logger
 import math
 from utils.utils import get_audio_length
 import string
+import torch
 
 PUNCTUATION = f"{string.punctuation}“”‘’¿¡"
 # If punkt_tab is not downloaded, download it
 nltk.download('punkt_tab')
-
+device = "cuda" if torch.cuda.is_available() else "cpu"
 class Whisper:
     def __init__(self, size: str = "small", load_on_demand: bool = False):
         self._size = size
         if load_on_demand:
             self._model = None
         else:
-            self._model = whisper.load_model(size)
+            self._model = whisper.load_model(size, device=device)
 
     @property
     def model(self):
         if self._model is None:
-            self._model = whisper.load_model(self._size)
+            self._model = whisper.load_model(self._size, device=device)
         return self._model
 
     def _transcribe(self, audio_path: str, prompt: str = None) -> dict:
@@ -52,7 +53,11 @@ class Whisper:
         # Calculate the difference in sentence count. Penalty 0.3 by sentence
         difference = abs(len(expected_sentences) - len(segments))
         missmatch_penalty = min(0.6, 0.3 * difference)
-        segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences, force_reassignment=True)
+        try:
+            segments = self._adjust_segments_to_sentences(segments=segments, sentences=expected_sentences, force_reassignment=True)
+        except AssertionError as e:
+            logger.warning(f"Error adjusting segments to sentences. Probably there is a lost phrase. {e}")
+            return 0.0
 
 
         # Calculate the difference in audio length. Penalty 0.3 by second
@@ -207,10 +212,9 @@ class Whisper:
 
             # Remove the used words from remaining words
             remaining_words = remaining_words[len(words_to_use):]
-        try:
-            assert len(remaining_words) > 0, "Remaining words should not be empty, there is still one sentence left."
-        except AssertionError:
-            print("Remaining words should not be empty, there is still one sentence left.")
+
+        assert len(remaining_words) > 0, "Remaining words should not be empty, there is still one sentence left."
+
         # For the last sentence, just take all remaining words
         if remaining_words:
             last_segment_text = "".join(word['word'] for word in remaining_words)

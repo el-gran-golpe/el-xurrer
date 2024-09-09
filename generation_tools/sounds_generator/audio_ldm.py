@@ -41,5 +41,5 @@ class AudioLDM:
 
 if __name__ == '__main__':
     audio_ldm = AudioLDM()
-    audio_ldm.generate_audio(prompt="The sound of crackling fire", output_path="./output-test.wav", num_inference_steps=100,
-                             audio_length_in_s=3, num_waveforms_per_prompt=3)
+    audio_ldm.generate_audio(prompt="The sound of crackling fire", output_path="./output-test.wav", num_inference_steps=500,
+                             audio_length_in_s=3, num_waveforms_per_prompt=5)

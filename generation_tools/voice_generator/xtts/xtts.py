@@ -30,7 +30,7 @@ class Xtts:
 
 
     def generate_audio_to_file(self, text: str, output_path: str, language: str = 'en',
-                               speaker: str = 'Gitta Nikolina',
+                               speaker: str = 'random_girl',#'Gitta Nikolina',
                                speed: float = 1.75, retries: int = 1, quality_threshold: float = 0.8,
                                denoise: bool = False) -> str:
 
@@ -90,7 +90,7 @@ class Xtts:
 
 
     def load_model(self):
-        return TTS("tts_models/multilingual/multi-dataset/xtts_v2", progress_bar=True).to(device)
+        return TTS("tts_models/multilingual/multi-dataset/xtts_v2", progress_bar=True, gpu=device == "cuda").to(device)
 
 
 if __name__ == '__main__':

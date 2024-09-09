@@ -13,12 +13,13 @@ from gradio_client.exceptions import AppError
 from proxy_spinner import ProxySpinner
 
 from generation_tools.image_generator.flux.constants import SPACE_IS_DOWN_ERRORS, ALTERNATIVE_FLUX_DEV_SPACE, \
-	QUOTA_EXCEEDED_ERRORS
+	QUOTA_EXCEEDED_ERRORS, ORIGINAL_FLUX_DEV_SPACE
 from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
 
-
+# Switch the spaces to work with the alternative space first
+ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = ORIGINAL_FLUX_DEV_SPACE, ALTERNATIVE_FLUX_DEV_SPACE
 class Flux:
-	def __init__(self, src_model: str = "black-forest-labs/FLUX.1-dev", api_name: str = '/infer', load_on_demand: bool = False):
+	def __init__(self, src_model: str = ORIGINAL_FLUX_DEV_SPACE, api_name: str = '/infer', load_on_demand: bool = False):
 		self._src_model = src_model
 		self._api_name = api_name
 		self.proxy = ProxySpinner(proxy=None)
