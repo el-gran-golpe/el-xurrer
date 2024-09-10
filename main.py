@@ -8,6 +8,7 @@ from slugify import slugify
 from tqdm import tqdm
 
 from utils.exceptions import WaitAndRetryError
+from utils.utils import missing_video_assets
 
 EXECUTE_PLANNING = False
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'planning')
@@ -113,9 +114,8 @@ def generate_videos():
 
             assert os.path.isfile(script_path), "Script file not found"
 
-            # If the video file already exists, skip it
-            video_path = os.path.join(output_path, 'video.mp4')
-            if os.path.isfile(video_path):
+            # If the video is complete (and does not need changes)
+            if not missing_video_assets(assets_path=output_path):
                 continue
 
             for retrial in range(25):
