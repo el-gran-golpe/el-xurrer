@@ -40,6 +40,7 @@ class MovieEditorBase:
             from_word, to_word = sound['from'], sound['to']
             sound_start, _ = find_word_timing(srt_file_path=word_subtitles_path, word=from_word, retrieve_last=False)
             _, sound_end = find_word_timing(srt_file_path=word_subtitles_path, word=to_word, retrieve_last=True)
+
             sound_length = get_audio_length(audio_path=sounds_path)
             if sound_end is None and sound_start is not None:
                 sound_end = sound_start + sound_length
