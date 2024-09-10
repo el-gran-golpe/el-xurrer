@@ -105,15 +105,15 @@ class Flux:
 						waiting_time = waiting_time.group()
 						hours, minutes, seconds = map(int, waiting_time.split(':'))
 						recommended_waiting_time_str = waiting_time
-						recommended_waiting_time = hours*60*60 + minutes*60 + seconds
+						recommended_waiting_time_seconds = hours*60*60 + minutes*60 + seconds
 					else:
 						logger.warning(f"Quota exceeded error message does not contain waiting time: {error_message}")
 				else:
 					logger.error(f"Error generating image: {e}. Retry {i + 1}/{retries}")
 				if i == retries - 1:
-					if recommended_waiting_time is not None:
+					if recommended_waiting_time_seconds is not None:
 						raise WaitAndRetryError(message=f"Failed to generate image after {retries} retries. Wait for {recommended_waiting_time_str}",
-												suggested_wait_time=recommended_waiting_time or 60*60)
+												suggested_wait_time=recommended_waiting_time_seconds or 60*60)
 					else:
 						raise e
 
