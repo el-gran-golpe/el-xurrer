@@ -14,7 +14,10 @@ class AudioLDM:
             self._pipe = self.load_model()
 
     def load_model(self):
-        return AudioLDM2Pipeline.from_pretrained(self.repo_id).to(self.device)
+        if self.device == "cuda":
+            return AudioLDM2Pipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16).to(self.device)
+        else:
+            return AudioLDM2Pipeline.from_pretrained(self.repo_id).to(self.device)
 
     @property
     def pipe(self):
