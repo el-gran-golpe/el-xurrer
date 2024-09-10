@@ -53,13 +53,14 @@ class Pipeline:
             sounds_path = os.path.join(self.output_folder, 'sounds', f"{_id}.wav")
             subtitle_sentence_path = os.path.join(self.output_folder, 'subtitles', 'sentence', f"{_id}.srt")
             subtitle_word_path = os.path.join(self.output_folder, 'subtitles', 'word', f"{_id}.srt")
-
+            regenerate_subtitles = False
             if text and not os.path.isfile(audio_path):
                 start = time()
                 self.voice_generator.generate_audio_to_file(text=text, output_path=audio_path,
                                                             language=lang, retries=3)
                 logger.info(f"Audio generation: {time() - start:.2f}s")
                 assert os.path.isfile(audio_path), f"Audio file {audio_path} was not generated"
+                regenerate_subtitles = True
 
             if not os.path.isfile(image_path):
                 start = time()
@@ -67,7 +68,7 @@ class Pipeline:
                 logger.info(f"Image generation: {time() - start:.2f}s")
                 assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
 
-            if text and not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(subtitle_word_path):
+            if text and (regenerate_subtitles or not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(subtitle_word_path)):
                 start = time()
                 self.subtitle_generator.audio_file_to_srt(audio_path=audio_path, srt_sentence_output_path=subtitle_sentence_path,
                                                            srt_words_output_path=subtitle_word_path, text_to_fit=text)
