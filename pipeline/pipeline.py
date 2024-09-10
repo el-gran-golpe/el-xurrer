@@ -1,10 +1,8 @@
-from uuid import uuid4
 import os
 from loguru import logger
 import json
 from time import time
 from tqdm import tqdm
-from slugify import slugify
 
 from generation_tools.thumbnails_generator.templated import Templated
 from utils.utils import time_between_two_words_in_srt
@@ -37,6 +35,8 @@ class Pipeline:
         with open(os.path.join(output_folder, 'script.json'), 'r', encoding='utf-8') as f:
             script = json.load(f)
             self.check_script_validity(script=script)
+
+        self.script = script
 
     def generate_video(self):
         lang = self.script["lang"]
