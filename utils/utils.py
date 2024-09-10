@@ -154,4 +154,7 @@ def missing_video_assets(assets_path: str) -> bool:
             return True
         if sound is not None and not os.path.isfile(sounds_path):
             return True
+    video_path = os.path.join(assets_path, 'video.mp4')
+    if not os.path.isfile(video_path):
+        return True
     return False

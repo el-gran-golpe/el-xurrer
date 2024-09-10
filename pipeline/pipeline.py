@@ -82,7 +82,7 @@ class Pipeline:
 
                 self.sounds_generator.generate_audio(prompt=sound['prompt'], output_path=sounds_path,
                                                      num_inference_steps=500,
-                                                     audio_length_in_s=sound_length, num_waveforms_per_prompt=3)
+                                                     audio_length_in_s=sound_length, num_waveforms_per_prompt=5)
                 logger.info(f"Sound generation: {time() - start:.2f}s")
                 assert os.path.isfile(sounds_path), f"Sound file {sounds_path} was not generated"
 
