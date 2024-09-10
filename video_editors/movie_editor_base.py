@@ -39,9 +39,15 @@ class MovieEditorBase:
             assert os.path.isfile(word_subtitles_path), f"Missing word subtitle file for ID: {_id}"
             from_word, to_word = sound['from'], sound['to']
             sound_start, _ = find_word_timing(srt_file_path=word_subtitles_path, word=from_word, retrieve_last=False)
-            assert sound_start is not None, f"Could not find word {from_word} in subtitle file {word_subtitles_path}"
             _, sound_end = find_word_timing(srt_file_path=word_subtitles_path, word=to_word, retrieve_last=True)
-            assert sound_end is not None, f"Could not find word {to_word} in subtitle file {word_subtitles_path}"
+            sound_length = get_audio_length(audio_path=sounds_path)
+            if sound_end is None and sound_start is not None:
+                sound_end = sound_start + sound_length
+            elif sound_start is None and sound_end is not None:
+                sound_start = sound_end - sound_length
+            elif sound_start is None and sound_end is None:
+                sound_start, sound_end = 0., sound_length
+
             sound_end = min(sound_end, clip_length)
             sound_duration = sound_end - sound_start
 
