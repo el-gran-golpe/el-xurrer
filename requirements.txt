@@ -10,6 +10,7 @@ wave
 pytorch-lightning
 pedalboard
 pesq
+wand
 wandb
 kaiser
 gradio_client
