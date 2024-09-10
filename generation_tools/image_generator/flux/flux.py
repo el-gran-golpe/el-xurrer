@@ -1,3 +1,5 @@
+from concurrent.futures import CancelledError
+
 from gradio_client import Client
 from PIL import Image
 import os
@@ -44,7 +46,7 @@ class Flux:
 				with self.proxy:
 					client = Client(src=self._src_model)
 				break
-			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout) as e:
+			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout, CancelledError) as e:
 				reason = e.args[0]
 				if reason in SPACE_IS_DOWN_ERRORS:
 					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
@@ -95,7 +97,7 @@ class Flux:
 						api_name=self._api_name
 					)
 					break
-			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout, httpxProxyError) as e:
+			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout, httpxProxyError, CancelledError) as e:
 				error_message = e.args[0]
 				if any(error_message.startswith(error) for error in QUOTA_EXCEEDED_ERRORS):
 					logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
