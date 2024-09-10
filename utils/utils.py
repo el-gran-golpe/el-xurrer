@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pysrt
 import os
 from nltk.metrics import edit_distance
@@ -8,6 +10,8 @@ from datetime import datetime, timedelta
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 import json
+
+from slugify import slugify
 
 PUNCTUATION = f"{string.punctuation}“”‘’¿¡"
 
@@ -112,14 +116,25 @@ def get_closest_monday():
     return closest_monday
 
 
-def missing_video_assets(assets_path: str):
+def generate_ids_in_script(script: dict):
+    """
+    Generate unique identifiers for each item in the script
+    """
+    for i, item in enumerate(script["content"]):
+        assert isinstance(item, dict), "Items in content must be dictionaries"
+        if "id" not in item:
+            section_slug = slugify(item.get('section', 'NoSection'))
+            item["id"] = f"{section_slug}--{i + 1}--{str(uuid4())[:4]}"
+    return script
+
+def missing_video_assets(assets_path: str) -> bool:
     """
     Check if the video assets are missing
     """
     assert os.path.isdir(assets_path), f"Assets file {assets_path} does not exist"
     script_path = os.path.join(assets_path, 'script.json')
     if not os.path.isfile(script_path):
-        return False
+        return True
     with open(script_path, 'r', encoding='utf-8') as f:
         script = json.load(f)
 
@@ -132,11 +147,11 @@ def missing_video_assets(assets_path: str):
         subtitle_sentence_path = os.path.join(assets_path, 'subtitles', 'sentence', f"{_id}.srt")
         subtitle_word_path = os.path.join(assets_path, 'subtitles', 'word', f"{_id}.srt")
         if text and not os.path.isfile(audio_path):
-            return False
+            return True
         if not os.path.isfile(image_path):
-            return False
+            return True
         if text and not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(subtitle_word_path):
-            return False
+            return True
         if sound is not None and not os.path.isfile(sounds_path):
-            return False
-    return True
+            return True
+    return False

@@ -114,7 +114,7 @@ def generate_videos():
 
             assert os.path.isfile(script_path), "Script file not found"
 
-            # If the video is complete (and does not need changes)
+            # If the video file already exists, skip it
             if not missing_video_assets(assets_path=output_path):
                 continue
 

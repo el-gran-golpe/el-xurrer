@@ -3,7 +3,7 @@ import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 from tqdm import tqdm
-from utils.utils import get_closest_monday
+from utils.utils import get_closest_monday, generate_ids_in_script
 import re
 
 
@@ -24,8 +24,10 @@ class YoutubeLLM(BaseLLM):
         prompts_definition = prompt_template["prompts"]
         prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(prompt=theme_prompt, duration=duration)
 
-        return self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
+        script =  self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
                                                 desc="Generating script")
+        script = generate_ids_in_script(script = script)
+        return script
 
     def generate_youtube_planning(self, prompt_template_path: str, list_count: int = 6) -> dict:
         assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"

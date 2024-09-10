@@ -38,8 +38,6 @@ class Pipeline:
             script = json.load(f)
             self.check_script_validity(script=script)
 
-        self.script = self.generate_missing_identifiers(script=script)
-
     def generate_video(self):
         lang = self.script["lang"]
         w, h = WH_BY_ASPECT_RATIO[self.script["aspect_ratio"]]
@@ -115,22 +113,6 @@ class Pipeline:
         movie_editor = MovieEditorSentenceSubtitles(output_folder=self.output_folder)
         movie_editor.generate_video_from_clips(output_video_path=output_video_path)
 
-    def generate_missing_identifiers(self, script: dict[str, str | dict[str, str]], override: bool = True) -> dict[str, str | dict[str, str]]:
-        new_content = False
-        for i, item in enumerate(script["content"]):
-            assert isinstance(item, dict), "Items in content must be dictionaries"
-            if "id" not in item:
-                section_slug = slugify(item.get('section', 'NoSection'))
-                item["id"] = f"{section_slug}--{i + 1}--{str(uuid4())[:4]}"
-                new_content = True
-
-        if override or new_content:
-            with open(os.path.join(self.output_folder, 'script.json'), 'w', encoding='utf-8') as f:
-                json.dump(script, f, indent=4, ensure_ascii=False)
-        return script
-
-
-
     def prepare_output_folder(self, output_folder: str) -> None:
         assert os.path.isdir(output_folder), f"{output_folder} must exists and contain a file named script.json"
         assert os.path.isfile(os.path.join(output_folder, 'script.json')), f"{output_folder} must contain a file named script.json"
@@ -159,6 +141,8 @@ class Pipeline:
         assert all("text" in item for item in content), "All items in content must contain a text key"
         assert all("image" in item for item in content), "All items in content must contain an image key"
         assert all("sound" in item for item in content), "All items in content must contain a sound key"
+        assert all("id" in item for item in content), "All items in content must contain an id key"
+
         for item in content:
             if item["sound"] is not None:
                 assert all(key in item["sound"] for key in ["from", "to", "prompt"]), \
