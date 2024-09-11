@@ -124,12 +124,10 @@ def generate_videos():
                 except WaitAndRetryError as e:
                     sleep_time = e.suggested_wait_time
                     hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
-                    total_minutes = hours * 60 + minutes
 
-                    for _ in tqdm(range(total_minutes),
+                    for _ in tqdm(range(100),
                                   desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
-                        sleep(60)
-                    sleep(seconds)
+                        sleep(sleep_time / 100)
 
 
 
