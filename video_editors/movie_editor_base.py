@@ -108,7 +108,7 @@ class MovieEditorBase:
         if video_clips:
             self._save_video(output_video_path, video_clips)
         elif len(self.script["content"]) == 0:
-            EmptyScriptException("Script content is empty")
+            raise EmptyScriptException("Script content is empty")
         else:
             raise Exception(f"No video clips were generated for {output_video_path}")
 
