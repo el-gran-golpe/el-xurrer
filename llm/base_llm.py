@@ -17,7 +17,7 @@ from azure.ai.inference.models import SystemMessage, UserMessage, StreamingChatC
 from azure.core.credentials import AzureKeyCredential
 
 from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS, \
-    CANNOT_ASSIST_PHRASES
+    CANNOT_ASSIST_PHRASES, INCOMPLETE_OUTPUT_PHRASES
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -153,6 +153,11 @@ class BaseLLM:
                 finish_reason = current_finish_reason
 
         assert finish_reason is not None, "Finish reason not found"
+        if any(phrase.lower() in assistant_reply.lower() for phrase in INCOMPLETE_OUTPUT_PHRASES):
+            # Remove al of them from the assistant reply with a regex
+            assistant_reply = re.sub("|".join(INCOMPLETE_OUTPUT_PHRASES), "", assistant_reply, flags=re.IGNORECASE)
+            finish_reason = "length"
+            logger.warning("Assistant reply is incomplete. Retrying with the same conversation")
 
         if finish_reason == "length":
             continue_conversation = deepcopy(conversation)
