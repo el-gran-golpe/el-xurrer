@@ -100,7 +100,11 @@ class Flux:
 					break
 			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
 					httpxProxyError, CancelledError, ReadError) as e:
-				error_message = e.args[0]
+				try:
+					error_message = e.args[0]
+				except IndexError:
+					logger.error(f"Unknown error: {e}.")
+					error_message = str(e)
 				if any(error_message.startswith(error) for error in QUOTA_EXCEEDED_ERRORS):
 					logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
 					# Get the waiting time like 1:35:06 at the end of the message

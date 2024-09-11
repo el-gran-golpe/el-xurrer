@@ -23,3 +23,6 @@ python-dotenv
 pydub
 azure-ai-inference
 numpy
+
+# Only for Windows
+ftfy; sys_platform == 'win32'
