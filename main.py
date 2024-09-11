@@ -107,8 +107,7 @@ def generate_videos():
             script_path = os.path.join(output_path, 'script.json')
             if not os.path.isfile(script_path):
                 script = YoutubeLLM().generate_script(duration=duration, theme_prompt=theme_prompt,
-                                                   title=video_name,
-                                                   prompt_template_path=prompt_template_path)
+                                                      prompt_template_path=prompt_template_path)
                 with open(script_path, 'w', encoding='utf-8') as f:
                     json.dump(script, f, indent=4, ensure_ascii=False)
 
