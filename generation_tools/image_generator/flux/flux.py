@@ -6,7 +6,7 @@ import os
 import re
 from httpx import ReadTimeout, ConnectError, ReadError
 from loguru import logger
-import json
+from contextlib import nullcontext
 from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
 from httpx import ConnectTimeout as httpxConnectTimeout
 from httpx import ProxyError as httpxProxyError
@@ -21,25 +21,30 @@ from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
 # Switch the spaces to work with the alternative space first
 ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = ORIGINAL_FLUX_DEV_SPACE, ALTERNATIVE_FLUX_DEV_SPACE
 class Flux:
-	def __init__(self, src_model: str = ORIGINAL_FLUX_DEV_SPACE, api_name: str = '/infer', load_on_demand: bool = False):
+	def __init__(self, src_model: str = ORIGINAL_FLUX_DEV_SPACE, use_proxy: bool = True,
+				 api_name: str = '/infer', load_on_demand: bool = False):
 		self._src_model = src_model
 		self._api_name = api_name
-		self.proxy = ProxySpinner(proxy=None)
+		if use_proxy:
+			self.proxy = ProxySpinner(proxy=None)
+		else:
+			self.proxy = nullcontext()
+			self.proxy.renew_proxy = lambda: None
 		if load_on_demand:
 			self._client = None
 		else:
-			self._client = self.get_new_client()
+			self._client = self.get_new_client(retries=1)
 
 
 	@property
 	def client(self):
 		if self._client is None:
-			self._client = self.get_new_client()
+			self._client = self.get_new_client(retries=1)
 		return self._client
 
 	def get_new_client(self, retries: int = 3):
 		self.__client_predictions = 0
-		suggested_wait_time, space_down_retries = None, 0
+		suggested_wait_time = None
 		# Create a custom session with the proxy
 		for retry in range(retries):
 			try:
@@ -49,27 +54,20 @@ class Flux:
 			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout, CancelledError,
 					ReadError) as e:
 				reason = e.args[0]
-				if reason in SPACE_IS_DOWN_ERRORS:
-					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
-					space_down_retries += 1
+				if reason in SPACE_IS_DOWN_ERRORS and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
+					logger.error(f"Error creating client: {e}. Space is down. Retry {retry + 1}/3")
+					self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
+					client = self.get_new_client(retries=1)
 				else:
 					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
 					self.proxy.renew_proxy()
 		else:
-			if space_down_retries >= 3 and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
-				# Space is down, try the alternative space
-				logger.error("Space is down, trying alternative space")
-				self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
-				client = self.get_new_client()
-
-			else:
-				raise WaitAndRetryError(message=f"Failed to create client after {retries} retries",
-										suggested_wait_time=suggested_wait_time or 60*60)
+			raise WaitAndRetryError(message=f"Failed to create client after {retries} retries",
+									suggested_wait_time=suggested_wait_time or 60*60)
 		return client
 
 	def generate_image(self, prompt, output_path: str, seed: int|None = None, width=512, height=512,
-					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3,
-					   token_rotation: bool = True):
+					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3):
 
 		assert isinstance(prompt, str), "Prompt must be a string"
 		assert seed is None or isinstance(seed, int), "Seed must be an integer or None"
@@ -100,11 +98,9 @@ class Flux:
 					break
 			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
 					httpxProxyError, CancelledError, ReadError) as e:
-				try:
-					error_message = e.args[0]
-				except IndexError:
-					logger.error(f"Unknown error: {e}.")
-					error_message = str(e)
+
+				error_message = e.args[0] if hasattr(e, 'args') else str(e)
+				# If the error is quota exceeded, get the waiting time and trigger a exception
 				if any(error_message.startswith(error) for error in QUOTA_EXCEEDED_ERRORS):
 					logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
 					# Get the waiting time like 1:35:06 at the end of the message
@@ -118,14 +114,17 @@ class Flux:
 						logger.warning(f"Quota exceeded error message does not contain waiting time: {error_message}")
 				else:
 					logger.error(f"Error generating image: {e}. Retry {i + 1}/{retries}")
+
 				if i == retries - 1:
 					if recommended_waiting_time_seconds is not None:
 						raise WaitAndRetryError(message=f"Failed to generate image after {retries} retries. Wait for {recommended_waiting_time_str}",
 												suggested_wait_time=recommended_waiting_time_seconds or 60*60)
 					else:
-						raise e
+						raise WaitAndRetryError(message=f"Failed to generate image with unknown errors",
+												suggested_wait_time=60*60)
 
-				if token_rotation:
+				# If the proxy is activated, renew the proxy
+				elif isinstance(self.proxy, ProxySpinner):
 					self.proxy.renew_proxy()
 					self._client = self.get_new_client()
 

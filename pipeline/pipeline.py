@@ -23,7 +23,7 @@ class Pipeline:
     def __init__(self, output_folder: str):
 
         self.voice_generator = Xtts(load_on_demand=True)
-        self.image_generator = Flux(load_on_demand=True)
+        self.image_generator = Flux(load_on_demand=True, use_proxy=False)
         self.subtitle_generator = Whisper(load_on_demand=True)
         self.sounds_generator = AudioLDM(load_on_demand=True)
         self.thumbnail_generator = Templated()
@@ -62,7 +62,8 @@ class Pipeline:
 
             if not os.path.isfile(image_path):
                 start = time()
-                self.image_generator.generate_image(prompt=image_prompt, output_path=image_path, width=w, height=h)
+                self.image_generator.generate_image(prompt=image_prompt, output_path=image_path, width=w, height=h,
+                                                    retries=2)
                 logger.info(f"Image generation: {time() - start:.2f}s")
                 assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
 
@@ -90,6 +91,7 @@ class Pipeline:
 
 
     def _generate_thumbnail_if_not_exists(self) -> bool:
+
         thumbnail_path = os.path.join(self.output_folder, 'thumbnail', 'thumbnail.png')
         thumbnail_background_path = os.path.join(self.output_folder, 'thumbnail', 'background.png')
         if os.path.isfile(thumbnail_path):
@@ -99,7 +101,9 @@ class Pipeline:
 
         if not os.path.isfile(thumbnail_background_path):
             # Generate the background image
-            self.image_generator.generate_image(prompt=thumbnail_prompt, output_path=thumbnail_background_path, width=1280, height=720)
+            w, h = WH_BY_ASPECT_RATIO[self.script["aspect_ratio"]]
+            self.image_generator.generate_image(prompt=thumbnail_prompt, output_path=thumbnail_background_path,
+                                                width=w, height=h, retries=2)
             assert os.path.isfile(thumbnail_background_path), f"Thumbnail background file {thumbnail_background_path} was not generated"
 
         # Generate the thumbnail
