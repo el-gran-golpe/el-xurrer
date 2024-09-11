@@ -1,44 +1,38 @@
-# instagram_uploader.py
+import os
 import requests
-from loguru import logger
+from dotenv import load_dotenv
 
-class InstagramAPI:
-    def __init__(self, access_token):
-        self.access_token = access_token
+class InstagramUploader:
+    def __init__(self):
+        # Load the Instagram API token from the environment file
+        env_path = os.path.join(os.path.dirname(__file__), '..', '..', 'api_key_instagram.env')
+        load_dotenv(env_path)
+        self.access_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+        self.base_url = "https://graph.instagram.com"
 
-    def upload_image(self, image_urls, caption, location):
-        logger.info(f"Uploading images: {image_urls}")
-
-        # Step 1: Upload each image to Instagram to get media IDs
-        media_ids = []
-        for image_url in image_urls:
-            upload_url = f"https://graph.instagram.com/v12.0/me/media"
-            params = {
-                "image_url": image_url,
-                "caption": caption,
-                "access_token": self.access_token
-            }
-            response = requests.post(upload_url, params=params)
-            if response.status_code == 200:
-                media_id = response.json()["id"]
-                media_ids.append(media_id)
-            else:
-                logger.error(f"Failed to upload image: {response.text}")
-                return None
-
-        # Step 2: Publish the carousel post on Instagram
-        publish_url = f"https://graph.instagram.com/v12.0/me/media_publish"
-        publish_params = {
-            "creation_id": ','.join(media_ids),
-            "access_token": self.access_token
+    def upload_post(self, image_path: str, caption: str):
+        """
+        Uploads an Instagram post using the Graph API.
+        :param image_path: Path to the image file to upload.
+        :param caption: The caption for the Instagram post.
+        """
+        # Step 1: Upload the image to Instagram
+        image_url = self._upload_image(image_path)
+        
+        # Step 2: Publish the post with the uploaded image
+        post_url = f"{self.base_url}/me/media"
+        payload = {
+            'image_url': image_url,
+            'caption': caption,
+            'access_token': self.access_token
         }
-        if location:
-            publish_params["location"] = location
-
-        publish_response = requests.post(publish_url, params=publish_params)
-        if publish_response.status_code == 200:
-            logger.info("Post published successfully.")
-            return publish_response.json()
+        response = requests.post(post_url, data=payload)
+        if response.status_code == 200:
+            print(f"Post successfully uploaded: {response.json()}")
         else:
-            logger.error(f"Failed to publish post: {publish_response.text}")
-            return None
+            print(f"Failed to upload post: {response.content}")
+
+    def _upload_image(self, image_path: str):
+        # Logic for uploading the image to Instagram, possibly via a media container
+        # Add your implementation for uploading images using Instagram's Graph API
+        pass
