@@ -5,7 +5,7 @@ from time import time
 from tqdm import tqdm
 
 from generation_tools.thumbnails_generator.templated import Templated
-from utils.utils import time_between_two_words_in_srt
+from utils.utils import time_between_two_words_in_srt, check_script_validity
 from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
 from generation_tools.voice_generator.xtts.xtts import Xtts
 from generation_tools.image_generator.flux.flux import Flux
@@ -34,7 +34,7 @@ class Pipeline:
         # Read the script file
         with open(os.path.join(output_folder, 'script.json'), 'r', encoding='utf-8') as f:
             script = json.load(f)
-            self.check_script_validity(script=script)
+            check_script_validity(script=script)
 
         self.script = script
 
@@ -134,20 +134,3 @@ class Pipeline:
             os.makedirs(os.path.join(output_folder, 'sounds'))
         if not os.path.isdir(os.path.join(output_folder, 'thumbnail')):
             os.makedirs(os.path.join(output_folder, 'thumbnail'))
-
-    def check_script_validity(self, script) -> None:
-        assert "lang" in script, "Script must contain a lang key"
-        assert "title" in script, "Script must contain a title"
-        assert "description" in script, "Script must contain a description"
-        assert "content" in script, "Script must contain a content"
-        content = script["content"]
-        assert isinstance(content, list), "Content must be a list"
-        assert all("text" in item for item in content), "All items in content must contain a text key"
-        assert all("image" in item for item in content), "All items in content must contain an image key"
-        assert all("sound" in item for item in content), "All items in content must contain a sound key"
-        assert all("id" in item for item in content), "All items in content must contain an id key"
-
-        for item in content:
-            if item["sound"] is not None:
-                assert all(key in item["sound"] for key in ["from", "to", "prompt"]), \
-                    "Sound must contain from, to and prompt keys"

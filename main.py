@@ -7,7 +7,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
-from utils.exceptions import WaitAndRetryError
+from utils.exceptions import WaitAndRetryError, EmptyScriptException
 from utils.utils import missing_video_assets
 
 EXECUTE_PLANNING = False

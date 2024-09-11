@@ -3,8 +3,11 @@ import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 from tqdm import tqdm
-from utils.utils import get_closest_monday, generate_ids_in_script
+
+from utils.exceptions import InvalidScriptException
+from utils.utils import get_closest_monday, generate_ids_in_script, check_script_validity
 import re
+from loguru import logger
 
 
 
@@ -13,7 +16,7 @@ class YoutubeLLM(BaseLLM):
         super().__init__(preferred_models=preferred_models)
 
     def generate_script(self, prompt_template_path: str, theme_prompt: str,
-                        title: str, duration: int = 5) -> dict:
+                        duration: int = 5, retries: int = 3) -> dict:
 
         assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
         assert isinstance(duration, (int, float)) and duration > 0, "Duration must be a positive number"
@@ -24,9 +27,18 @@ class YoutubeLLM(BaseLLM):
         prompts_definition = prompt_template["prompts"]
         prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(prompt=theme_prompt, duration=duration)
 
-        script =  self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
-                                                desc="Generating script")
-        script = generate_ids_in_script(script = script)
+        for retry in range(retries):
+            script =  self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
+                                                    desc="Generating script")
+            script = generate_ids_in_script(script = script)
+            try:
+                check_script_validity(script=script)
+                break
+            except AssertionError as e:
+                logger.error(f"Error generating script: {e}. Retry {retry + 1}/{retries}")
+        else:
+            raise InvalidScriptException(f"Error generating script after {retries} retries")
+
         return script
 
     def generate_youtube_planning(self, prompt_template_path: str, list_count: int = 6) -> dict:

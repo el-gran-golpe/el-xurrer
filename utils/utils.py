@@ -127,6 +127,27 @@ def generate_ids_in_script(script: dict):
             item["id"] = f"{section_slug}--{i + 1}--{str(uuid4())[:4]}"
     return script
 
+
+
+def check_script_validity(script) -> None:
+    assert "lang" in script, "Script must contain a lang key"
+    assert "title" in script, "Script must contain a title"
+    assert "description" in script, "Script must contain a description"
+    assert "content" in script, "Script must contain a content"
+    content = script["content"]
+    assert isinstance(content, list), "Content must be a list"
+    assert len(content) > 0, "Content must not be empty"
+
+    assert all("text" in item for item in content), "All items in content must contain a text key"
+    assert all("image" in item for item in content), "All items in content must contain an image key"
+    assert all("sound" in item for item in content), "All items in content must contain a sound key"
+    assert all("id" in item for item in content), "All items in content must contain an id key"
+
+    for item in content:
+        if item["sound"] is not None:
+            assert all(key in item["sound"] for key in ["from", "to", "prompt"]), \
+                "Sound must contain from, to and prompt keys"
+
 def missing_video_assets(assets_path: str) -> bool:
     """
     Check if the video assets are missing

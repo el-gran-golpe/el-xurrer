@@ -4,8 +4,16 @@ import json
 import moviepy.editor as mp
 from tqdm import tqdm
 
+from utils.exceptions import EmptyScriptException
 from utils.utils import get_audio_length, find_word_timing
+import sys
 
+# We could also do it with pysrt, but it becomes easier this way
+if sys.platform.startswith('win'):
+    import ftfy
+    text_reencoder = lambda text: ftfy.fix_text(text)
+else:
+    text_reencoder = lambda text: text
 
 class MovieEditorBase:
     def __init__(self, output_folder: str):
@@ -77,7 +85,7 @@ class MovieEditorBase:
             end = min(end, clip_length)
 
             # Define the text generator, similar to how SubtitlesClip would generate the text
-            generator = lambda txt: mp.TextClip(txt, font='Arial-Bold', fontsize=64, color='white',
+            generator = lambda txt: mp.TextClip(text_reencoder(text=txt), font='Arial-Bold', fontsize=64, color='white',
                                                 stroke_color='black', stroke_width=2, method='caption',
                                                 size=(image_clip.w * 0.6, None))
 
@@ -87,7 +95,8 @@ class MovieEditorBase:
             # Overlay the text clip onto the image clip
             image_clip = mp.CompositeVideoClip([image_clip, text_clip])
 
-        return image_clip.set_audio(audio_clip)
+        clip = image_clip.set_audio(audio_clip)
+        return clip
 
     def generate_video_from_clips(self, output_video_path: str):
         video_clips = []
@@ -98,8 +107,10 @@ class MovieEditorBase:
 
         if video_clips:
             self._save_video(output_video_path, video_clips)
+        elif len(self.script["content"]) == 0:
+            EmptyScriptException("Script content is empty")
         else:
-            logger.error("No video clips were generated. Check if all audio and image files are present.")
+            raise Exception(f"No video clips were generated for {output_video_path}")
 
     def _save_video(self, output_video_path: str, video_clips: list) -> str:
         temp_audio_file_path = os.path.join(self.output_folder, 'video', 'temp_audio.m4a')
