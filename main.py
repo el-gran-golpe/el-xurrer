@@ -122,8 +122,14 @@ def generate_videos():
                     Pipeline(output_folder=output_path).generate_video()
                     break
                 except WaitAndRetryError as e:
-                    logger.error(f"Error generating video: {e}. Retry {retrial + 1}/25")
-                    sleep(e.suggested_wait_time)
+                    sleep_time = e.suggested_wait_time
+                    hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
+                    total_minutes = hours * 60 + minutes
+
+                    for _ in tqdm(range(total_minutes),
+                                  desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
+                        sleep(60)
+                    sleep(seconds)
 
 
 
