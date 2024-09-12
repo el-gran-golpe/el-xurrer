@@ -8,8 +8,8 @@ from httpx import ReadTimeout, ConnectError, ReadError
 from loguru import logger
 from contextlib import nullcontext
 from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
-from httpx import ConnectTimeout as httpxConnectTimeout
-from httpx import ProxyError as httpxProxyError
+from httpx import ConnectTimeout as httpxConnectTimeout, ProxyError as httpxProxyError, \
+				   ConnectError as httpxConnectError
 from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
@@ -52,7 +52,7 @@ class Flux:
 					client = Client(src=self._src_model)
 				break
 			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout, CancelledError,
-					ReadError) as e:
+					ReadError, httpxConnectError, httpxProxyError) as e:
 				reason = e.args[0]
 				if reason in SPACE_IS_DOWN_ERRORS and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
 					logger.error(f"Error creating client: {e}. Space is down. Retry {retry + 1}/3")
@@ -97,7 +97,7 @@ class Flux:
 					)
 					break
 			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
-					httpxProxyError, CancelledError, ReadError) as e:
+					httpxProxyError, httpxConnectError, CancelledError, ReadError) as e:
 
 				error_message = e.args[0] if hasattr(e, 'args') else str(e)
 				# If the error is quota exceeded, get the waiting time and trigger a exception
@@ -126,7 +126,7 @@ class Flux:
 				# If the proxy is activated, renew the proxy
 				elif isinstance(self.proxy, ProxySpinner):
 					self.proxy.renew_proxy()
-					self._client = self.get_new_client()
+					self._client = self.get_new_client(retries=1)
 
 
 		# Open the image from the temporary path

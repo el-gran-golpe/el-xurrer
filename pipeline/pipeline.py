@@ -23,7 +23,7 @@ class Pipeline:
     def __init__(self, output_folder: str):
 
         self.voice_generator = Xtts(load_on_demand=True)
-        self.image_generator = Flux(load_on_demand=True, use_proxy=False)
+        self.image_generator = Flux(load_on_demand=True, use_proxy=True)
         self.subtitle_generator = Whisper(load_on_demand=True)
         self.sounds_generator = AudioLDM(load_on_demand=True)
         self.thumbnail_generator = Templated()
