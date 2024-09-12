@@ -53,7 +53,7 @@ class Flux:
 				break
 			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout, CancelledError,
 					ReadError, httpxConnectError, httpxProxyError) as e:
-				reason = e.args[0]
+				reason = e.args[0] if hasattr(e, 'args') and len(e.args) > 0 else None
 				if reason in SPACE_IS_DOWN_ERRORS and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
 					logger.error(f"Error creating client: {e}. Space is down. Retry {retry + 1}/3")
 					self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
@@ -99,7 +99,7 @@ class Flux:
 			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
 					httpxProxyError, httpxConnectError, CancelledError, ReadError) as e:
 
-				error_message = e.args[0] if hasattr(e, 'args') else str(e)
+				error_message = e.args[0] if hasattr(e, 'args') and len(e.args) > 0 else str(e)
 				# If the error is quota exceeded, get the waiting time and trigger a exception
 				if any(error_message.startswith(error) for error in QUOTA_EXCEEDED_ERRORS):
 					logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
