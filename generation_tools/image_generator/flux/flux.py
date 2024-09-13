@@ -5,6 +5,7 @@ from PIL import Image
 import os
 import re
 from httpx import ReadTimeout, ConnectError, ReadError
+from huggingface_hub.utils import RepositoryNotFoundError
 from loguru import logger
 from contextlib import nullcontext
 from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
@@ -52,12 +53,14 @@ class Flux:
 					client = Client(src=self._src_model)
 				break
 			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout, CancelledError,
-					ReadError, httpxConnectError, httpxProxyError) as e:
+					ReadError, httpxConnectError, httpxProxyError, RepositoryNotFoundError) as e:
 				reason = e.args[0] if hasattr(e, 'args') and len(e.args) > 0 else None
-				if reason in SPACE_IS_DOWN_ERRORS and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
+				if ((reason in SPACE_IS_DOWN_ERRORS or isinstance(e, RepositoryNotFoundError))
+						and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE):
 					logger.error(f"Error creating client: {e}. Space is down. Retry {retry + 1}/3")
 					self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
 					client = self.get_new_client(retries=1)
+					break
 				else:
 					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
 					self.proxy.renew_proxy()
