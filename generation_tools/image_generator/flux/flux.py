@@ -20,7 +20,7 @@ from generation_tools.image_generator.flux.constants import SPACE_IS_DOWN_ERRORS
 from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
 
 # Switch the spaces to work with the alternative space first
-ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = ORIGINAL_FLUX_DEV_SPACE, ALTERNATIVE_FLUX_DEV_SPACE
+#ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = ORIGINAL_FLUX_DEV_SPACE, ALTERNATIVE_FLUX_DEV_SPACE
 class Flux:
 	def __init__(self, src_model: str = ORIGINAL_FLUX_DEV_SPACE, use_proxy: bool = True,
 				 api_name: str = '/infer', load_on_demand: bool = False):
