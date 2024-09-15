@@ -145,8 +145,10 @@ def check_script_validity(script) -> None:
 
     for item in content:
         if item["sound"] is not None:
-            assert all(key in item["sound"] for key in ["from", "to", "prompt"]), \
+            assert all(key in item["sound"] for key in ("from", "to", "prompt")), \
                 "Sound must contain from, to and prompt keys"
+        assert all(isinstance(item[key], str) for key in ("text", "image")), \
+            "Text and image must be strings"
 
 def missing_video_assets(assets_path: str) -> bool:
     """
