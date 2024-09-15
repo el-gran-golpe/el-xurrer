@@ -26,6 +26,7 @@ class YoutubeLLM(BaseLLM):
 
         prompts_definition = prompt_template["prompts"]
         prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(prompt=theme_prompt, duration=duration)
+        prompts_definition[1]['prompt'] = prompts_definition[1]['prompt'].format(duration=duration)
 
         for retry in range(retries):
             script = self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
