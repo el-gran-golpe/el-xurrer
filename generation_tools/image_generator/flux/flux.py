@@ -10,7 +10,7 @@ from loguru import logger
 from contextlib import nullcontext
 from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
 from httpx import ConnectTimeout as httpxConnectTimeout, ProxyError as httpxProxyError, \
-				   ConnectError as httpxConnectError
+				   ConnectError as httpxConnectError, RemoteProtocolError as httpxRemoteProtocolError
 from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
@@ -53,7 +53,8 @@ class Flux:
 					client = Client(src=self._src_model)
 				break
 			except (ReadTimeout, ProxyError, ConnectionError, ConnectTimeout, httpxConnectTimeout, CancelledError,
-					ReadError, httpxConnectError, httpxProxyError, RepositoryNotFoundError) as e:
+					ReadError, httpxConnectError, httpxProxyError, RepositoryNotFoundError,
+					httpxRemoteProtocolError) as e:
 				reason = e.args[0] if hasattr(e, 'args') and len(e.args) > 0 else None
 				if ((reason in SPACE_IS_DOWN_ERRORS or isinstance(e, RepositoryNotFoundError))
 						and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE):
@@ -100,7 +101,7 @@ class Flux:
 					)
 					break
 			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
-					httpxProxyError, httpxConnectError, CancelledError, ReadError) as e:
+					httpxProxyError, httpxConnectError, CancelledError, ReadError, httpxRemoteProtocolError) as e:
 
 				error_message = e.args[0] if hasattr(e, 'args') and len(e.args) > 0 else str(e)
 				# If the error is quota exceeded, get the waiting time and trigger a exception
