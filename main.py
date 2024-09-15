@@ -137,10 +137,3 @@ if __name__ == '__main__':
         generate_planning()
     else:
         generate_videos()
-        """
-        while True:
-            try:
-
-            except Exception as e:
-                sleep(60*60*2)
-        """
