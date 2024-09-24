@@ -3,122 +3,57 @@ import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 
-
 class InstagramLLM(BaseLLM):
     def __init__(self, preferred_models: list | tuple = DEFAULT_PREFERRED_MODELS):
         super().__init__(preferred_models=preferred_models)
 
-    def generate_image_carousel(self, prompt_template_path: str) -> dict:
-        """
-        Generates an image carousel for an Instagram post.
-        :param prompt_template_path: Path to the prompt template file.
-        :return: A dictionary containing the generated image carousel.
-        """
-        assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
-
-        # Load the prompt template
-        with open(prompt_template_path, 'r') as file:
-            prompt_template = json.load(file)
-
-        prompts = prompt_template["prompts"]
-        system_prompt = prompt_template.get("system_prompt", None)
-
-        # Generate the image carousel using language models
-        output_dict = self._generate_dict_from_prompts(
-            prompts=prompts, 
-            preferred_models=self.preferred_models,
-            desc="Generating image carousel",
-            system_prompt=system_prompt
-        )
-
-        return output_dict
-
-    def generate_story(self, prompt_template_path: str) -> dict:
-        """
-        Generates a story for Instagram.
-        :param prompt_template_path: Path to the prompt template file.
-        :return: A dictionary containing the generated Instagram story.
-        """
-        assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
-
-        # Load the prompt template
-        with open(prompt_template_path, 'r') as file:
-            prompt_template = json.load(file)
-
-        prompts = prompt_template["prompts"]
-        system_prompt = prompt_template.get("system_prompt", None)
-
-        # Generate the story using language models
-        output_dict = self._generate_dict_from_prompts(
-            prompts=prompts, 
-            preferred_models=self.preferred_models,
-            desc="Generating story",
-            system_prompt=system_prompt
-        )
-
-        return output_dict
-
-    def generate_single_post(self, post_theme: str, image_description: str, hashtags: list = None) -> dict:
-        """
-        Generates a single Instagram post (caption and hashtags).
-        :param post_theme: The theme for this post (e.g., AI in daily life).
-        :param image_description: Description of the image content for the post.
-        :param hashtags: Optional list of hashtags for the post.
-        :return: A dictionary with the generated caption, hashtags, and image description.
-        """
-        prompt_template_path = os.path.join('.', 'llm', 'instagram', 'prompts', 'post.json')
-        assert os.path.isfile(prompt_template_path), f"Post template not found: {prompt_template_path}"
-
-        # Load the prompt template for post generation
-        with open(prompt_template_path, 'r') as file:
-            prompt_template = json.load(file)
-
-        prompts_definition = prompt_template['prompts']
-        prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(
-            post_theme=post_theme, image_description=image_description
-        )
-
-        # Generate the post content using language models
-        post_data = self._generate_dict_from_prompts(
-            prompts=prompts_definition, 
-            preferred_models=self.preferred_models, 
-            desc="Generating Instagram post"
-        )
-
-        # If hashtags are not provided, generate them from the post data
-        if not hashtags:
-            hashtags = post_data.get('hashtags', [])
-
-        return {
-            "caption": post_data['caption'],
-            "hashtags": hashtags,
-            "image_description": image_description
-        }
-
-    def generate_storyline(self, theme_prompt: str, duration: int = 30) -> dict:
+    def generate_storyline(self, prompt_template_path: str, previous_storyline: str = "", duration: int = 30) -> dict:
         """
         Generates a storyline for the AI influencer's Instagram content.
-        :param theme_prompt: Main theme of the Instagram content.
+        :param prompt_template_path: Path to the prompt template file.
+        :param previous_storyline: The storyline from the previous season.
         :param duration: Duration of the storyline in days.
-        :return: A dictionary containing the storyline for each day.
+        :return: A dictionary containing the structured posts for uploading.
         """
-        prompt_template_path = os.path.join('.', 'llm', 'instagram', 'prompts', 'storyline.json')
         assert os.path.isfile(prompt_template_path), f"Storyline template not found: {prompt_template_path}"
 
-        # Load the prompt template for storyline generation
-        with open(prompt_template_path, 'r') as file:
+        # Load the prompt template
+        with open(prompt_template_path, 'r', encoding='utf-8') as file:
             prompt_template = json.load(file)
 
         prompts_definition = prompt_template['prompts']
-        prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(
-            theme_prompt=theme_prompt, duration=duration
-        )
+        cache = {
+            "previous_storyline": previous_storyline
+        }
 
-        # Generate the storyline using language models
-        storyline = self._generate_dict_from_prompts(
-            prompts=prompts_definition, 
-            preferred_models=self.preferred_models, 
-            desc="Generating Instagram storyline"
-        )
+        for prompt_def in prompts_definition:
+            # Replace placeholders in system_prompt and prompt
+            if 'system_prompt' in prompt_def:
+                prompt_def['system_prompt'] = self._replace_prompt_placeholders(prompt_def['system_prompt'], cache)
+            if 'prompt' in prompt_def:
+                prompt_def['prompt'] = self._replace_prompt_placeholders(prompt_def['prompt'], cache)
 
-        return storyline
+            # Generate the response for the current prompt
+            assistant_reply, finish_reason = self.get_model_response(
+                conversation=[
+                    {'role': 'system', 'content': prompt_def['system_prompt']} if 'system_prompt' in prompt_def else {},
+                    {'role': 'user', 'content': prompt_def['prompt']}
+                ],
+                preferred_models=self.preferred_models
+            )
+
+            # Add the assistant's reply to the cache using the cache_key
+            cache_key = prompt_def.get('cache_key')
+            if cache_key:
+                cache[cache_key] = assistant_reply.strip()
+
+        # The final output is the 'json_posts' from the cache
+        output_json = cache.get('json_posts')
+        if output_json:
+            try:
+                output_dict = json.loads(output_json)
+                return output_dict
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Failed to parse the assistant's final response as JSON: {e}")
+        else:
+            raise ValueError("No 'json_posts' found in the assistant's responses.")

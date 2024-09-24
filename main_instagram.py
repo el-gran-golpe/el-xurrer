@@ -9,7 +9,7 @@ EXECUTE_PLANNING = True  # Set to True for planning, False for generating posts
 GENERATE_POSTS = False   # Set to True for generating posts
 UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
-PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resourcers', 'inputs', 'instagram_profiles', 'laura_vigne', 'prompts', 'planning') 
+PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'prompts', 'planning') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
 POST_COUNT = 30
 
@@ -36,14 +36,13 @@ def generate_instagram_planning():
     # Prompt the user to select a template
     template_index = int(input("Select a template number: ")) - 1
     assert 0 <= template_index < len(available_plannings), "Invalid template number"
-    template_path = os.path.join(PLANNING_TEMPLATE_FOLDER, available_plannings[template_index])
+    template_path = os.path.join(PLANNING_TEMPLATE_FOLDER, available_plannings[template_index]) # TODO: check what this template path does in the future
 
     # Extract the profile name from the selected template
     profile_name = available_plannings[template_index][:-len('.json')]
 
     # Generate the story planning using the selected template
-    planning = InstagramLLM().generate_storyline(
-        prompt_template_path=template_path, duration=POST_COUNT)
+    planning = InstagramLLM().generate_storyline(prompt_template_path=template_path, duration=POST_COUNT)
 
     # Define the output path for the planning
     output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
