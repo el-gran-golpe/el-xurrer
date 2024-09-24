@@ -6,51 +6,21 @@ from slugify import slugify
 from tqdm import tqdm
 
 EXECUTE_PLANNING = True  # Set to True for planning, False for generating posts
-GENERATE_POSTS = False     # Set to True for generating posts
-UPLOAD_POSTS = False      # Set to True when you want to run uploads
+GENERATE_POSTS = False   # Set to True for generating posts
+UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
-PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'planning') 
+PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resourcers', 'inputs', 'instagram_profiles', 'laura_vigne', 'prompts', 'planning') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
 POST_COUNT = 30
 
-OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'outputs','instagram_profiles', 'planning')
+OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles', 'planning')
 OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
 
-
-<<<<<<< Updated upstream
-    caption_file = os.path.join(date_path, "caption.txt")
-    location_file = os.path.join(date_path, "location.txt")
-    images_folder = os.path.join(date_path, "images")
-
-    if os.path.isdir(images_folder) and os.path.isfile(caption_file):
-        with open(caption_file, 'r', encoding='utf-8') as file:
-            caption = file.read()
-
-        location = None
-        if os.path.isfile(location_file):
-            with open(location_file, 'r', encoding='utf-8') as file:
-                location = file.read()
-
-        image_files = [os.path.join(images_folder, img) for img in os.listdir(images_folder) if img.endswith(('jpg', 'jpeg', 'png'))]
-        if image_files:
-            api = InstagramAPI(ACCESS_TOKEN)
-            api.upload_image(image_files, caption, location)
-        else:
-            logger.warning(f"No images found in folder: {images_folder}")
-    else:
-        logger.warning(f"Missing caption or images in folder: {date_folder}")
-
-def run_script():
-    # Use today's date
-    target_date_str = datetime.now().strftime("%Y-%m-%d")
-    target_folder = os.path.join(BASE_FOLDER, target_date_str)
-=======
-def generate_planning():
+def generate_instagram_planning():
     # Ensure the planning template folder exists
     assert os.path.isdir(PLANNING_TEMPLATE_FOLDER), f"Planning template folder not found: {PLANNING_TEMPLATE_FOLDER}"
->>>>>>> Stashed changes
     
-    # List all JSON files in the planning template folder called llm/instagram/prompts/planning
+    # List all JSON files in the planning template folder
     available_plannings = [template for template in os.listdir(PLANNING_TEMPLATE_FOLDER) if template.endswith('.json')]
     print("Available planning templates:")
     
@@ -68,15 +38,15 @@ def generate_planning():
     assert 0 <= template_index < len(available_plannings), "Invalid template number"
     template_path = os.path.join(PLANNING_TEMPLATE_FOLDER, available_plannings[template_index])
 
-    # Extract the channel name from the selected template
-    channel_name = available_plannings[template_index][:-len('.json')]
+    # Extract the profile name from the selected template
+    profile_name = available_plannings[template_index][:-len('.json')]
 
     # Generate the story planning using the selected template
-    planning = InstagramLLM(preferred_models=('gpt-4o', 'gpt-4o-mini')).generate_storyline(
+    planning = InstagramLLM().generate_storyline(
         prompt_template_path=template_path, duration=POST_COUNT)
 
     # Define the output path for the planning
-    output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, channel_name)
+    output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
     os.makedirs(output_path, exist_ok=True)
 
     # Check if a planning file already exists and prompt for overwrite if it does
@@ -150,7 +120,7 @@ def upload_posts():
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:
-        generate_planning()
+        generate_instagram_planning()
 
     if GENERATE_POSTS:
         generate_posts()
