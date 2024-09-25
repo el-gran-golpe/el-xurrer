@@ -41,13 +41,20 @@ def generate_instagram_planning():
     # Extract the profile name from the selected template
     profile_name = available_plannings[template_index][:-len('.json')]
 
-    # Generate the story planning using the selected template
-    planning = InstagramLLM().generate_storyline(prompt_template_path=template_path, duration=POST_COUNT)
+    # Generate the Instagram planning using the selected template
+    planning = InstagramLLM().generate_instagram_planning(
+        prompt_template_path=template_path,
+        previous_storyline=previous_storyline
+    )
 
-    # Define the output path for the planning
+    # Save the generated planning to a JSON file
     output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
     os.makedirs(output_path, exist_ok=True)
+    with open(os.path.join(output_path, 'planning.json'), 'w', encoding='utf-8') as file:
+        json.dump(planning, file, indent=4, ensure_ascii=False)
 
+
+    # Todo: check from here
     # Check if a planning file already exists and prompt for overwrite if it does
     if os.path.isfile(os.path.join(output_path, 'planning.json')):
         print(f"Warning: The planning file already exists in the folder: {output_path}")

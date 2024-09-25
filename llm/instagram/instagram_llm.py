@@ -7,15 +7,14 @@ class InstagramLLM(BaseLLM):
     def __init__(self, preferred_models: list | tuple = DEFAULT_PREFERRED_MODELS):
         super().__init__(preferred_models=preferred_models)
 
-    def generate_storyline(self, prompt_template_path: str, previous_storyline: str = "", duration: int = 30) -> dict:
+    def generate_instagram_planning(self, prompt_template_path: str, previous_storyline: str = "") -> dict:
         """
-        Generates a storyline for the AI influencer's Instagram content.
+        Generates a 4-week Instagram planning for the AI influencer's content.
         :param prompt_template_path: Path to the prompt template file.
         :param previous_storyline: The storyline from the previous season.
-        :param duration: Duration of the storyline in days.
         :return: A dictionary containing the structured posts for uploading.
         """
-        assert os.path.isfile(prompt_template_path), f"Storyline template not found: {prompt_template_path}"
+        assert os.path.isfile(prompt_template_path), f"Planning template not found: {prompt_template_path}"
 
         # Load the prompt template
         with open(prompt_template_path, 'r', encoding='utf-8') as file:
