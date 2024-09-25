@@ -16,6 +16,19 @@ POST_COUNT = 30
 OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles', 'planning')
 OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
 
+def read_previous_storyline(file_path: str) -> str:
+    """
+    Reads the previous storyline from a given file path.
+    If the file is empty or does not exist, returns an empty string.
+    :param file_path: Path to the cumulative storyline file.
+    :return: The content of the file or an empty string if the file is empty or missing.
+    """
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read().strip()
+            return content if content else ""
+    return ""
+
 def generate_instagram_planning():
     # Ensure the planning template folder exists
     assert os.path.isdir(PLANNING_TEMPLATE_FOLDER), f"Planning template folder not found: {PLANNING_TEMPLATE_FOLDER}"
