@@ -46,7 +46,7 @@ def generate_instagram_planning():
             subtext = f"(Existent posts: {len(os.listdir(output_path))})"
         print(f"{i + 1}: {template[:-len('.json')]} {subtext}")
     
-    # Prompt the user to select a template
+    # TODO: JUST READ THE FIRST TEMPLATE FOR NOW (JSON)
     template_index = int(input("Select a template number: ")) - 1
     assert 0 <= template_index < len(available_plannings), "Invalid template number"
     template_path = os.path.join(PLANNING_TEMPLATE_FOLDER, available_plannings[template_index]) # TODO: check what this template path does in the future
