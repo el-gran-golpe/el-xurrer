@@ -54,6 +54,12 @@ def generate_instagram_planning():
     # Extract the profile name from the selected template
     profile_name = available_plannings[template_index][:-len('.json')]
 
+    # Define the path to the cumulative storyline file
+    storyline_file_path = os.path.join('resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'cumulative_storyline.txt')
+    
+    # Read the previous storyline from the file (if it exists)
+    previous_storyline = read_previous_storyline(storyline_file_path)
+
     # Generate the Instagram planning using the selected template
     planning = InstagramLLM().generate_instagram_planning(
         prompt_template_path=template_path,
