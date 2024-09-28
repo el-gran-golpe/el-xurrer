@@ -46,10 +46,15 @@ def generate_instagram_planning():
             subtext = f"(Existent posts: {len(os.listdir(output_path))})"
         print(f"{i + 1}: {template[:-len('.json')]} {subtext}")
     
-    # TODO: JUST READ THE FIRST TEMPLATE FOR NOW (JSON)
-    template_index = int(input("Select a template number: ")) - 1
-    assert 0 <= template_index < len(available_plannings), "Invalid template number"
-    template_path = os.path.join(PLANNING_TEMPLATE_FOLDER, available_plannings[template_index]) # TODO: check what this template path does in the future
+    # Automatically select the first template if only one is available
+    if len(available_plannings) == 1:
+        template_index = 0
+    else:
+        # Prompt the user to select a template number
+        template_index = int(input("Select a template number: ")) - 1
+        assert 0 <= template_index < len(available_plannings), "Invalid template number"
+    
+    template_path = os.path.join(PLANNING_TEMPLATE_FOLDER, available_plannings[template_index])
 
     # Extract the profile name from the selected template
     profile_name = available_plannings[template_index][:-len('.json')]
@@ -83,7 +88,7 @@ def generate_instagram_planning():
             return
 
     # Save the generated planning to a JSON file
-    with open(os.path.join(output_path, 'planning.json'), 'w') as file:
+    with open(os.path.join(output_path, 'planning.json'), 'w', encoding='utf-8') as file:
         json.dump(planning, file, indent=4, ensure_ascii=False)
 
 
