@@ -5,8 +5,8 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
-EXECUTE_PLANNING = True  # Set to True for planning, False for generating posts
-GENERATE_POSTS = False   # Set to True for generating posts
+EXECUTE_PLANNING = False # Set to True for planning, False for generating posts
+GENERATE_POSTS = True    # Set to True for generating posts
 UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'prompts', 'planning') 
@@ -85,27 +85,35 @@ def generate_instagram_planning():
     with open(os.path.join(output_path, planning_filename), 'w', encoding='utf-8') as file:
         json.dump(planning, file, indent=4, ensure_ascii=False)
 
-def generate_posts():
+def generate_instagram_posts():
+    # Ensure the planning folder exists
     assert os.path.isdir(OUTPUT_FOLDER_BASE_PATH_PLANNING), f"Planning folder not found: {OUTPUT_FOLDER_BASE_PATH_PLANNING}"
 
+    # List all JSON files in the planning folder
     available_plannings = [template[:-len('.json')] for template in os.listdir(OUTPUT_FOLDER_BASE_PATH_PLANNING)
                            if template.endswith('.json')]
     assert len(available_plannings) > 0, "No planning files found, please generate a planning first"
     
     print("Available planning files:")
-    channel_index = 0 if len(available_plannings) == 1 else int(input("Select a channel number: ")) - 1
+    
+    # Automatically select the first          if only one is available
+    channel_index = 0 if len(available_plannings) == 1 else int(input("Select a template number: ")) - 1
     assert 0 <= channel_index < len(available_plannings), "Invalid channel number"
     channel_name = available_plannings[channel_index]
 
+    # TODO: check 
+    # Define the path to the prompt template file
     prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{channel_name}.json")
     assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
 
     output_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, channel_name)
     os.makedirs(output_folder, exist_ok=True)
 
+    # Load the planning data from the selected planning file
     with open(os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, f"{channel_name}.json"), 'r') as file:
         planning = json.load(file)
 
+    # Generate Instagram posts based on the planning data
     for post_name, post_data in tqdm(planning.items(), desc="Generating Instagram posts", total=len(planning)):
         post_slug = slugify(post_name)
         image_description, hashtags = post_data.get('image_description'), post_data.get('hashtags')
@@ -113,13 +121,17 @@ def generate_posts():
         output_path = os.path.join(output_folder, post_slug)
         os.makedirs(output_path, exist_ok=True)
         
+        # Check if the post file already exists
         if not os.path.isfile(os.path.join(output_path, 'post.json')):
+            # Generate a single post using the InstagramLLM
             post_content = InstagramLLM().generate_single_post(
                 post_theme=post_name, image_description=image_description, hashtags=hashtags)
 
+            # Save the generated post to a JSON file
             with open(os.path.join(output_path, 'post.json'), 'w') as f:
                 json.dump(post_content, f, indent=4, ensure_ascii=False)
 
+            # Generate the post using the PipelineInstagram
             PipelineInstagram(output_folder=output_path).generate_post()
 
 
@@ -146,8 +158,7 @@ if __name__ == '__main__':
         generate_instagram_planning()
 
     if GENERATE_POSTS:
-        generate_posts()
+        generate_instagram_posts()
 
-    # Only uncomment or set UPLOAD_POSTS to True when you want to upload
     if UPLOAD_POSTS:
         upload_posts()
