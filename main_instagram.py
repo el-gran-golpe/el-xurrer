@@ -11,23 +11,16 @@ UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'prompts', 'planning') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
-POST_COUNT = 30
+POST_COUNT = 30 # Not in use
 
 OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles', 'planning')
 OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
 
 def read_previous_storyline(file_path: str) -> str:
-    """
-    Reads the previous storyline from a given file path.
-    If the file is empty or does not exist, returns an empty string.
-    :param file_path: Path to the cumulative storyline file.
-    :return: The content of the file or an empty string if the file is empty or missing.
-    """
     if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
             content = file.read().strip()
-            return content if content else ""
-    return ""
+    return content if content else ""
 
 def generate_instagram_planning():
     # Ensure the planning template folder exists
@@ -60,7 +53,7 @@ def generate_instagram_planning():
     profile_name = available_plannings[template_index][:-len('.json')]
 
     # Define the path to the cumulative storyline file
-    storyline_file_path = os.path.join('resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'cumulative_storyline.txt')
+    storyline_file_path = os.path.join('resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'cumulative_storyline.md')
     
     # Read the previous storyline from the file (if it exists)
     previous_storyline = read_previous_storyline(storyline_file_path)
@@ -77,10 +70,11 @@ def generate_instagram_planning():
     with open(os.path.join(output_path, 'planning.json'), 'w', encoding='utf-8') as file:
         json.dump(planning, file, indent=4, ensure_ascii=False)
 
-
-    # Todo: check from here
     # Check if a planning file already exists and prompt for overwrite if it does
-    if os.path.isfile(os.path.join(output_path, 'planning.json')):
+    profile_initials = ''.join([word[0] for word in profile_name.split('-')])
+    planning_filename = f"{profile_initials}_planning.json"
+
+    if os.path.isfile(os.path.join(output_path, planning_filename)):
         print(f"Warning: The planning file already exists in the folder: {output_path}")
         overwrite = input("Do you want to overwrite it? (y/n): ")
         if overwrite.lower() not in ('y', 'yes'):
@@ -88,9 +82,8 @@ def generate_instagram_planning():
             return
 
     # Save the generated planning to a JSON file
-    with open(os.path.join(output_path, 'planning.json'), 'w', encoding='utf-8') as file:
+    with open(os.path.join(output_path, planning_filename), 'w', encoding='utf-8') as file:
         json.dump(planning, file, indent=4, ensure_ascii=False)
-
 
 def generate_posts():
     assert os.path.isdir(OUTPUT_FOLDER_BASE_PATH_PLANNING), f"Planning folder not found: {OUTPUT_FOLDER_BASE_PATH_PLANNING}"
