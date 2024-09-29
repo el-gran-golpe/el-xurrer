@@ -95,45 +95,63 @@ def generate_instagram_posts():
     assert len(available_plannings) > 0, "No planning files found, please generate a planning first"
     
     print("Available planning files:")
-    
-    # Automatically select the first          if only one is available
-    channel_index = 0 if len(available_plannings) == 1 else int(input("Select a template number: ")) - 1
-    assert 0 <= channel_index < len(available_plannings), "Invalid channel number"
-    channel_name = available_plannings[channel_index]
 
-    # TODO: check 
-    # Define the path to the prompt template file
-    prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{channel_name}.json")
+    # Automatically select the first profile if only one is available
+    profile_index = 0 if len(available_plannings) == 1 else int(input("Select a profile number: ")) - 1
+    assert 0 <= profile_index < len(available_plannings), "Invalid profile number"
+    profile_name = available_plannings[profile_index]
+
+    # Define the prompt template for posts
+    prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{profile_name}.json")
     assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
 
-    output_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, channel_name)
+    # Create the output folder for posts if it doesn't exist
+    output_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, profile_name)
     os.makedirs(output_folder, exist_ok=True)
 
     # Load the planning data from the selected planning file
-    with open(os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, f"{channel_name}.json"), 'r') as file:
+    planning_file_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, f"{profile_name}.json")
+    with open(planning_file_path, 'r', encoding='utf-8') as file:
         planning = json.load(file)
 
-    # Generate Instagram posts based on the planning data
-    for post_name, post_data in tqdm(planning.items(), desc="Generating Instagram posts", total=len(planning)):
-        post_slug = slugify(post_name)
-        image_description, hashtags = post_data.get('image_description'), post_data.get('hashtags')
-        
-        output_path = os.path.join(output_folder, post_slug)
-        os.makedirs(output_path, exist_ok=True)
-        
-        # Check if the post file already exists
-        if not os.path.isfile(os.path.join(output_path, 'post.json')):
-            # Generate a single post using the InstagramLLM
-            post_content = InstagramLLM().generate_single_post(
-                post_theme=post_name, image_description=image_description, hashtags=hashtags)
+    # Iterate over the planning and generate Instagram posts
+    for week, daily_posts in tqdm(planning.items(), desc=f"Generating Instagram posts for {profile_name}", total=len(planning)):
+        for day, post_data_list in daily_posts.items():
+            for post_data in post_data_list:
+                post_title = post_data.get('title')
+                post_slug = slugify(post_title)
+                caption = post_data.get('caption')
+                hashtags = post_data.get('hashtags', [])
+                image_description = post_data.get('image_description')
+                image_urls = post_data.get('image_urls', [])
+                upload_time = post_data.get('upload_time')
 
-            # Save the generated post to a JSON file
-            with open(os.path.join(output_path, 'post.json'), 'w') as f:
-                json.dump(post_content, f, indent=4, ensure_ascii=False)
+                # Ensure a unique folder for each post
+                post_folder = os.path.join(output_folder, post_slug)
+                os.makedirs(post_folder, exist_ok=True)
 
-            # Generate the post using the PipelineInstagram
-            PipelineInstagram(output_folder=output_path).generate_post()
+                # Check if the post already exists
+                post_file_path = os.path.join(post_folder, 'post.json')
+                if not os.path.isfile(post_file_path):
+                    # Prepare post content
+                    post_content = {
+                        "title": post_title,
+                        "caption": caption,
+                        "hashtags": hashtags,
+                        "image_description": image_description,
+                        "image_urls": image_urls,
+                        "upload_time": upload_time
+                    }
+                    post = InstagramLLM().generate_instagram_publication(duration=duration, theme_prompt=theme_prompt,
+                                                      prompt_template_path=prompt_template_path)
+                    # Save the generated post to a JSON file
+                    with open(post_file_path, 'w', encoding='utf-8') as f:
+                        json.dump(post_content, f, indent=4, ensure_ascii=False)
 
+                    # Use PipelineInstagram to process the post
+                    PipelineInstagram(output_folder=post_folder).generate_post()
+                else:
+                    print(f"Post '{post_slug}' already exists, skipping...")
 
 def upload_posts():
     from uploading_apis.instagram.uploader_instagram import InstagramUploader
@@ -151,7 +169,6 @@ def upload_posts():
 
             image_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, post_folder, f'{slugify(post_content["caption"])}.png')
             uploader.upload_post(image_path=image_path, caption=post_content['caption'])
-
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:
