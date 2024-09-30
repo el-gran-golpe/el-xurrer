@@ -2,8 +2,8 @@
   "lang": "es",
   "prompts": [
     {
-      "system_prompt": "Eres un experto en Magic: The Gathering y análisis de mazos para el canal 'MTG Garden'. Tu tarea es analizar el mazo proporcionado para el formato de juego {format}. Debes identificar y describir la estrategia principal del mazo y sus \"win conditions\". El análisis debe ser claro y conciso, proporcionando una comprensión básica de cómo funciona el mazo y cómo puede ganar partidas en el formato de juego {format}.",
-      "prompt": "Genera un análisis que incluya:\n\n1. **Estrategia Principal**: Describe la estrategia central del mazo, incluyendo las mecánicas e interacciones clave.\n\n2. **Condiciones de Victoria**: Identifica las principales formas en que el mazo puede asegurar la victoria, detallando las cartas y combinaciones clave que permiten ganar la partida.\n\nEl output debe seguir exactamente este formato, siendo claro y directo, sin agregar comentarios adicionales.\n\nMazo de {format} a analizar:\n{deck}",
+      "system_prompt": "Eres un jugador profesional de Magic: The Gathering, experto en el analisis de mazos. Tu tarea es analizar el mazo proporcionado para el formato de juego {format}. Debes identificar y describir la estrategia principal del mazo y sus \"win conditions\". El análisis debe ser claro y conciso, proporcionando una comprensión básica de cómo funciona el mazo y su estrategia para ganar partidas.",
+      "prompt": "Genera un análisis que incluya:\n\n1. **Estrategia Principal**: Describe la estrategia central del mazo, incluyendo las mecánicas clave.\n\n2. **Condiciones de Victoria**: Identifica las principales formas en que el mazo puede asegurar la victoria, detallando las cartas y combinaciones clave que permiten ganar la partida.\n\n El lector objetivo es un jugador experto en Magic: The Gathering, de modo que no tienes que matizarle cosas ampliamente conocidas sobre el reglamento.\n\nEl output debe seguir exactamente este formato, siendo claro y directo, sin agregar comentarios adicionales.\n\nMazo de {format} a analizar:\n{deck}",
       "cache_key": "deck_summary"
     },
     {

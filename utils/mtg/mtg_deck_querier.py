@@ -36,6 +36,8 @@ class MoxFieldDeck:
             card_subtype = card['type_line'].split('—')[1].strip() if '—' in card['type_line'] else None
             image_url = SCRYFALL_IMAGE_URL.format(first_letter=scryfall_uuid[0], second_letter=scryfall_uuid[1], uuid=scryfall_uuid)
             plain_text = f"{quantity} {card['name']}"
+
+
             card_description = {
                 'role': role,
                 'plain_text': plain_text,
@@ -46,6 +48,7 @@ class MoxFieldDeck:
                 'card_subtype': card_subtype,
                 **card
             }
+            card_description['plain_text_description'] = self._get_card_plain_text_description(card=card_description)
             deck_list.append(card_description)
 
         # Order the deck list by card type and then by cmc
@@ -54,6 +57,32 @@ class MoxFieldDeck:
                                          card['card_subtype'] or 'zzz', card['name']))
 
         return deck_list
+
+    def _get_card_plain_text_description(self, card: dict, is_face: bool = False) -> str:
+
+        full_text_description = f"{card['quantity']} {card['name']}" if not is_face else f"\t- Face {card['name']}"
+        if 'role' in card and  card['role'] == 'commander':
+            full_text_description += f" [COMMANDER]"
+        if 'card_faces' in card and len(card['card_faces']) > 1:
+            for face in card['card_faces']:
+                full_text_description += f"\n{self._get_card_plain_text_description(card=face, is_face=True)}"
+
+        if 'mana_cost' in card and card['mana_cost']:
+            full_text_description += f" ({card['mana_cost']})"
+        if 'type_line' in card:
+            full_text_description += f": {card['type_line']}"
+
+        if 'oracle_text' in card and not card['type_line'].lower().startswith('basic land'):
+            if not is_face:
+                full_text_description += f"\n{card['oracle_text']}"
+            else:
+                oracle_text = card['oracle_text'].replace('\n', '\n\t\t')
+                full_text_description += f"\n\t\t{oracle_text}"
+        if 'power' in card and 'toughness' in card:
+            full_text_description += f"\nP/T: {card['power']}/{card['toughness']}" if not is_face else f"\n\t\tP/T: {card['power']}/{card['toughness']}"
+        elif 'loyalty' in card:
+            full_text_description += f"\nLoyalty: {card['loyalty']}" if not is_face else f"\n\t\tLoyalty: {card['loyalty']}"
+        return full_text_description
 
     def get_deck_info(self) -> dict:
         return {
@@ -79,12 +108,3 @@ class MoxFieldDeck:
     @ttl_cache(maxsize=1024, ttl=60*60*12)
     def get_card_by_id(self, card_id) -> scrython.cards.Id:
         return scrython.cards.Id(id=card_id)
-
-
-
-
-if __name__ == '__main__':
-    deck = MoxFieldDeck()
-    deck = deck.get_deck('qTJ7m2tVw0K2jx1bXzZ5xw')
-    card = deck.get_card('Black Lotus')
-    print(card.name)
