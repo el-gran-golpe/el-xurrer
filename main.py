@@ -1,5 +1,5 @@
 import os
-from pipeline.pipeline import Pipeline
+from pipeline.youtube.pipeline import Pipeline
 from llm.youtube.youtube_llm import YoutubeLLM
 from loguru import logger
 from time import sleep
@@ -7,7 +7,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
-from utils.exceptions import WaitAndRetryError, EmptyScriptException
+from utils.exceptions import WaitAndRetryError
 from utils.utils import missing_video_assets
 
 EXECUTE_PLANNING = False
