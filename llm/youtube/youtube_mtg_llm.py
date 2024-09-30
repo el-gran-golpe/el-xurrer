@@ -5,32 +5,33 @@ from llm.constants import DEFAULT_PREFERRED_MODELS
 from tqdm import tqdm
 
 from utils.exceptions import InvalidScriptException
+from utils.mtg.mtg_deck_querier import MoxFieldDeck
 from utils.utils import get_closest_monday, generate_ids_in_script, check_script_validity
 import re
 from loguru import logger
 
 
 
-class YoutubeLLM(BaseLLM):
+class YoutubeMTGLLM(BaseLLM):
     def __init__(self, preferred_models: list|tuple = DEFAULT_PREFERRED_MODELS):
         super().__init__(preferred_models=preferred_models)
 
-    def generate_script(self, prompt_template_path: str, theme_prompt: str,
-                        duration: int = 5, retries: int = 3) -> dict:
+    def generate_script(self, prompt_template_path: str, deck: MoxFieldDeck, retries: int = 3) -> dict:
 
         assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
-        assert isinstance(duration, (int, float)) and duration > 0, "Duration must be a positive number"
-
+        assert isinstance(deck, MoxFieldDeck), f"Invalid deck object: {deck}"
         with open(prompt_template_path, 'r', encoding='utf-8') as file:
             prompt_template = json.load(file)
 
         prompts_definition = prompt_template["prompts"]
-        prompts_definition[0]['prompt'] = prompts_definition[0]['prompt'].format(prompt=theme_prompt, duration=duration)
-        prompts_definition[1]['prompt'] = prompts_definition[1]['prompt'].replace('{duration}', str(duration))
+        prefill_cache = {
+            'deck': deck.deck_list_description,
+            'format': deck.format,
+        }
 
         for retry in range(retries):
             script = self._generate_dict_from_prompts(prompts=prompts_definition, preferred_models=self.preferred_models,
-                                                    desc="Generating script")
+                                                      cache=prefill_cache, desc="Generating script")
             script = generate_ids_in_script(script = script)
             try:
                 check_script_validity(script=script)

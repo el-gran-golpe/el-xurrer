@@ -279,13 +279,13 @@ class BaseLLM:
         return prompt
 
     def _generate_dict_from_prompts(self, prompts: list[dict], preferred_models: list = None,
-                                    desc: str = "Generating") -> dict:
+                                    desc: str = "Generating", cache: dict = frozenset({})) -> dict:
 
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 
-        cache = {}
+        cache = dict(deepcopy(cache))
 
         # Loop through each prompt and get a response
         for i, prompt_definition in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):

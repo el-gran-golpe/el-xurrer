@@ -8,7 +8,19 @@ class MoxFieldDeck:
     def __init__(self, deck_id: str):
         self.raw_deck = self._get_raw_deck(deck_id=deck_id)
 
+    @property
+    def name(self) -> str:
+        return self.raw_deck['name']
 
+    @property
+    def format(self) -> str:
+        return self.raw_deck['format']
+
+    @property
+    def deck_list_description(self) -> str:
+        deck_list = self.get_deck_list()
+        plain_text = '\n\n'.join(card['plain_text_description'] for card in deck_list)
+        return plain_text
     @ttl_cache(maxsize=256, ttl=60*60*12)
     def _get_raw_deck(self, deck_id: str) -> dict:
         url = MOXFIELD_GET_DECK_URL.format(deck_id=deck_id)
@@ -17,6 +29,7 @@ class MoxFieldDeck:
         response.raise_for_status()
 
         return response.json()
+
 
     @ttl_cache(maxsize=1024, ttl=60*60*12)
     def get_deck_list(self) -> list[dict]:
@@ -59,18 +72,20 @@ class MoxFieldDeck:
         return deck_list
 
     def _get_card_plain_text_description(self, card: dict, is_face: bool = False) -> str:
+        full_text_description = ""
+        if 'role' in card and card['role'] == 'commander':
+            full_text_description += f"[COMMANDER]"
+        full_text_description += f"\n{card['quantity']} {card['name']}" if not is_face else f"\t- Face {card['name']}"
 
-        full_text_description = f"{card['quantity']} {card['name']}" if not is_face else f"\t- Face {card['name']}"
-        if 'role' in card and  card['role'] == 'commander':
-            full_text_description += f" [COMMANDER]"
         if 'card_faces' in card and len(card['card_faces']) > 1:
             for face in card['card_faces']:
                 full_text_description += f"\n{self._get_card_plain_text_description(card=face, is_face=True)}"
-
+            return full_text_description
+        full_text_description += f"\n"
         if 'mana_cost' in card and card['mana_cost']:
-            full_text_description += f" ({card['mana_cost']})"
+            full_text_description += f"Cost: {card['mana_cost']}"
         if 'type_line' in card:
-            full_text_description += f": {card['type_line']}"
+            full_text_description += f", Type: {card['type_line']}"
 
         if 'oracle_text' in card and not card['type_line'].lower().startswith('basic land'):
             if not is_face:
