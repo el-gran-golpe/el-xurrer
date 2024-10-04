@@ -5,7 +5,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
-EXECUTE_PLANNING = False # Set to True for planning, False for generating posts
+EXECUTE_PLANNING = True # Set to True for planning, False for generating posts
 GENERATE_POSTS = True    # Set to True for generating posts
 UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
