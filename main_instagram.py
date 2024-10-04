@@ -5,15 +5,15 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
-EXECUTE_PLANNING = True # Set to True for planning, False for generating posts
+EXECUTE_PLANNING = True  # Set to True for planning
 GENERATE_POSTS = True    # Set to True for generating posts
 UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
-PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'prompts', 'planning') 
+PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
 POST_COUNT = 30 # Not in use
 
-OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles', 'planning')
+OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles', 'laura_vigne')
 OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
 
 def read_previous_storyline(file_path: str) -> str:
@@ -27,7 +27,13 @@ def generate_instagram_planning():
     assert os.path.isdir(PLANNING_TEMPLATE_FOLDER), f"Planning template folder not found: {PLANNING_TEMPLATE_FOLDER}"
     
     # List all JSON files in the planning template folder
-    available_plannings = [template for template in os.listdir(PLANNING_TEMPLATE_FOLDER) if template.endswith('.json')]
+    available_plannings = []
+    for root, dirs, files in os.walk(PLANNING_TEMPLATE_FOLDER):
+        for dir_name in dirs:
+            dir_path = os.path.join(root, dir_name)
+            for file_name in os.listdir(dir_path):
+                if file_name == f"{dir_name}.json":
+                    available_plannings.append(os.path.join(dir_path, file_name))
     print("Available planning templates:")
     
     # Display available planning templates with their status (new or existing)
