@@ -16,13 +16,14 @@ else:
     text_reencoder = lambda text: text
 
 class MovieEditorBase:
-    def __init__(self, output_folder: str):
+    def __init__(self, output_folder: str, check_validity: bool = True):
         self.output_folder = output_folder
 
         # Load the script as before
         with open(os.path.join(output_folder, 'script.json'), 'r', encoding='utf-8') as f:
             self.script = json.load(f)
-            self.check_script_validity(self.script)
+            if check_validity:
+                self.check_script_validity(self.script)
 
     def _build_clip(self, item: dict, include_screen_text_from_start: bool = True) -> mp.CompositeVideoClip:
         _id, sound, screen_text = item["id"], item.get("sound"), item.get("screen_text")

@@ -181,3 +181,24 @@ def missing_video_assets(assets_path: str) -> bool:
     if not os.path.isfile(video_path):
         return True
     return False
+
+
+def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tuple = ()) -> dict:
+    for key, value in dict_to_fill.items():
+        current_key = f"{parent_key}--{key}" if parent_key else key
+        if isinstance(value, dict):
+            # If the value is a dictionary, recursively call the function
+            dict_to_fill[key] = generate_ids_in_dict(dict_to_fill=value, parent_key=current_key, leaf_suggestions=leaf_suggestions)
+            # If it's a leaf dictionary (no nested dictionaries), add an ID
+        elif isinstance(value, (list, tuple)):
+            # If the value is a list, recursively call the function for each element
+            dict_to_fill[key] = [generate_ids_in_dict(dict_to_fill=v, parent_key=current_key, leaf_suggestions=leaf_suggestions)
+                                 if isinstance(v, dict) else v for v in value]
+
+    if all(not isinstance(v, (dict, list, tuple)) for v in dict_to_fill.values()) and 'id' not in dict_to_fill:
+        for suggestion in leaf_suggestions:
+            if suggestion in dict_to_fill:
+                parent_key = f"{parent_key}--{dict_to_fill[suggestion]}"
+
+        dict_to_fill['id'] = slugify(f"{parent_key}--{str(uuid4())[:8]}")
+    return dict_to_fill

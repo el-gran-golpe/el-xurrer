@@ -15,8 +15,8 @@ else:
 
 
 class MovieEditorSentenceSubtitles(MovieEditorBase):
-    def __init__(self, output_folder: str):
-        super().__init__(output_folder)
+    def __init__(self, output_folder: str, check_validity: bool = True):
+        super().__init__(output_folder, check_validity = check_validity)
 
     def _build_clip(self, item: dict):
         clip = super()._build_clip(item)

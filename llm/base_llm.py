@@ -133,13 +133,15 @@ class BaseLLM:
         return output_dict
 
 
-    def get_model_response(self, conversation: list[dict], preferred_models: list = None, verbose: bool = True) -> tuple:
+    def get_model_response(self, conversation: list[dict], preferred_models: list = None, verbose: bool = True,
+                           structured_json: dict[str, str|dict[str]]|None = None) -> tuple:
 
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 
-        stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models)
+        stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models,
+                                            structured_json=structured_json)
 
         assistant_reply, finish_reason = "", None
         for chunk in stream:
@@ -151,6 +153,12 @@ class BaseLLM:
                     print(new_content, end="")
             if current_finish_reason is not None:
                 finish_reason = current_finish_reason
+
+        # TODO: That's for non-gpt models that seems to not return a finish reason
+        model = [model for model in preferred_models if model not in self.exhausted_models][0]
+        if not model.startswith("gpt-") and finish_reason is None:
+            logger.debug(f"Model {model} did not return a finish reason. Assuming stop")
+            finish_reason = "stop"
 
         assert finish_reason is not None, "Finish reason not found"
         if any(phrase.lower() in assistant_reply.lower() for phrase in INCOMPLETE_OUTPUT_PHRASES):
@@ -176,7 +184,8 @@ class BaseLLM:
         assert finish_reason == "stop", f"Unexpected finish reason: {finish_reason}"
         return assistant_reply, finish_reason
 
-    def __get_response_stream(self, conversation: list[dict], preferred_models: list, use_paid_api: bool = False) -> (
+    def __get_response_stream(self, conversation: list[dict], preferred_models: list,
+                              use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
         # Select the best model that is not exhausted
         if not use_paid_api:
@@ -262,10 +271,16 @@ class BaseLLM:
             message = message.replace('\n```json', '').replace('```json\n', '').replace('```json', '')
 
         message = message.strip('"')
-        return json.loads(message)
+        # Remove trailing commas before closing brackets
+        message = re.sub(r',\s*}', '}', message)
+        try:
+            return json.loads(message)
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON from message: {message}")
+            raise json.JSONDecodeError
 
 
-    def _replace_prompt_placeholders(self, prompt: str, cache: dict[str, str]) -> str:
+    def _replace_prompt_placeholders(self, prompt: str, cache: dict[str, str], accept_unfilled: bool = False) -> str:
         """
         Replace the placeholders in the prompt with the values in the cache
         :param prompt: The prompt to replace the placeholders
@@ -274,8 +289,11 @@ class BaseLLM:
         """
         placeholders = re.findall(r'{(\w+)}', prompt)
         for placeholder in placeholders:
-            assert placeholder in cache, f"Placeholder '{placeholder}' not found in the cache"
-            prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
+            if not accept_unfilled:
+                assert placeholder in cache, f"Placeholder '{placeholder}' not found in the cache"
+                prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
+            elif placeholder in cache:
+                prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
         return prompt
 
     def _generate_dict_from_prompts(self, prompts: list[dict], preferred_models: list = None,
@@ -291,25 +309,40 @@ class BaseLLM:
         for i, prompt_definition in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
             assert all(key in prompt_definition for key in ('prompt', 'cache_key')), "Invalid prompt definition"
             prompt, cache_key = prompt_definition['prompt'], prompt_definition['cache_key']
+            function_call = prompt_definition.get('function_call', None)
             system_prompt = prompt_definition.get('system_prompt', None)
+            structured_json = prompt_definition.get('structured_json', None)
+            if system_prompt is not None:
+                system_prompt = self._replace_prompt_placeholders(prompt=system_prompt, cache=cache, accept_unfilled=function_call is not None)
             conversation = []
             if system_prompt is not None:
                 conversation.append({'role': 'system', 'content': system_prompt})
-            prompt = self._replace_prompt_placeholders(prompt=prompt, cache=cache)
+            prompt = self._replace_prompt_placeholders(prompt=prompt, cache=cache, accept_unfilled=function_call is not None)
             conversation.append({'role': 'user', 'content': prompt})
-
-            # Get the assistant's response
-            assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
-                                                                     preferred_models=preferred_models)
-            if any(cant_assist.lower() in assistant_reply.lower() for cant_assist in CANNOT_ASSIST_PHRASES):
-                if len(preferred_models) == 0:
-                    raise RuntimeError(f"No models can assist with prompt: {prompt}")
-                logger.warning(f"Assistant cannot assist with prompt: {prompt}. Retrying with a different model")
+            if function_call is not None:
+                assert isinstance(function_call, str), "Invalid function call"
+                assert hasattr(self, function_call), f"Function not found: {function_call}"
+                # Get the function within this class
+                function = getattr(self, function_call)
+                # Call the function with the cache as the argument
+                assistant_reply = function(cache=cache, system_prompt=system_prompt,
+                                           prompt=prompt, preferred_models=preferred_models)
+            else:
+                # Get the assistant's response
                 assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
-                                                                         preferred_models=preferred_models[1:])
+                                                                         preferred_models=preferred_models,
+                                                                         structured_json=structured_json)
+                if any(cant_assist.lower() in assistant_reply.lower() for cant_assist in CANNOT_ASSIST_PHRASES):
+                    if len(preferred_models) == 0:
+                        raise RuntimeError(f"No models can assist with prompt: {prompt}")
+                    logger.warning(f"Assistant cannot assist with prompt: {prompt}. Retrying with a different model")
+                    assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
+                                                                             preferred_models=preferred_models[1:])
             # Add the assistant's response to the cache
             cache[cache_key] = assistant_reply
 
+        if isinstance(assistant_reply, dict):
+            return assistant_reply
 
         assert isinstance(assistant_reply, str) and len(assistant_reply) > 0, "Assistant response not found"
         # Decode the JSON object for the last assistant_reply

@@ -7,7 +7,7 @@ from utils.mtg.constants import MOXFIELD_GET_DECK_URL, COLOR_TO_LAND, SCRYFALL_I
 class MoxFieldDeck:
     def __init__(self, deck_id: str):
         self.raw_deck = self._get_raw_deck(deck_id=deck_id)
-
+        self.deck_info = self.get_deck_info()
     @property
     def name(self) -> str:
         return self.raw_deck['name']
@@ -68,14 +68,16 @@ class MoxFieldDeck:
         deck_list.sort(key=lambda card: (ORDER_BY_ROLE.get(card['role'], 9e10), card['type'],
                                          card['cmc'], card.get('edhrec_rank', 9e10),
                                          card['card_subtype'] or 'zzz', card['name']))
-
         return deck_list
 
+    @ttl_cache(maxsize=1024, ttl=60*60*12)
+    def get_card_image_url(self, card_name: str) -> str:
+        return self.deck_info['deck_list_by_card_name'][card_name]['image_url']
     def _get_card_plain_text_description(self, card: dict, is_face: bool = False) -> str:
         full_text_description = ""
         if 'role' in card and card['role'] == 'commander':
             full_text_description += f"[COMMANDER]"
-        full_text_description += f"\n{card['quantity']} {card['name']}" if not is_face else f"\t- Face {card['name']}"
+        full_text_description += f"\n[{card['quantity']}x] {card['name']}" if not is_face else f"\t- Face {card['name']}"
 
         if 'card_faces' in card and len(card['card_faces']) > 1:
             for face in card['card_faces']:
@@ -99,6 +101,7 @@ class MoxFieldDeck:
             full_text_description += f"\nLoyalty: {card['loyalty']}" if not is_face else f"\n\t\tLoyalty: {card['loyalty']}"
         return full_text_description
 
+    @ttl_cache(maxsize=1024, ttl=60*60*12)
     def get_deck_info(self) -> dict:
         return {
             'name': self.raw_deck['name'],
@@ -107,8 +110,10 @@ class MoxFieldDeck:
             'author': ' & '.join(author['displayName'] for author in self.raw_deck['authors']),
             'colors': self.raw_deck['colors'],
             'color_percentages': {COLOR_TO_LAND[color.lower()]: percentage for color, percentage in self.raw_deck['colorPercentages'].items()},
-            'deck_list': self.get_deck_list()
+            'deck_list': self.get_deck_list(),
+            'deck_list_by_card_name': {card['name']: card for card in self.get_deck_list()}
         }
+
 
     def get_deck_list_as_plain_text(self) -> str:
         deck_list = self.get_deck_list()

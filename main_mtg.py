@@ -2,6 +2,7 @@ import os
 import os
 
 from llm.youtube.youtube_mtg_llm import YoutubeMTGLLM
+from pipeline.youtube.mtggarden_pipeline import MTGGardenPipeline
 from pipeline.youtube.pipeline import Pipeline
 from llm.youtube.youtube_llm import YoutubeLLM
 from loguru import logger
@@ -79,12 +80,12 @@ def generate_videos():
             assert os.path.isfile(script_path), "Script file not found"
 
             # If the video file already exists, skip it
-            if not missing_video_assets(assets_path=output_path):
-                continue
+            #if not missing_video_assets(assets_path=output_path):
+                #continue
 
             for retrial in range(25):
                 try:
-                    Pipeline(output_folder=output_path).generate_video()
+                    MTGGardenPipeline(output_folder=output_path, deck=deck).generate_video()
                     break
                 except WaitAndRetryError as e:
                     sleep_time = e.suggested_wait_time
