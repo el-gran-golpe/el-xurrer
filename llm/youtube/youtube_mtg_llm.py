@@ -80,15 +80,15 @@ class YoutubeMTGLLM(BaseLLM):
         categories = self._improve_card_categories(categories_dict=categories_dict, deck=deck, cache=cache)
         deck_list = deck['deck_list_by_card_name']
         responses = []
-        for category_info in categories:
-            category, category_description = category_info['category'], category_info['category_description']
-            card_names = category_info['cards']
+        for i in range(0, len(categories), 2):
+            categories_info = categories[i: i + 2]
+            categories_name = ', '.join([category['category'] for category in categories_info])
+            card_names = [card for category in categories_info for card in category['cards']]
 
             card_descriptions = {card_name: deck_list[card_name]['plain_text_description']
                                  for card_name in card_names if card_name in deck_list}
 
-            category_prompt = (prompt.replace("{category}", category).
-                               replace('{category_description}', category_description).
+            category_prompt = (prompt.replace("{categories}", categories_name).
                                replace("{cards_description}", '\n\n'.join(f"{name}:\n{description}"
                                                                           for name, description in card_descriptions.items())))
 
@@ -102,8 +102,8 @@ class YoutubeMTGLLM(BaseLLM):
 
             assistant_reply = self.decode_json_from_message(message=assistant_reply)
 
-            responses.append(assistant_reply)
-        return {'categories': responses}
+            responses.extend(assistant_reply['content'])
+        return {'cards_explanation': responses}
 
 
 

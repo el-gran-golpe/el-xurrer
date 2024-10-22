@@ -45,50 +45,47 @@ class MTGGardenPipeline:
     def generate_video(self):
         lang = 'es'#self.script["lang"]
         #w, h = WH_BY_ASPECT_RATIO[self.script["aspect_ratio"]]
-        self.generate_categories_assets()
+        self.generate_cards_explanation(sections = self.script['cards_explanation'])
 
         self.generate_video_from_clips(output_video_path=os.path.join(self.output_folder, f"video.mp4"))
 
 
-    def generate_categories_assets(self, regenerate_subtitles: bool = False):
+    def generate_cards_explanation(self, sections: dict,  regenerate_subtitles: bool = False):
 
-        categories = self.script["categories"]
-        for category_entry in categories:
-            category = category_entry["category"]
-            for card in category_entry["cards"]:
-                _id, card_name, comment = card['id'], card["card_name"], card["comment"]
-                audio_path = os.path.join(self.output_folder, 'audio', f"{_id}.wav")
-                image_path = os.path.join(self.output_folder, 'images', f"{_id}.png")
-                subtitle_sentence_path = os.path.join(self.output_folder, 'subtitles', 'sentence', f"{_id}.srt")
-                subtitle_word_path = os.path.join(self.output_folder, 'subtitles', 'word', f"{_id}.srt")
+        for section in sections:
+            _id, card_names, text = section['id'], section["card_names"], section["text"]
+            audio_path = os.path.join(self.output_folder, 'audio', f"{_id}.wav")
+            image_path = os.path.join(self.output_folder, 'images', f"{_id}.png")
+            subtitle_sentence_path = os.path.join(self.output_folder, 'subtitles', 'sentence', f"{_id}.srt")
+            subtitle_word_path = os.path.join(self.output_folder, 'subtitles', 'word', f"{_id}.srt")
 
-                if not os.path.isfile(image_path):
-                    start = time()
-                    card_url = self.deck.get_card_image_url(card_name=card_name)
-                    self.image_generator.generate_image(card_urls=[card_url], output_path=image_path)
-                    logger.info(f"Image generation: {time() - start:.2f}s")
-                    assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
+            if not os.path.isfile(image_path):
+                start = time()
+                card_urls = [self.deck.get_card_image_url(card_name=card_name) for card_name in card_names]
+                self.image_generator.generate_image(card_urls=card_urls, output_path=image_path)
+                logger.info(f"Image generation: {time() - start:.2f}s")
+                assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
 
-                if not os.path.isfile(audio_path):
-                    start = time()
+            if not os.path.isfile(audio_path):
+                start = time()
 
-                    self.voice_generator.generate_audio_to_file(text=comment, output_path=audio_path,
-                                                                language='es', retries=3)
-                    logger.info(f"Audio generation: {time() - start:.2f}s")
-                    assert os.path.isfile(audio_path), f"Audio file {audio_path} was not generated"
+                self.voice_generator.generate_audio_to_file(text=text, output_path=audio_path,
+                                                            language='es', retries=3)
+                logger.info(f"Audio generation: {time() - start:.2f}s")
+                assert os.path.isfile(audio_path), f"Audio file {audio_path} was not generated"
 
-                if comment and (regenerate_subtitles or not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(
-                        subtitle_word_path)):
-                    start = time()
-                    self.subtitle_generator.audio_file_to_srt(audio_path=audio_path,
-                                                              srt_sentence_output_path=subtitle_sentence_path,
-                                                              srt_words_output_path=subtitle_word_path,
-                                                              text_to_fit=comment)
-                    logger.info(f"Subtitle generation: {time() - start:.2f}s")
-                    assert os.path.isfile(
-                        subtitle_sentence_path), f"Sentence subtitle file {subtitle_sentence_path} was not generated"
-                    assert os.path.isfile(
-                        subtitle_word_path), f"Word subtitle file {subtitle_word_path} was not generated"
+            if text and (regenerate_subtitles or not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(
+                    subtitle_word_path)):
+                start = time()
+                self.subtitle_generator.audio_file_to_srt(audio_path=audio_path,
+                                                          srt_sentence_output_path=subtitle_sentence_path,
+                                                          srt_words_output_path=subtitle_word_path,
+                                                          text_to_fit=text)
+                logger.info(f"Subtitle generation: {time() - start:.2f}s")
+                assert os.path.isfile(
+                    subtitle_sentence_path), f"Sentence subtitle file {subtitle_sentence_path} was not generated"
+                assert os.path.isfile(
+                    subtitle_word_path), f"Word subtitle file {subtitle_word_path} was not generated"
 
     def _generate_thumbnail_if_not_exists(self) -> bool:
 

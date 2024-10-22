@@ -195,7 +195,7 @@ def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tu
             dict_to_fill[key] = [generate_ids_in_dict(dict_to_fill=v, parent_key=current_key, leaf_suggestions=leaf_suggestions)
                                  if isinstance(v, dict) else v for v in value]
 
-    if all(not isinstance(v, (dict, list, tuple)) for v in dict_to_fill.values()) and 'id' not in dict_to_fill:
+    if all(not isinstance(v, (dict,)) for v in dict_to_fill.values()) and 'id' not in dict_to_fill and len(list(dict_to_fill.keys())) > 1:
         for suggestion in leaf_suggestions:
             if suggestion in dict_to_fill:
                 parent_key = f"{parent_key}--{dict_to_fill[suggestion]}"
