@@ -1,0 +1,258 @@
+{
+    "posts": [
+        {
+            "date": "2023-10-28",
+            "title": "Dawn's Quiet Call",
+            "caption": "The journey continues, deeper into the heart of history. In the serene embrace of Lyon's cobblestone streets at sunrise, there lies an untold story waiting to unfold. #LesEmpreintes #NewBeginnings",
+            "hashtags": [
+                "#LesEmpreintes",
+                "#NewBeginnings",
+                "#LyonSunrise",
+                "#JourneyOfDiscovery"
+            ],
+            "image_description": "A quiet sunrise setting over the cobblestone streets of Lyon.",
+            "upload_time": "07:30"
+        },
+        {
+            "date": "2023-10-29",
+            "title": "Messages Beneath",
+            "caption": "The Earth speaks in whispers. Can you feel it? From the crunch of leaves to the softness of soil, each texture holds a forgotten language. #BarefootWisdom #NatureSpeaks",
+            "hashtags": [
+                "#BarefootWisdom",
+                "#NatureSpeaks",
+                "#EarthlyTextures",
+                "#ListenToNature"
+            ],
+            "image_description": "Close-up of detailed earth textures with leaves and soil.",
+            "upload_time": "10:00"
+        },
+        {
+            "date": "2023-10-30",
+            "title": "Voices of Lyon",
+            "caption": "Join us on Stories to hear from the locals about Les Empreintes. Participate in polls and engage with community stories.",
+            "hashtags": [
+                "#LocalLegends",
+                "#CommunityVoices",
+                "#LesEmpreintes"
+            ],
+            "image_description": "Collage of locals being interviewed on the streets of Lyon.",
+            "upload_times": [
+                "12:00",
+                "15:00",
+                "18:00"
+            ]
+        },
+        {
+            "date": "2023-10-31",
+            "title": "Light as a Feather",
+            "caption": "What weighs more: the things we carry or what we leave behind? In the embrace of simplicity, we find what truly matters. #LessIsMore #SpiritualWealth",
+            "hashtags": [
+                "#LessIsMore",
+                "#SpiritualWealth",
+                "#MinimalistLiving"
+            ],
+            "image_description": "A single feather floats on the wind, symbolizing lightness and simplicity.",
+            "upload_time": "14:00"
+        },
+        {
+            "date": "2023-11-01",
+            "title": "Echoes in Stone",
+            "caption": "Every step has its story. What will yours tell? Unearthing the mysteries of ancient footprints, symbols of a time almost forgotten. #PathToTruth #AncientEchoes",
+            "hashtags": [
+                "#PathToTruth",
+                "#AncientEchoes",
+                "#FootprintsOfHistory"
+            ],
+            "image_description": "Ancient footprint fossil embedded in stone.",
+            "upload_time": "17:00"
+        },
+        {
+            "date": "2023-11-04",
+            "title": "Culture's Canvas",
+            "caption": "History holds many truths, ready to be unveiled. Walking through layers of time, discovering how Les Empreintes shaped art and culture. #CulturalFootsteps #HistoryInLayers",
+            "hashtags": [
+                "#CulturalFootsteps",
+                "#HistoryInLayers",
+                "#ArtOfHistory"
+            ],
+            "image_description": "Layers of cultural artifacts over time displayed in a museum setting.",
+            "upload_time": "11:00"
+        },
+        {
+            "date": "2023-11-05",
+            "title": "Legends Live",
+            "caption": "Join us for an IG Live session with a local historian discussing myths of Les Empreintes. Engage with questions in real-time.",
+            "hashtags": [
+                "#ElderWisdom",
+                "#LegendsLive",
+                "#LesEmpreintes"
+            ],
+            "image_description": "A historian with an antique book in a cozy study, ready for a livestream.",
+            "upload_time": "13:00"
+        },
+        {
+            "date": "2023-11-06",
+            "title": "Echoes of Insight",
+            "caption": "Experience the story highlight reel of Laura reading ancient texts on humanity's bond with nature.",
+            "hashtags": [
+                "#TreasuryOfTales",
+                "#NatureBond",
+                "#AncientWhispers"
+            ],
+            "image_description": "Laura sits by a window with an old book open, surrounded by peaceful nature scenes.",
+            "upload_times": [
+                "09:00",
+                "12:00",
+                "18:00"
+            ]
+        },
+        {
+            "date": "2023-11-07",
+            "title": "Roots & Revelations",
+            "caption": "Sometimes stillness speaks the loudest. In meditation, we discover the harmony between nature and spirit. #GroundedTruth #StillnessSpeaks",
+            "hashtags": [
+                "#GroundedTruth",
+                "#StillnessSpeaks",
+                "#NatureHarmony"
+            ],
+            "image_description": "A serene scene of a person meditating under a tree in the woods.",
+            "upload_time": "16:00"
+        },
+        {
+            "date": "2023-11-08",
+            "title": "Art's Whisper",
+            "caption": "Art translates the whispers of history. Can you hear it? Dive into the creativity inspired by the footsteps of the past. #ArtfulConnection #HistoryInArt",
+            "hashtags": [
+                "#ArtfulConnection",
+                "#HistoryInArt",
+                "#CreativeWhispers"
+            ],
+            "image_description": "An artist painting ancient mythological scenes on a canvas.",
+            "upload_time": "19:00"
+        },
+        {
+            "date": "2023-11-11",
+            "title": "Transformed Trails",
+            "caption": "Every journey leaves us transformed. How has yours shaped you? Reflecting on growth, capturing moments that turned discovery into understanding. #JourneysEnd #PersonalGrowth",
+            "hashtags": [
+                "#JourneysEnd",
+                "#PersonalGrowth",
+                "#TransformativeJourneys"
+            ],
+            "image_description": "A reflective hiker gazing over the horizon from a mountain peak.",
+            "upload_time": "09:00"
+        },
+        {
+            "date": "2023-11-12",
+            "title": "Living Heritage",
+            "caption": "Innovation is tradition reimagined. Bringing age-old customs into the present, where the past says hello to the future. #BridgeToThePast #LivingTraditions",
+            "hashtags": [
+                "#BridgeToThePast",
+                "#LivingTraditions",
+                "#CulturalInnovation"
+            ],
+            "image_description": "A fusion of old and new artforms in a vibrant gallery setting.",
+            "upload_time": "14:30"
+        },
+        {
+            "date": "2023-11-13",
+            "title": "The Path Within",
+            "caption": "Explore the personal testimony of minimalist living's tie to Les Empreintes in our IGTV feature.",
+            "hashtags": [
+                "#PathWithin",
+                "#MinimalismJourney",
+                "#PersonalTestimony"
+            ],
+            "image_description": "A minimalist workspace with a journal and a plant, evoking a journey of simplicity.",
+            "upload_time": "17:00"
+        },
+        {
+            "date": "2023-11-14",
+            "title": "Gathering Grounds",
+            "caption": "Together we find strength, together we find home. Creating shared experiences and bonds over Les Empreintes. #CommunalRoots #SharedPaths",
+            "hashtags": [
+                "#CommunalRoots",
+                "#SharedPaths",
+                "#StrengthInUnity"
+            ],
+            "image_description": "A community gathering with people sharing stories and laughter around a warm fire.",
+            "upload_time": "18:30"
+        },
+        {
+            "date": "2023-11-15",
+            "title": "Nature's Pulse",
+            "caption": "Nature's rhythm courses through us. Are you listening? Observing the timeless dance of nature's soundtrack. #TimelessJourney #NatureRhythms",
+            "hashtags": [
+                "#TimelessJourney",
+                "#NatureRhythms",
+                "#EarthsPulse"
+            ],
+            "image_description": "A serene forest landscape with the sounds of wildlife permeating the calm.",
+            "upload_time": "16:00"
+        },
+        {
+            "date": "2023-11-18",
+            "title": "Hidden Answers",
+            "caption": "What if the journey was the answer all along? In symbols and steps, we uncover what we truly seek. Mysteries of Les Empreintes take form. #UnveilTheTruth #WithinTheJourney",
+            "hashtags": [
+                "#UnveilTheTruth",
+                "#WithinTheJourney",
+                "#MysteryToMeaning"
+            ],
+            "image_description": "A labyrinth symbol etched into stone, surrounded by natural beauty.",
+            "upload_time": "10:00"
+        },
+        {
+            "date": "2023-11-19",
+            "title": "A Clear-Sighted Stand",
+            "caption": "What you seek is seeking you. 🌍 With feet grounded on this hill overlooking Lyon, clarity dawns. #ClearPath #HorizonViews",
+            "hashtags": [
+                "#ClearPath",
+                "#HorizonViews",
+                "#GroundedInVision"
+            ],
+            "image_description": "A panoramic view of Lyon from a hilltop, with a figure standing in contemplation.",
+            "upload_time": "13:30"
+        },
+        {
+            "date": "2023-11-20",
+            "title": "Return to Roots",
+            "caption": "True wealth lies in our return to simplicity. In bare steps, we find life’s authentic path. #EssenceRevealed #BarefootWisdom",
+            "hashtags": [
+                "#EssenceRevealed",
+                "#BarefootWisdom",
+                "#SimpleTruths"
+            ],
+            "image_description": "Bare footprints on a natural pathway, leading into an open field.",
+            "upload_time": "15:00"
+        },
+        {
+            "date": "2023-11-21",
+            "title": "Followers' Footsteps",
+            "caption": "Tune in to discover the journeys our followers have taken, inspired by Laura's wisdom.",
+            "hashtags": [
+                "#PassingTheTorch",
+                "#InspiredJourneys",
+                "#LesEmpreintes"
+            ],
+            "image_description": "A collage of snapshots shared by followers, showing their own paths inspired by the stories.",
+            "upload_times": [
+                "09:00",
+                "12:00",
+                "18:00"
+            ]
+        },
+        {
+            "date": "2023-11-22",
+            "title": "Beyond the Horizon",
+            "caption": "Every end is a new beginning. Where will you start? Embrace your journey, take that first step, and watch as paths unfold. #JourneyToSelf #NewBeginnings",
+            "hashtags": [
+                "#JourneyToSelf",
+                "#NewBeginnings",
+                "#PathToSelf"
+            ],
+            "image_description": "A sunset scene with a path leading towards a radiant horizon.",
+            "upload_time": "17:30"
+        }
+    ]
+}
