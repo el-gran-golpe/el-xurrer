@@ -5,7 +5,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
-EXECUTE_PLANNING = True  # Set to True for planning
+EXECUTE_PLANNING = False  # Set to True for planning
 GENERATE_POSTS = True    # Set to True for generating posts
 UPLOAD_POSTS = False     # Set to True when you want to run uploads
 
@@ -14,7 +14,7 @@ POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
 POST_COUNT = 30 # Not in use
 
 OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles')
-OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
+#OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
 
 def read_previous_storyline(file_path: str) -> str:
     if os.path.exists(file_path):
@@ -93,23 +93,28 @@ def generate_instagram_posts():
     assert os.path.isdir(OUTPUT_FOLDER_BASE_PATH_PLANNING), f"Planning folder not found: {OUTPUT_FOLDER_BASE_PATH_PLANNING}"
 
     # List all JSON files in the planning folder
-    available_plannings = [template[:-len('.json')] for template in os.listdir(OUTPUT_FOLDER_BASE_PATH_PLANNING)
-                           if template.endswith('.json')]
+    available_plannings = []
+    for root, dirs, files in os.walk(OUTPUT_FOLDER_BASE_PATH_PLANNING):
+        for file in files:
+            if file.endswith('.json'):
+                available_plannings.append(os.path.join(root, file)[:-len('.json')])
     assert len(available_plannings) > 0, "No planning files found, please generate a planning first"
-    
-    print("Available planning files:")
+
+    print("Available planning files:", available_plannings)
 
     # Automatically select the first profile if only one is available
     profile_index = 0 if len(available_plannings) == 1 else int(input("Select a profile number: ")) - 1
     assert 0 <= profile_index < len(available_plannings), "Invalid profile number"
-    profile_name = available_plannings[profile_index]
+    profile_name = os.path.basename(os.path.dirname(available_plannings[profile_index]))
 
     # Define the prompt template for posts
-    prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{profile_name}.json")
-    assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
+    #prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{profile_name}.json")
+    #assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
 
     # Create the output folder for posts if it doesn't exist
-    output_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, profile_name)
+    profile_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
+    assert os.path.isdir(profile_folder), f"Profile folder not found: {profile_folder}"
+    output_folder = os.path.join(profile_folder, 'posts')
     os.makedirs(output_folder, exist_ok=True)
 
     # Load the planning data from the selected planning file
