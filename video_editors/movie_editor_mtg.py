@@ -45,11 +45,10 @@ class MovieEditorMtg(MovieEditorBase):
 
     def generate_video_from_clips(self, output_video_path: str):
         video_clips = []
-        for category in tqdm(self.script["categories"], desc="Generating video clips"):
-            for card in category["cards"]:
-                clip = self._build_clip(item=card)
-                if clip:
-                    video_clips.append(clip)
+        for section in tqdm(self.script["cards_explanation"], desc="Generating video clips"):
+            clip = self._build_clip(item=section)
+            if clip:
+                video_clips.append(clip)
 
         if video_clips:
             self._save_video(output_video_path, video_clips)
