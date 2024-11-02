@@ -202,3 +202,10 @@ def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tu
 
         dict_to_fill['id'] = slugify(f"{parent_key}--{str(uuid4())[:8]}")
     return dict_to_fill
+
+
+def read_previous_storyline(file_path: str) -> str:
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
+            content = file.read().strip()
+    return content if content else ""

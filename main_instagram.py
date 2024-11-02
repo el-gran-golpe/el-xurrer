@@ -4,6 +4,7 @@ from llm.instagram.instagram_llm import InstagramLLM
 import json
 from slugify import slugify
 from tqdm import tqdm
+from utils.utils import read_previous_storyline
 
 EXECUTE_PLANNING = False  # Set to True for planning
 GENERATE_POSTS = True     # Set to True for generating posts
@@ -16,11 +17,7 @@ POST_COUNT = 30 # Not in use
 OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles')
 #OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
 
-def read_previous_storyline(file_path: str) -> str:
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
-            content = file.read().strip()
-    return content if content else ""
+
 
 def generate_instagram_planning():
     # Ensure the planning template folder exists
@@ -137,30 +134,26 @@ def generate_instagram_posts():
         os.makedirs(post_folder, exist_ok=True)
 
         # Prepare post content
-        post_content = {
-            "title": post_title,
+        post_content = [{
+            "post_title": post_title,
             "caption": caption,
             "hashtags": hashtags,
             "image_description": image_description,
             "image_urls": image_urls,
             "upload_time": upload_time
-        }
+        }]
 
-        # Iterate through the post data to generate multiple post contents
-        for content in post_data.get('contents', []): #TODO: check if this is the correct way to iterate through the contents
-            post_content.update(content)
+        for retrial in range(25):
+            try:
+                PipelineInstagram(post_content, post_folder).generate_posts() #TODO: check output folder variable
+                break
+            except WaitAndRetryError as e:
+                sleep_time = e.suggested_wait_time
+                hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
 
-            for retrial in range(25):
-                try:
-                    PipelineInstagram(post_content).generate_posts() #TODO: check output folder variable
-                    break
-                except WaitAndRetryError as e:
-                    sleep_time = e.suggested_wait_time
-                    hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
-
-                    for _ in tqdm(range(100),
-                                  desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
-                        sleep(sleep_time / 100)
+                for _ in tqdm(range(100),
+                                desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
+                    sleep(sleep_time / 100)
 
 def upload_posts():
     from uploading_apis.instagram.uploader_instagram import InstagramUploader
