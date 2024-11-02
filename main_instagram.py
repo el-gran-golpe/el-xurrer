@@ -6,8 +6,8 @@ from slugify import slugify
 from tqdm import tqdm
 
 EXECUTE_PLANNING = False  # Set to True for planning
-GENERATE_POSTS = True    # Set to True for generating posts
-UPLOAD_POSTS = False     # Set to True when you want to run uploads
+GENERATE_POSTS = True     # Set to True for generating posts
+UPLOAD_POSTS = False      # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
@@ -122,7 +122,6 @@ def generate_instagram_posts():
     with open(planning_file_path, 'r', encoding='utf-8') as file:
         planning = json.load(file)
 
-
     # Iterate over the planning list and generate Instagram posts
     for post_data in tqdm(planning, desc=f"Generating Instagram posts for {profile_name}", total=len(planning)):
         post_title = post_data.get('title')
@@ -147,11 +146,13 @@ def generate_instagram_posts():
             "upload_time": upload_time
         }
 
-        #post = InstagramLLM().generate_instagram_publication(duration=duration, theme_prompt=theme_prompt,
-                                            #prompt_template_path=prompt_template_path)
-        for retrial in range(25):
+        # Iterate through the post data to generate multiple post contents
+        for content in post_data.get('contents', []): #TODO: check if this is the correct way to iterate through the contents
+            post_content.update(content)
+
+            for retrial in range(25):
                 try:
-                    PipelineInstagram(output_folder=output_path).generate_video()
+                    PipelineInstagram(post_content).generate_posts() #TODO: check output folder variable
                     break
                 except WaitAndRetryError as e:
                     sleep_time = e.suggested_wait_time
