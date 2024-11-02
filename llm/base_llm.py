@@ -291,9 +291,9 @@ class BaseLLM:
         for placeholder in placeholders:
             if not accept_unfilled:
                 assert placeholder in cache, f"Placeholder '{placeholder}' not found in the cache"
-                prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
+                prompt = prompt.replace(f'{{{placeholder}}}', str(cache[placeholder]))
             elif placeholder in cache:
-                prompt = prompt.replace(f'{{{placeholder}}}', cache[placeholder])
+                prompt = prompt.replace(f'{{{placeholder}}}', str(cache[placeholder]))
         return prompt
 
     def _generate_dict_from_prompts(self, prompts: list[dict], preferred_models: list = None,
