@@ -4,23 +4,19 @@ from llm.instagram.instagram_llm import InstagramLLM
 import json
 from slugify import slugify
 from tqdm import tqdm
+from utils.utils import read_previous_storyline
+from uploading_apis.instagram.uploader_instagram import InstagramUploader
 
 EXECUTE_PLANNING = False  # Set to True for planning
-GENERATE_POSTS = True    # Set to True for generating posts
-UPLOAD_POSTS = False     # Set to True when you want to run uploads
+GENERATE_POSTS = True     # Set to True for generating posts
+UPLOAD_POSTS = False      # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
-POST_COUNT = 30 # Not in use
 
 OUTPUT_FOLDER_BASE_PATH_PLANNING = os.path.join('.', 'resources', 'outputs','instagram_profiles')
-#OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'outputs','instagram_profiles', 'posts')
+OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'resources', 'outputs','instagram_profiles', 'laura_vigne', 'posts')
 
-def read_previous_storyline(file_path: str) -> str:
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
-            content = file.read().strip()
-    return content if content else ""
 
 def generate_instagram_planning():
     # Ensure the planning template folder exists
@@ -118,65 +114,96 @@ def generate_instagram_posts():
     os.makedirs(output_folder, exist_ok=True)
 
     # Load the planning data from the selected planning file
-    planning_file_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, f"{profile_name}.json")
+    planning_file_path = available_plannings[profile_index] + '.json'
     with open(planning_file_path, 'r', encoding='utf-8') as file:
         planning = json.load(file)
 
-    # Iterate over the planning and generate Instagram posts
-    for week, daily_posts in tqdm(planning.items(), desc=f"Generating Instagram posts for {profile_name}", total=len(planning)):
-        for day, post_data_list in daily_posts.items():
-            for post_data in post_data_list:
-                post_title = post_data.get('title')
-                post_slug = slugify(post_title)
-                caption = post_data.get('caption')
-                hashtags = post_data.get('hashtags', [])
-                image_description = post_data.get('image_description')
-                image_urls = post_data.get('image_urls', [])
-                upload_time = post_data.get('upload_time')
+    # Iterate over the planning list and generate Instagram posts
+    for post_data in tqdm(planning, desc=f"Generating Instagram posts for {profile_name}", total=len(planning)):
+        post_title = post_data.get('title')
+        post_slug = slugify(post_title)
+        caption = post_data.get('caption')
+        hashtags = post_data.get('hashtags', [])
+        image_description = post_data.get('image_description')
+        image_urls = post_data.get('image_urls', [])
+        upload_time = post_data.get('upload_time')
 
-                # Ensure a unique folder for each post
-                post_folder = os.path.join(output_folder, post_slug)
-                os.makedirs(post_folder, exist_ok=True)
+        # Ensure a unique folder for each post
+        post_folder = os.path.join(output_folder, post_slug)
+        os.makedirs(post_folder, exist_ok=True)
 
-                # Check if the post already exists
-                post_file_path = os.path.join(post_folder, 'post.json')
-                if not os.path.isfile(post_file_path):
-                    # Prepare post content
-                    post_content = {
-                        "title": post_title,
-                        "caption": caption,
-                        "hashtags": hashtags,
-                        "image_description": image_description,
-                        "image_urls": image_urls,
-                        "upload_time": upload_time
-                    }
-                    post = InstagramLLM().generate_instagram_publication(duration=duration, theme_prompt=theme_prompt,
-                                                      prompt_template_path=prompt_template_path)
-                    # Save the generated post to a JSON file
-                    with open(post_file_path, 'w', encoding='utf-8') as f:
-                        json.dump(post_content, f, indent=4, ensure_ascii=False)
+        # Prepare post content
+        post_content = [{
+            "post_title": post_title,
+            "caption": caption,
+            "hashtags": hashtags,
+            "image_description": image_description,
+            "image_urls": image_urls,
+            "upload_time": upload_time
+        }]
 
-                    # Use PipelineInstagram to process the post
-                    PipelineInstagram(output_folder=post_folder).generate_post()
-                else:
-                    print(f"Post '{post_slug}' already exists, skipping...")
+        for retrial in range(25):
+            try:
+                PipelineInstagram(post_content, post_folder).generate_posts() #TODO: check output folder variable
+                break
+            except WaitAndRetryError as e:
+                sleep_time = e.suggested_wait_time
+                hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
+
+                for _ in tqdm(range(100),
+                                desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
+                    sleep(sleep_time / 100)
+
 
 def upload_posts():
-    from uploading_apis.instagram.uploader_instagram import InstagramUploader
-
     uploader = InstagramUploader()
 
-    # Read posts that have already been generated
-    post_folders = [folder for folder in os.listdir(OUTPUT_FOLDER_BASE_PATH_POSTS) if os.path.isdir(os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, folder))]
+    # Get list of post folders
+    post_folders = [
+        folder for folder in os.listdir(OUTPUT_FOLDER_BASE_PATH_POSTS)
+        if os.path.isdir(os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, folder))
+    ]
+    assert post_folders, f"No post folders found in {OUTPUT_FOLDER_BASE_PATH_POSTS}"
 
-    for post_folder in post_folders:
-        post_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, post_folder, 'post.json')
-        if os.path.isfile(post_path):
-            with open(post_path, 'r') as f:
-                post_content = json.load(f)
+    for post_folder in sorted(post_folders):
+        post_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, post_folder)
 
-            image_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, post_folder, f'{slugify(post_content["caption"])}.png')
-            uploader.upload_post(image_path=image_path, caption=post_content['caption'])
+        # Read caption
+        caption_path = os.path.join(post_path, 'caption.txt')
+        assert os.path.isfile(caption_path), f"No caption.txt found in {post_folder}."
+        with open(caption_path, 'r', encoding='utf-8') as f:
+            caption = f.read().strip()
+        assert caption, f"Caption in {post_folder} is empty."
+
+        # Read upload time
+        upload_time_path = os.path.join(post_path, 'upload_time.txt')
+        assert os.path.isfile(upload_time_path), f"No upload_time.txt found in {post_folder}."
+        with open(upload_time_path, 'r') as f:
+            upload_time_str = f.read().strip()
+            # Parse the upload time in ISO 8601 format with 'Z' for UTC
+            try:
+                upload_time = datetime.strptime(upload_time_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+            except ValueError:
+                assert False, f"Invalid date format in {upload_time_path}. Expected format: YYYY-MM-DDTHH:MM:SSZ"
+
+        # Get current time in UTC
+        current_time = datetime.now(timezone.utc)
+        if current_time < upload_time:
+            time_to_wait = (upload_time - current_time).total_seconds()
+            print(f"Waiting {time_to_wait} seconds to upload {post_folder}")
+            time.sleep(time_to_wait)
+
+        # Get image paths
+        image_files = [
+            file for file in os.listdir(post_path)
+            if file.lower().endswith(('.png', '.jpg', '.jpeg'))
+        ]
+        assert image_files, f"No images found in {post_folder}."
+        image_paths = [os.path.join(post_path, image_file) for image_file in sorted(image_files)]
+
+        # Upload the post
+        uploader.upload_post(image_paths=image_paths, caption=caption)
+
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:
