@@ -1,6 +1,6 @@
 from concurrent.futures import CancelledError
 
-from gradio_client import Client
+from gradio_client import Client, handle_file
 from PIL import Image
 import os
 import re
@@ -15,14 +15,13 @@ from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
 
-from generation_tools.image_generator.flux.constants import SPACE_IS_DOWN_ERRORS, ALTERNATIVE_FLUX_DEV_SPACE, \
-	QUOTA_EXCEEDED_ERRORS, ORIGINAL_FLUX_DEV_SPACE
+from generation_tools.image_generator.outpainting.constants import SPACE_IS_DOWN_ERRORS, \
+	QUOTA_EXCEEDED_ERRORS, DIFFUSERS_IMAGE_OUTPAINT_SPACE, VALID_ALIGNMENTS, OVERLAP_BY_ALIGNMENT, \
+	DEFAULT_RESIZE_OPTIONS
 from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
 
-# Switch the spaces to work with the alternative space first
-#ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = ORIGINAL_FLUX_DEV_SPACE, ALTERNATIVE_FLUX_DEV_SPACE
-class Flux:
-	def __init__(self, src_model: str = ORIGINAL_FLUX_DEV_SPACE, use_proxy: bool = True,
+class DiffusersImageOutpainting:
+	def __init__(self, src_model: str = DIFFUSERS_IMAGE_OUTPAINT_SPACE, use_proxy: bool = True,
 				 api_name: str = '/infer', load_on_demand: bool = False):
 		self._src_model = src_model
 		self._api_name = api_name
@@ -56,12 +55,8 @@ class Flux:
 					ReadError, httpxConnectError, httpxProxyError, RepositoryNotFoundError,
 					httpxRemoteProtocolError) as e:
 				reason = e.args[0] if hasattr(e, 'args') and len(e.args) > 0 else None
-				if ((reason in SPACE_IS_DOWN_ERRORS or isinstance(e, RepositoryNotFoundError))
-						and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE):
-					logger.error(f"Error creating client: {e}. Space is down. Retry {retry + 1}/3")
-					self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
-					client = self.get_new_client(retries=1)
-					break
+				if (reason in SPACE_IS_DOWN_ERRORS):
+					raise HFSpaceIsDownError(f"Space is down: {e}")
 				else:
 					logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
 					self.proxy.renew_proxy()
@@ -70,34 +65,42 @@ class Flux:
 									suggested_wait_time=suggested_wait_time or 60*60)
 		return client
 
-	def generate_image(self, prompt, output_path: str, seed: int|None = None, width=512, height=512,
-					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3):
-
-		assert isinstance(prompt, str), "Prompt must be a string"
-		assert seed is None or isinstance(seed, int), "Seed must be an integer or None"
-		assert 0 < width <= 2048, "Width must be between 0 and 2048"
-		assert 0 < height <= 2048, "Height must be between 0 and 2048"
-		assert 0 < guidance_scale <= 10, "Guidance scale must be between 0 and 10"
-		assert 0 < num_inference_steps <= 100, "Number of inference steps must be between 0 and 100"
-
+	def outpaint(self, src_image: str, output_path: str, width=512, height=512,
+				 num_inference_steps=12, resize_option: str = 'Full',
+				 prompt: str = None, alignment: str = 'Middle', overlap_percentage: float = 5.,
+				 retries: int = 3):
+		assert isinstance(src_image, str), "Source image URL must be a string"
+		# Check it is a valid URL
+		assert re.match(r'^https?://', src_image) or os.path.isfile(src_image), \
+			"Invalid source image, must be a URL or a local file path"
+		assert isinstance(output_path, str), "Output path must be a string"
+		assert isinstance(overlap_percentage, (int, float)) and 1. <= overlap_percentage <= 100. , \
+			"Overlap percentage must be between 1 and 100"
+		assert 0 < width <= 2048, "Width must be between 1 and 2048"
+		assert 0 < height <= 2048, "Height must be between 1 and 2048"
+		assert 1 < num_inference_steps <= 12, "Number of inference steps must be between 0 and 12"
+		assert resize_option in DEFAULT_RESIZE_OPTIONS, f"Invalid resize option. Valid options are: {DEFAULT_RESIZE_OPTIONS}"
 		assert 0 < retries <= 10, "Number of retries must be between 0 and 10"
 
-		recommended_waiting_time_seconds, recommended_waiting_time_str = None, None
+		alignment = alignment.title()
+		assert alignment in VALID_ALIGNMENTS, f"Invalid alignment. Valid alignments are: {VALID_ALIGNMENTS}"
+		overlap_params = OVERLAP_BY_ALIGNMENT[alignment]
 
-		randomize_seed = seed is None
+		recommended_waiting_time_seconds, recommended_waiting_time_str = None, None
 
 		for i in range(retries):
 			try:
 				with self.proxy:
-					image_path, seed = self.client.predict(
-						prompt=prompt,
-						seed=seed,
-						randomize_seed=randomize_seed,
+					mask_path, image_path = self.client.predict(
+						image=handle_file(filepath_or_url=src_image),
 						width=width,
 						height=height,
-						guidance_scale=guidance_scale,
-						num_inference_steps=num_inference_steps,
-						api_name=self._api_name
+						overlap_percentage=overlap_percentage,
+						resize_option=resize_option,
+						prompt_input=prompt,
+						alignment=alignment,
+						api_name=self._api_name,
+						**overlap_params
 					)
 					break
 			except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
@@ -145,8 +148,8 @@ class Flux:
 
 if __name__ == '__main__':
 
-	flux = Flux()
-	prompt = "A girl pouring oil on her feet with colored nails. Erotic, sensual, and sexy."
+	flux = DiffusersImageOutpainting()
+	input_image = "https://cards.scryfall.io/art_crop/front/5/6/56fbbcc9-db23-4902-b0f7-cea78a2a36af.jpg?1543676055"
 	output_path = "./output.jpg"
-	flux.generate_image(prompt, output_path, width=1080, height=1080)
+	flux.outpaint(input_image, output_path, width=1280, height=720, alignment='Left')
 	print(f"Image saved to {output_path}")
