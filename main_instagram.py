@@ -65,7 +65,7 @@ def generate_instagram_planning():
         previous_storyline=previous_storyline
     )
 
-    # Save the generated planning to a JSON file
+    # Create a folder for the planning file
     output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
     os.makedirs(output_path, exist_ok=True)
 
@@ -77,7 +77,7 @@ def generate_instagram_planning():
         print(f"Warning: The planning file already exists in the folder: {output_path}")
         overwrite = input("Do you want to overwrite it? (y/n): ")
         if overwrite.lower() not in ('y', 'yes'):
-            print("The planning was not saved")
+            print("The planning was not saved") #TODO: this is wronly overwritting things
             return
 
     # Save the generated planning to a JSON file

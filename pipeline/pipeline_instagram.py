@@ -11,7 +11,7 @@ class PipelineInstagram:
     def generate_posts(self):
         for item in tqdm.tqdm(self.post_content):
             _id, image_description = item["post_title"], item["image_description"]
-            image_path = os.path.join(self.output_folder, 'images', f"{_id}.png")
+            image_path = os.path.join(self.output_folder, f"{_id}.png")
             if not os.path.isfile(image_path):
                 assert True, f"Generating image for ID {_id} with description '{image_description}'"
                 self.image_generator.generate_image(prompt=image_description, output_path=image_path, width=1080, height=1080, retries=2)

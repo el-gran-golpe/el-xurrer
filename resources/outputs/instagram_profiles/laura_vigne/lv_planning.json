@@ -1,310 +1,206 @@
-[
-    {
-        "title": "Tuning into Earth's Energy 🌿",
-        "caption": "Discovering the ancient energy of Lyon beneath my feet at Parc de la Tête d'Or. Join me on a journey to connect with the Earth's heartbeat and feel the calm within. 🌍✨ What energy connects you to the world?",
-        "hashtags": [
-            "#TheUnseenPath",
-            "#BarefootJourney",
-            "#EarthConnection",
-            "#LyonMagic"
-        ],
-        "image_description": "Laura walking barefoot in Parc de la Tête d'Or, surrounded by lush greenery.",
-        "upload_time": "2023-11-01T09:00:00Z"
-    },
-    {
-        "title": "Morning Barefoot Walk Routine",
-        "caption": "",
-        "hashtags": [
-            "#InvisiblePaths",
-            "#MorningReflection",
-            "#GroundYourself"
-        ],
-        "image_description": "Series of videos showing Laura's morning routine with captions overlayed.",
-        "upload_time": "2023-11-02T09:00:00Z"
-    },
-    {
-        "title": "Why Grounding Transforms Us 🌱",
-        "caption": "A candid conversation on grounding and its profound effects on our mind and spirit. Join me in uncovering this simple yet powerful practice. 💚✨",
-        "hashtags": [
-            "#GroundingBenefits",
-            "#MindfulMovement",
-            "#SpiritualWellness"
-        ],
-        "image_description": "Behind-the-scenes video of Laura discussing grounding in a natural setting.",
-        "upload_time": "2023-11-03T09:00:00Z"
-    },
-    {
-        "title": "Textures Underfoot 🌾",
-        "caption": "Experience the Earth through touch. Grass, pebbles, water—each step a connection. Close your eyes and imagine... How does each texture feel beneath your feet?",
-        "hashtags": [
-            "#TouchingTheEarth",
-            "#NatureConnections",
-            "#MindfulWalking"
-        ],
-        "image_description": "Carousel of images showing different textures of the earth experienced barefoot.",
-        "upload_time": "2023-11-04T09:00:00Z"
-    },
-    {
-        "title": "Q&A on Les Empreintes Legend 🌌",
-        "caption": "",
-        "hashtags": [
-            "#LesEmpreintesLegend",
-            "#BarefootDiscussion",
-            "#JoinLive"
-        ],
-        "image_description": "Promotional image for a live Q&A session with details overlayed.",
-        "upload_time": "2023-11-05T17:00:00Z"
-    },
-    {
-        "title": "The Mystical Aura of Lyon ✨",
-        "caption": "Discover Lyon's mystical past with insights from a local historian. Dive into ancient lore and let the tales of old enrich our modern understanding.",
-        "hashtags": [
-            "#LyonLoose",
-            "#HistoricalMysticism",
-            "#AncientTales"
-        ],
-        "image_description": "Image of an ancient part of Lyon with mystical elements highlighted.",
-        "upload_time": "2023-11-06T09:00:00Z"
-    },
-    {
-        "title": "This Week's Journey 🌌",
-        "caption": "Reflecting on our barefoot journey has opened new connections with nature and self. What insights have you gained this week? Let's share! 🌱💭",
-        "hashtags": [
-            "#WeeklyReflection",
-            "#JourneyInwards",
-            "#NatureInsight"
-        ],
-        "image_description": "Laura in thoughtful reflection amidst a natural setting.",
-        "upload_time": "2023-11-07T09:00:00Z"
-    },
-    {
-        "title": "Exploring Lyon's Mysteries 🔍",
-        "caption": "Touring Lyon's mysterious sites linked to Les Empreintes, each holding secrets of the past. Which site intrigues you the most?",
-        "hashtags": [
-            "#ForgottenStories",
-            "#MysteryTour",
-            "#LyonSecrets"
-        ],
-        "image_description": "Reels video capturing mysterious places in Lyon with intriguing visuals.",
-        "upload_time": "2023-11-08T09:00:00Z"
-    },
-    {
-        "title": "Which Story Speaks to You?",
-        "caption": "",
-        "hashtags": [
-            "#VoteYourMystery",
-            "#StoryPoll"
-        ],
-        "image_description": "Instagram story poll with options: 'The Lost Rune', 'Whispering Tunnels', 'Tales of the Stone Guardians'.",
-        "upload_time": "2023-11-09T09:00:00Z"
-    },
-    {
-        "title": "Stories of the Past 📚",
-        "caption": "In the embrace of old books and relics, the stories of our ancestors whisper secrets of wisdom. 'History is alive in us.'",
-        "hashtags": [
-            "#HistoryIsAlive",
-            "#ArtisticPresence",
-            "#AncientWisdom"
-        ],
-        "image_description": "Artistic photo of old books and relics with an atmospheric mood.",
-        "upload_time": "2023-11-10T09:00:00Z"
-    },
-    {
-        "title": "Your Voices, Ancient Stories",
-        "caption": "",
-        "hashtags": [
-            "#HistoryLovers",
-            "#CommunityConnections",
-            "#AncientVoices"
-        ],
-        "image_description": "Images and stories contributed by followers about their historical connections.",
-        "upload_time": "2023-11-11T09:00:00Z"
-    },
-    {
-        "title": "Old Practices, New Insights 🌀",
-        "caption": "Our modern minimalist trends mirror the simplicity of ancient times. What's your take on these parallels? Let's discuss!",
-        "hashtags": [
-            "#ThrowbackThursday",
-            "#AncientModernLink",
-            "#MinimalistLiving"
-        ],
-        "image_description": "Comparison collage of ancient tools and modern minimalist designs.",
-        "upload_time": "2023-11-12T09:00:00Z"
-    },
-    {
-        "title": "How Much Do You Know?",
-        "caption": "",
-        "hashtags": [
-            "#InteractiveLearning",
-            "#LegendQuiz",
-            "#FunFacts"
-        ],
-        "image_description": "Interactive quiz visuals with questions about ancient legends.",
-        "upload_time": "2023-11-13T09:00:00Z"
-    },
-    {
-        "title": "Wisdom of the Past",
-        "caption": "Reading ancient tales reminds us of the threads connecting past and present. How do these stories resonate with you? 🌿📚",
-        "hashtags": [
-            "#PastWisdom",
-            "#StoryThreads",
-            "#ReflectAndConnect"
-        ],
-        "image_description": "Reflective image combining elements of the past with present-day background.",
-        "upload_time": "2023-11-14T09:00:00Z"
-    },
-    {
-        "title": "Discover Your Inner Magic 🧚‍♀️",
-        "caption": "Amidst the mist and whispers of the forest, transformation awaits. See the magic within—you are more powerful than you know.",
-        "hashtags": [
-            "#MysticalJourney",
-            "#InnerTransformation",
-            "#ForestMagic"
-        ],
-        "image_description": "Enchanting forest scene with mystical lighting effects.",
-        "upload_time": "2023-11-15T09:00:00Z"
-    },
-    {
-        "title": "Mystical Meditation Session",
-        "caption": "",
-        "hashtags": [
-            "#MeditationMagic",
-            "#InnerJourney",
-            "#MysticalWorkshop"
-        ],
-        "image_description": "Instagram story workshop visual for guided mystical meditation.",
-        "upload_time": "2023-11-16T09:00:00Z"
-    },
-    {
-        "title": "Harnessing Mystical Practices",
-        "caption": "Join spiritual coach [Name] as they explore the mystical in personal growth. Embrace the magic within.",
-        "hashtags": [
-            "#MysticalGrowth",
-            "#PersonalDevelopment",
-            "#SpiritualCoach"
-        ],
-        "image_description": "Guest post featuring spiritual coach with insights on mystical practices.",
-        "upload_time": "2023-11-17T09:00:00Z"
-    },
-    {
-        "title": "Barefoot Adventure Day 🌍",
-        "caption": "",
-        "hashtags": [
-            "#BarefootChallenge",
-            "#GroundingMoment",
-            "#FeetEarthConnection"
-        ],
-        "image_description": "Mid-week personal challenge graphic encouraging followers to join.",
-        "upload_time": "2023-11-18T09:00:00Z"
-    },
-    {
-        "title": "Magic in Everyday Moments",
-        "caption": "Pause. Breathe. Feel. These are the moments where magic dwells. How do you find magic in your day?",
-        "hashtags": [
-            "#DailyMagic",
-            "#MindfulLiving",
-            "#EverydayWonder"
-        ],
-        "image_description": "Carousel showcasing everyday moments filled with a sense of magic.",
-        "upload_time": "2023-11-19T09:00:00Z"
-    },
-    {
-        "title": "Dive Into The Mystical",
-        "caption": "",
-        "hashtags": [
-            "#NatureMysticism",
-            "#ForestBathing",
-            "#ConnectWithNature"
-        ],
-        "image_description": "Visual blog post with imagery encouraging connections with mystical nature landscapes.",
-        "upload_time": "2023-11-20T09:00:00Z"
-    },
-    {
-        "title": "Everyday Mystical Moments",
-        "caption": "Sharing a moment of mysticism from my daily life. What mystical experiences have touched your everyday? Share yours below! 🌟✨",
-        "hashtags": [
-            "#MysticalEveryday",
-            "#LifeMagic",
-            "#ShareYourStory"
-        ],
-        "image_description": "Photo of a mystical moment captured during a daily routine.",
-        "upload_time": "2023-11-21T09:00:00Z"
-    },
-    {
-        "title": "What Does Connection Mean to You?",
-        "caption": "In the bustling heart of a crowd, we find threads of connection. What does connection mean to you? Join the dialogue below!",
-        "hashtags": [
-            "#ConnectionMeans",
-            "#CommunityDialog",
-            "#HumanThreads"
-        ],
-        "image_description": "Engaging image of a crowded space with symbolic connection elements.",
-        "upload_time": "2023-11-22T09:00:00Z"
-    },
-    {
-        "title": "Insights on Connection",
-        "caption": "Here's a sneak peek into my recent podcast on community and connection. Dive into the conversation! [Podcast Name/Link]",
-        "hashtags": [
-            "#PodcastGuest",
-            "#ConnectionInsights",
-            "#LauraSpeaks"
-        ],
-        "image_description": "Promotional visual for a podcast appearance with a focus on community and connection.",
-        "upload_time": "2023-11-23T09:00:00Z"
-    },
-    {
-        "title": "Essence of Connection 💬",
-        "caption": "\"We are all connected, in ways we never see.\"",
-        "hashtags": [
-            "#InspireConnection",
-            "#ThoughtfulTuesday",
-            "#CommunityHeart"
-        ],
-        "image_description": "Image with a quote overlaid, depicting interconnectedness through nature.",
-        "upload_time": "2023-11-24T09:00:00Z"
-    },
-    {
-        "title": "Sharing Perspectives on Connection",
-        "caption": "In collaboration with [Influencer], we explore connection from different realms. Check their post for more insights! #ConnectionExchange",
-        "hashtags": [
-            "#InfluencerExchange",
-            "#CommunityConnection",
-            "#Collaboration"
-        ],
-        "image_description": "Image showcasing two influencers discussing connection in various contexts.",
-        "upload_time": "2023-11-25T09:00:00Z"
-    },
-    {
-        "title": "Team Connection",
-        "caption": "",
-        "hashtags": [
-            "#BTSConnection",
-            "#TeamworkMagic",
-            "#BehindScenes"
-        ],
-        "image_description": "Behind-the-scenes story showing interactions and connections within Laura's team.",
-        "upload_time": "2023-11-26T09:00:00Z"
-    },
-    {
-        "title": "Power of Human Connection 🌐",
-        "caption": "",
-        "hashtags": [
-            "#LiveDiscussion",
-            "#HumanConnection",
-            "#JoinTheTalk"
-        ],
-        "image_description": "Closing live discussion invitation graphic emphasizing the power of human connection.",
-        "upload_time": "2023-11-27T17:00:00Z"
-    },
-    {
-        "title": "Thank You for the Journey 🌟",
-        "caption": "As our journey of connection concludes, my heart swells with gratitude for each of your stories. Keep embracing connection. 🌍💫",
-        "hashtags": [
-            "#FinalReflection",
-            "#GratitudeJourney",
-            "#ConnectionEndnotes"
-        ],
-        "image_description": "Final post with a warm, heartfelt image expressing gratitude.",
-        "upload_time": "2023-11-28T09:00:00Z"
-    }
-]
+{
+    "week_1": [
+        {
+            "title": "Introduction to the Journey",
+            "caption": "The echoes of those who walked before us lead the way. Each step in this ancient city whispers traces of Les Empreintes. 🌿✨ #EchoesOfThePast #Lyon #BarefootJourney",
+            "hashtags": "#LesEmpreintes #OldLyon #CobbledPath #TravelWithLaura",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne walking barefoot through a vibrant park in Lyon with soft sunlight filtering through the trees.",
+            "upload_time": "2023-10-02T09:00:00Z"
+        },
+        {
+            "title": "Architectural Whispers",
+            "caption": "Every stone has a story. What tales do these facades hold about our intertwined destinies? 🏛️🔍 #ArchitecturalWhispers #HistoryUnveiled #StoneStories",
+            "hashtags": "#LyonArchitecture #HistoricalStories #LesEmpreintes",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne standing in front of a historical building in Lyon, gazing up at the intricate facade.",
+            "upload_time": "2023-10-03T12:00:00Z"
+        },
+        {
+            "title": "The River's Song",
+            "caption": "The rivers remember. Secrets flow with the currents, connecting us with the world's forgotten truths. 🌊💫 #RiversSong #FlowWithHistory #LesEmpreintes",
+            "hashtags": "#RhoneRiver #WhisperedSecrets #NatureAndHistory",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting by the Rhône River, watching the ripples on the water as the sun sets.",
+            "upload_time": "2023-10-04T18:00:00Z"
+        },
+        {
+            "title": "Nature’s Footsteps",
+            "caption": "The forest floor cradles ancient knowledge beneath its roots. Les Empreintes echoes in the heart of nature. 🍃🌲 #NatureFootsteps #RootedWisdom #LesEmpreintes",
+            "hashtags": "#ForestPaths #NatureWisdom #HistoryInNature",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne walking through a lush forest, surrounded by towering trees and dappled sunlight.",
+            "upload_time": "2023-10-05T07:30:00Z"
+        },
+        {
+            "title": "Lessons from the Past",
+            "caption": "Our ancestors wrote down pieces of the puzzle. Join me in dusting off forgotten chapters of our human saga. 📚🔍 #LessonsUncovered #LibraryFinds #LesEmpreintes",
+            "hashtags": "#AncientKnowledge #LibraryWonders #UnwrittenStories",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne browsing through old books in a cozy, dimly-lit library.",
+            "upload_time": "2023-10-06T11:00:00Z"
+        },
+        {
+            "title": "Mystic Connections",
+            "caption": "In silence, the city breathes with tales untold. Where will your journey take you today? 🌅🌌 #MysticConnections #SunsetSilence #LesEmpreintes",
+            "hashtags": "#JourneyWithin #CityMysteries #SilentStories",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne standing on a hill overlooking the city of Lyon at sunset, the sky awash with hues of orange and purple.",
+            "upload_time": "2023-10-07T17:00:00Z"
+        },
+        {
+            "title": "Days of Reflection",
+            "caption": "A week's journey deep into the past leads to personal revelations. Let's pause and reflect. 🔄✨ #ReflectionDays #WeekJourney #LesEmpreintes",
+            "hashtags": "#PersonalGrowth #JourneyOfReflection #EchoesRecap",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting on a wooden bench in a quiet park, deeply engrossed in a reflective moment.",
+            "upload_time": "2023-10-08T20:00:00Z"
+        }
+    ],
+    "week_2": [
+        {
+            "title": "Voices of the Community",
+            "caption": "The guardians of legends reside amongst us. Our elders hold keys to understanding Les Empreintes. 👴🔑 #VoicesOfTheCommunity #GuardianLegends #LesEmpreintes",
+            "hashtags": "#LocalStories #CommunityWisdom #LegendKeepers",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting on a park bench, listening intently to an elderly man sharing stories.",
+            "upload_time": "2023-10-09T10:15:00Z"
+        },
+        {
+            "title": "Folklore and Legends",
+            "caption": "Stories woven from myths reflect deeper truths. What legends guide your journey? ✨📜 #FolkloreLegends #MythicalTruths #LesEmpreintes",
+            "hashtags": "#LyonLegends #MythicalStories #TruthThroughMyths",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne standing in front of a mural depicting mythical creatures, lost in thought.",
+            "upload_time": "2023-10-10T13:00:00Z"
+        },
+        {
+            "title": "Lost Traditions",
+            "caption": "Traditions long-forgotten may hold answers. Rediscovering them is like finding hidden relics of our soul. 🎭🥖 #LostTraditions #SoulRelics #LesEmpreintes",
+            "hashtags": "#TraditionalMarkets #CulturalHeritage #RediscoverTraditions",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne exploring a bustling local market, examining traditional handcrafted goods.",
+            "upload_time": "2023-10-11T15:30:00Z"
+        },
+        {
+            "title": "The Secret Language of Symbols",
+            "caption": "Symbols bridge past and present, their meanings echoing through time. What stories might these tell? 🗝️🕉️ #LanguageOfSymbols #TimeEchoes #LesEmpreintes",
+            "hashtags": "#AncientSymbols #UnspokenStories #SymbolicMeanings",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne studying ancient symbols engraved on a stone wall, a thoughtful look on her face.",
+            "upload_time": "2023-10-12T09:45:00Z"
+        },
+        {
+            "title": "A Modern Connection",
+            "caption": "Art is a dialogue between the ancients and the now. How do you translate the whispers of history? 🎨👩‍🎨 #ModernArtConnects #DialoguesInArt #LesEmpreintes",
+            "hashtags": "#ContemporaryArt #ArtisticWhispers #BridgeAcrossTime",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne observing a piece of modern art in a gallery, her expression intrigued and reflective.",
+            "upload_time": "2023-10-13T14:15:00Z"
+        },
+        {
+            "title": "Storytellers of Tomorrow",
+            "caption": "The future harbors the next chapter of our story. What will the next generation write? ✍️👧 #StorytellersOfTomorrow #FutureChapters #LesEmpreintes",
+            "hashtags": "#NextGenStories #YouthVoices #WriteTheFuture",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting in a circle with children, encouraging them to share and write down their stories.",
+            "upload_time": "2023-10-14T16:00:00Z"
+        },
+        {
+            "title": "Reflection & Wisdom",
+            "caption": "Sharing our stories uncovers pieces of Les Empreintes. Together, we connect the tapestry of time. 👫🧵 #ReflectionAndWisdom #CommunityTapestry #LesEmpreintes",
+            "hashtags": "#SharedStories #TimeTapestry #CollectiveWisdom",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne participating in a community gathering, exchanging stories with a diverse group of people.",
+            "upload_time": "2023-10-15T19:00:00Z"
+        }
+    ],
+    "week_3": [
+        {
+            "title": "The Power of Intuition",
+            "caption": "The path reveals itself to those who listen within. Intuition is our compass through the mystery. 🌿🧘‍♀️ #PowerOfIntuition #InnerCompass #LesEmpreintes",
+            "hashtags": "#IntuitiveGuidance #InnerKnowing #PathWithin",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne practicing yoga amidst lush greenery, her eyes gently closed, immersed in meditation.",
+            "upload_time": "2023-10-16T08:30:00Z"
+        },
+        {
+            "title": "Signs and Symbols",
+            "caption": "The universe speaks not in words, but in signs. What messages have you noticed today? 🔄🌼 #SignsAndSymbols #UniversalMessages #LesEmpreintes",
+            "hashtags": "#NatureSignals #SymbolicUniverse #MessageInThePatterns",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne walking through a scenic park, pausing to observe patterns in nature closely.",
+            "upload_time": "2023-10-17T11:45:00Z"
+        },
+        {
+            "title": "Synchronistic Moments",
+            "caption": "Chance? Or meaningful coincidence? When the universe aligns, magic happens. ✨🔗 #SynchronisticMoments #AlignedUniverse #LesEmpreintes",
+            "hashtags": "#Serendipity #MeaningfulConnections #MagicalAlignments",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne encountering a friend unexpectedly in a lively street corner, both smiling joyously.",
+            "upload_time": "2023-10-18T15:00:00Z"
+        },
+        {
+            "title": "The Invisible Path",
+            "caption": "Our journey is marked by trust in unseen paths. What unknown trails beckon you to follow? 🌲🔮 #InvisiblePath #TrustTheJourney #LesEmpreintes",
+            "hashtags": "#UnseenTrails #JourneyIntoMystery #PathTrust",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne venturing along a misty trail in a dense forest, her expression contemplative yet determined.",
+            "upload_time": "2023-10-19T09:00:00Z"
+        },
+        {
+            "title": "Inner Guidance",
+            "caption": "Dreams and thoughts, a guidebook written by the heart. How do you document your personal signs? 📓🖋️ #InnerGuidance #HeartGuidebook #LesEmpreintes",
+            "hashtags": "#PersonalInsights #DreamSketches #HeartReflections",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting by a window, writing in a journal with her surroundings cast in soft, natural light.",
+            "upload_time": "2023-10-20T12:30:00Z"
+        },
+        {
+            "title": "The Web of Connection",
+            "caption": "We are all strands in the web of life, each connection vital. How do your connections unlock understanding? 🕸️🌐 #WebOfConnection #LifeStrands #LesEmpreintes",
+            "hashtags": "#InterconnectedLife #VitalConnections #WebOfMeaning",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne standing in a crowd, connecting with people through warm gestures and shared laughter.",
+            "upload_time": "2023-10-21T17:30:00Z"
+        },
+        {
+            "title": "Reflecting on the Journey",
+            "caption": "In our quest to understand Les Empreintes, each sign marks growth. Pause, and see how far you’ve come. 🌿🛤️ #JourneyReflection #GrowthMarkers #LesEmpreintes",
+            "hashtags": "#ReflectivePause #JourneyReview #SignsOfGrowth",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting atop a scenic overlook, reflecting on the expansive view of the journey taken.",
+            "upload_time": "2023-10-22T20:00:00Z"
+        }
+    ],
+    "week_4": [
+        {
+            "title": "Integrating the Lessons",
+            "caption": "In the quiet hours, let the lessons settle. Each reflection is a step towards a lighter existence. 🌅📔 #IntegratingLessons #PeacefulReflections #LesEmpreintes",
+            "hashtags": "#MorningReflections #LessonsLearned #PathToLight",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne writing in her journal during early morning hours with a sunrise bath, shedding light on her face.",
+            "upload_time": "2023-10-23T07:15:00Z"
+        },
+        {
+            "title": "A Celebration of Life",
+            "caption": "Celebrate the journey and the stories that unite us. Life's moments of joy strengthen our spirit. 🎉❤️ #CelebrationOfLife #JourneyJoy #LesEmpreintes",
+            "hashtags": "#FestiveMoments #LifeStories #UnityInJoy",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne joining a lively street celebration, joyfully interacting with others.",
+            "upload_time": "2023-10-24T11:30:00Z"
+        },
+        {
+            "title": "Wisdom in Simplicity",
+            "caption": "True wisdom lies in simplicity. Embrace minimalism, and let abundance unfold in the essentials. 🌿🪑 #WisdomInSimplicity #AbundanceEssentials #LesEmpreintes",
+            "hashtags": "#SimpleLiving #EssentialAbundance #MinimalistWisdom",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting in a minimalist room, savoring a simple yet elegant meal.",
+            "upload_time": "2023-10-25T14:45:00Z"
+        },
+        {
+            "title": "Earth’s Gifts",
+            "caption": "The earth feeds our body and soul. What nourishments bless your life? 🌻🌾 #EarthsGifts #NatureNourishment #LesEmpreintes",
+            "hashtags": "#NaturalNourishment #GardenAbundance #SoulFeast",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne tending to a beautiful garden, gathering fresh herbs and vegetables.",
+            "upload_time": "2023-10-26T16:00:00Z"
+        },
+        {
+            "title": "Sharing New Understandings",
+            "caption": "Together, let's share what we’ve uncovered. Community leads us into the light. 👣🌟 #SharingInsights #CommunityLight #LesEmpreintes",
+            "hashtags": "#CollectiveSharing #LightThroughCommunity #UncoveredWisdom",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting in a circle with friends, discussing insightful topics under a starry night sky.",
+            "upload_time": "2023-10-27T18:30:00Z"
+        },
+        {
+            "title": "Interwoven Destinies",
+            "caption": "Our journeys are distinct, yet intertwined. How has this quest of discovery altered your path? 🛤️🌿 #InterwovenDestinies #JourneyTogether #LesEmpreintes",
+            "hashtags": "#SharedPaths #DestinyIntersect #ConnectedJourneys",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne walking along a path lined with trees, pondering the journey that lies ahead.",
+            "upload_time": "2023-10-28T15:15:00Z"
+        },
+        {
+            "title": "Season’s Reflection and Gratitude",
+            "caption": "Grateful for each step that has led us here. The quest for Les Empreintes brings a richer understanding of our shared human story. 🙏📜 #SeasonsReflection #GratitudeJourney #LesEmpreintes",
+            "hashtags": "#ThankfulJourney #SharedStories #RichLifeTapestry",
+            "image_description": "Laura Vigne is a blonde woman in her late twenties with shoulder-length, slightly wavy hair that frames her face naturally. Her hair has a soft golden hue, often catching the light to accentuate her serene presence. She has expressive blue eyes that convey warmth and curiosity, and her skin has a natural, sun-kissed glow, adding to her earthy, authentic vibe. Her face has gentle, harmonious features, with high cheekbones and a relaxed expression that reflects her calm, minimalist lifestyle. Her overall look is effortless yet captivating, with minimal makeup enhancing her natural beauty. Laura Vigne sitting by a window with panoramic views, reflecting deeply while writing a gratitude list.",
+            "upload_time": "2023-10-29T20:45:00Z"
+        }
+    ]
+}

@@ -15,10 +15,8 @@ class InstagramLLM(BaseLLM):
         :param previous_storyline: The storyline from the previous season.
         :return: A dictionary containing the structured posts for uploading.
         """
-        # Ensure the prompt template exists
         assert os.path.isfile(prompt_template_path), f"Planning template not found: {prompt_template_path}"
 
-        # Load the prompt template
         with open(prompt_template_path, 'r', encoding='utf-8') as file:
             prompt_template = json.load(file)
 
