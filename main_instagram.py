@@ -7,8 +7,8 @@ from tqdm import tqdm
 from utils.utils import read_previous_storyline
 from uploading_apis.instagram.uploader_instagram import InstagramUploader
 
-EXECUTE_PLANNING = True  # Set to True for planning
-GENERATE_POSTS = False     # Set to True for generating posts
+EXECUTE_PLANNING = False  # Set to True for planning
+GENERATE_POSTS = True     # Set to True for generating posts
 UPLOAD_POSTS = False      # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
@@ -116,43 +116,44 @@ def generate_instagram_posts():
     # Load the planning data from the selected planning file
     planning_file_path = available_plannings[profile_index] + '.json'
     with open(planning_file_path, 'r', encoding='utf-8') as file:
-        planning = json.load(file)
+        json_data_planning = json.load(file)
 
-    # Iterate over the planning list and generate Instagram posts
-    for post_data in tqdm(planning, desc=f"Generating Instagram posts for {profile_name}", total=len(planning)):
-        post_title = post_data.get('title')
-        post_slug = slugify(post_title)
-        caption = post_data.get('caption')
-        hashtags = post_data.get('hashtags', [])
-        image_description = post_data.get('image_description')
-        image_urls = post_data.get('image_urls', [])
-        upload_time = post_data.get('upload_time')
+    # Iterate over the weeks and posts in the JSON data
+    for week, days in json_data_planning.items():
+        for day_data in days:
+            for post_data in tqdm(day_data['posts'], desc=f"Generating Instagram posts for {profile_name}", total=len(day_data['posts'])):
+                post_title = post_data.get('title')
+                post_slug = slugify(post_title)
+                caption = post_data.get('caption')
+                hashtags = post_data.get('hashtags', [])
+                image_description = post_data.get('image_description')
+                image_urls = post_data.get('image_urls', [])
+                upload_time = post_data.get('upload_time')
 
-        # Ensure a unique folder for each post
-        post_folder = os.path.join(output_folder, post_slug)
-        os.makedirs(post_folder, exist_ok=True)
+                # Ensure a unique folder for each post
+                post_folder = os.path.join(output_folder, post_slug)
+                os.makedirs(post_folder, exist_ok=True)
 
-        # Prepare post content
-        post_content = [{
-            "post_title": post_title,
-            "caption": caption,
-            "hashtags": hashtags,
-            "image_description": image_description,
-            "image_urls": image_urls,
-            "upload_time": upload_time
-        }]
+                post_content = [{
+                    "post_title": post_title,
+                    "caption": caption,
+                    "hashtags": hashtags,
+                    "image_description": image_description,
+                    "image_urls": image_urls,
+                    "upload_time": upload_time
+                }]
 
-        for retrial in range(25):
-            try:
-                PipelineInstagram(post_content, post_folder).generate_posts() #TODO: check output folder variable
-                break
-            except WaitAndRetryError as e:
-                sleep_time = e.suggested_wait_time
-                hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
+            for retrial in range(25):
+                try:
+                    PipelineInstagram(post_content, post_folder).generate_posts() #TODO: check output folder variable
+                    break
+                except WaitAndRetryError as e:
+                    sleep_time = e.suggested_wait_time
+                    hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
 
-                for _ in tqdm(range(100),
-                                desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
-                    sleep(sleep_time / 100)
+                    for _ in tqdm(range(100),
+                                    desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
+                        sleep(sleep_time / 100)
 
 
 def upload_posts():
