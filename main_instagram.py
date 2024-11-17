@@ -143,6 +143,7 @@ def generate_instagram_posts():
                     "upload_time": upload_time
                 }]
 
+            # Instagram publication generation step
             for retrial in range(25):
                 try:
                     PipelineInstagram(post_content, post_folder).generate_posts() #TODO: check output folder variable
