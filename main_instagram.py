@@ -118,10 +118,11 @@ def generate_instagram_posts():
     with open(planning_file_path, 'r', encoding='utf-8') as file:
         json_data_planning = json.load(file)
 
+    
     # Iterate over the weeks and posts in the JSON data
-    for week, days in json_data_planning.items():
-        for day_data in days:
-            for post_data in tqdm(day_data['posts'], desc=f"Generating Instagram posts for {profile_name}", total=len(day_data['posts'])):
+    for week, days in tqdm(json_data_planning.items(), desc="Processing weeks"):
+        for day_data in tqdm(days, desc=f"Processing days in week {week}"):
+            for post_data in day_data['posts']:
                 post_title = post_data.get('title')
                 post_slug = slugify(post_title)
                 caption = post_data.get('caption')
@@ -142,6 +143,9 @@ def generate_instagram_posts():
                     "image_urls": image_urls,
                     "upload_time": upload_time
                 }]
+
+                # Print the number of images for the current post
+                print(f"Post '{post_title}' has {len(image_urls)} images.")
 
             # Instagram publication generation step
             for retrial in range(25):
