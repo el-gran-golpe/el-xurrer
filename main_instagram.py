@@ -104,7 +104,8 @@ def generate_instagram_posts():
     profile_name = os.path.basename(os.path.dirname(available_plannings[profile_index]))
 
     # Define the prompt template for posts
-    #prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{profile_name}.json")
+    #prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{profile_name}.json") 
+
     #assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
 
     # Create the output folder for posts if it doesn't exist
@@ -159,7 +160,6 @@ def generate_instagram_posts():
                     for _ in tqdm(range(100),
                                     desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
                         sleep(sleep_time / 100)
-
 
 def upload_posts():
     uploader = InstagramUploader()
