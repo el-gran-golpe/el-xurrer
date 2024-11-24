@@ -5,7 +5,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 from utils.utils import read_previous_storyline
-from uploading_apis.instagram.uploader_instagram import InstagramUploader
+from uploading_apis.instagram.graph_api import InstagramUploader
 
 EXECUTE_PLANNING = False  # Set to True for planning
 GENERATE_POSTS = False     # Set to True for generating posts
