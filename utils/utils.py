@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pysrt
 import os
+import re
 from nltk.metrics import edit_distance
 from loguru import logger
 import wave
@@ -203,9 +204,29 @@ def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tu
         dict_to_fill['id'] = slugify(f"{parent_key}--{str(uuid4())[:8]}")
     return dict_to_fill
 
+# From here on YonCarlos' methods:
 
 def read_previous_storyline(file_path: str) -> str:
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
             content = file.read().strip()
     return content if content else ""
+
+def get_valid_planning_file_names(base_path: str):
+    pattern = re.compile(r'^[a-zA-Z]{2}_planning\.json$')
+    planning_dirs = [
+        os.path.join(base_path, folder)
+        for folder in os.listdir(base_path)
+        if os.path.isdir(os.path.join(base_path, folder))
+    ]
+
+    valid_plannings = []
+    for pdir in planning_dirs:
+        json_files = [f for f in os.listdir(pdir) if f.lower().endswith('.json')]
+        if len(json_files) == 1 and pattern.match(json_files[0]):
+            valid_plannings.append(os.path.join(pdir, json_files[0][:-5]))
+
+    if not valid_plannings:
+        raise FileNotFoundError("No valid planning files found. Ensure a single JSON named xx_planning.json.")
+
+    return valid_plannings

@@ -4,12 +4,16 @@ from llm.instagram.instagram_llm import InstagramLLM
 import json
 from slugify import slugify
 from tqdm import tqdm
-from utils.utils import read_previous_storyline
-from uploading_apis.instagram.graph_api import InstagramUploader
+from uploading_apis.instagram import graph_api
+from utils.utils import get_valid_planning_file_names, read_previous_storyline
+from utils.exceptions import WaitAndRetryError
+from time import sleep
+from uploading_apis.graph_api import GraphAPI
+
 
 EXECUTE_PLANNING = False  # Set to True for planning
-GENERATE_POSTS = False     # Set to True for generating posts
-UPLOAD_POSTS = True      # Set to True when you want to run uploads
+GENERATE_POSTS = True     # Set to True for generating posts
+UPLOAD_POSTS = False      # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
 POST_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'instagram', 'prompts', 'posts')
@@ -85,44 +89,51 @@ def generate_instagram_planning():
         json.dump(planning, file, indent=4, ensure_ascii=False)
 
 def generate_instagram_posts():
-    # Ensure the planning folder exists
+
+    # --- Some inital checks ---
+
     assert os.path.isdir(OUTPUT_FOLDER_BASE_PATH_PLANNING), f"Planning folder not found: {OUTPUT_FOLDER_BASE_PATH_PLANNING}"
-
-    # List all JSON files in the planning folder
-    available_plannings = []
-    for root, dirs, files in os.walk(OUTPUT_FOLDER_BASE_PATH_PLANNING):
-        for file in files:
-            if file.endswith('.json'):
-                available_plannings.append(os.path.join(root, file)[:-len('.json')])
+    
+    # Check if there are any planning json files in the planning folder
+    available_plannings = get_valid_planning_file_names(OUTPUT_FOLDER_BASE_PATH_PLANNING) #TODO: make sure this is correct
     assert len(available_plannings) > 0, "No planning files found, please generate a planning first"
-
     print("Available planning files:", available_plannings)
 
-    # Automatically select the first profile if only one is available
+    # Select a profile to work on
     profile_index = 0 if len(available_plannings) == 1 else int(input("Select a profile number: ")) - 1
     assert 0 <= profile_index < len(available_plannings), "Invalid profile number"
     profile_name = os.path.basename(os.path.dirname(available_plannings[profile_index]))
 
-    # Define the prompt template for posts
-    #prompt_template_path = os.path.join(POST_TEMPLATE_FOLDER, f"{profile_name}.json") 
-
-    #assert os.path.isfile(prompt_template_path), f"Prompt template file not found: {prompt_template_path}"
-
-    # Create the output folder for posts if it doesn't exist
-    profile_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
-    assert os.path.isdir(profile_folder), f"Profile folder not found: {profile_folder}"
-    output_folder = os.path.join(profile_folder, 'posts')
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Load the planning data from the selected planning file
+    # --- Pre-creating the folders for the content ---
+    
+    # Load the planning data into a variable
     planning_file_path = available_plannings[profile_index] + '.json'
     with open(planning_file_path, 'r', encoding='utf-8') as file:
         json_data_planning = json.load(file)
-
     
-    # Iterate over the weeks and posts in the JSON data
+    # Create the 'posts' main folder
+    profile_folder = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
+    assert os.path.isdir(profile_folder), f"Profile folder not found: {profile_folder}" #Not sure if this is needed
+    output_folder = os.path.join(profile_folder, 'posts')
+    os.makedirs(output_folder, exist_ok=True)
+    
+    # Create folders for each week and day
+    for week_key, week_data in json_data_planning.items():
+        week_folder = os.path.join(output_folder, week_key)
+        os.makedirs(week_folder, exist_ok=True)
+        for day_data in week_data:
+            day_folder = os.path.join(week_folder, f"day_{day_data['day']}")
+            os.makedirs(day_folder, exist_ok=True)
+
+    # --- Generate posts for the planning data ---
+    
     for week, days in tqdm(json_data_planning.items(), desc="Processing weeks"):
-        for day_data in tqdm(days, desc=f"Processing days in week {week}"):
+        week_folder = os.path.join(output_folder, week)
+
+        for day_data in tqdm(days, desc=f"Processing days in {week}"):
+            day_number = day_data['day']
+            day_folder = os.path.join(week_folder, f"day_{day_number}")
+
             for post_data in day_data['posts']:
                 post_title = post_data.get('title')
                 post_slug = slugify(post_title)
@@ -132,37 +143,32 @@ def generate_instagram_posts():
                 image_urls = post_data.get('image_urls', [])
                 upload_time = post_data.get('upload_time')
 
-                # Ensure a unique folder for each post
-                post_folder = os.path.join(output_folder, post_slug)
-                os.makedirs(post_folder, exist_ok=True)
-
-                post_content = [{
-                    "post_title": post_title,
+                # Prepare the post content
+                post_content = {
+                    "post_title": post_title, #TODO: am I using this one?
+                    "post_slug": post_slug,
                     "caption": caption,
                     "hashtags": hashtags,
                     "image_description": image_description,
                     "image_urls": image_urls,
                     "upload_time": upload_time
-                }]
+                }
 
-                # Print the number of images for the current post
-                print(f"Post '{post_title}' has {len(image_urls)} images.")
-
-            # Instagram publication generation step
-            for retrial in range(25):
-                try:
-                    PipelineInstagram(post_content, post_folder).generate_posts() #TODO: check output folder variable
-                    break
-                except WaitAndRetryError as e:
-                    sleep_time = e.suggested_wait_time
-                    hours, minutes, seconds = sleep_time // 3600, sleep_time // 60 % 60, sleep_time % 60
-
-                    for _ in tqdm(range(100),
-                                    desc=f"Waiting {str(hours)}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
-                        sleep(sleep_time / 100)
+                # Now, run the PipelineInstagram for this single post, 
+                # directing outputs into the day_folder
+                for retrial in range(25):
+                    try:
+                        PipelineInstagram(post_content=[post_content], output_folder=day_folder).generate_posts()
+                        break
+                    except WaitAndRetryError as e:
+                        sleep_time = e.suggested_wait_time
+                        hours, minutes, seconds = sleep_time // 3600, (sleep_time // 60) % 60, sleep_time % 60
+                        for _ in tqdm(range(100),
+                                      desc=f"Waiting {hours}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"):
+                            sleep(sleep_time / 100)
 
 def upload_posts():
-    uploader = InstagramUploader()
+    uploader = GraphAPI()
 
     # Get list of post folders
     post_folders = [
@@ -209,7 +215,6 @@ def upload_posts():
 
         # # Upload the post
         # uploader.upload_post(image_paths=image_paths, caption=caption)
-
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:
