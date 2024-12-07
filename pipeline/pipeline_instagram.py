@@ -1,6 +1,10 @@
 import os
 import tqdm
+import re
 from generation_tools.image_generator.flux.flux import Flux
+
+def sanitize_filename(filename):
+    return re.sub(r'[<>:"/\\|?*]', '_', filename)
 
 class PipelineInstagram:
     def __init__(self, post_content: list, output_folder: str):
@@ -12,6 +16,7 @@ class PipelineInstagram:
         for item in tqdm.tqdm(self.post_content):
             _id, image_description = item["post_title"], item["image_description"]
             image_path = os.path.join(self.output_folder, f"{_id}.png")
+            image_path = sanitize_filename(image_path)  # Sanitize the image path
             if not os.path.isfile(image_path):
                 assert True, f"Generating image for ID {_id} with description '{image_description}'"
                 self.image_generator.generate_image(prompt=image_description, output_path=image_path, width=1080, height=1080, retries=2)
