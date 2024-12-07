@@ -8,7 +8,7 @@ from uploading_apis.instagram import graph_api
 from utils.utils import get_valid_planning_file_names, read_previous_storyline
 from utils.exceptions import WaitAndRetryError
 from time import sleep
-from uploading_apis.graph_api import GraphAPI
+from uploading_apis.instagram.graph_api import GraphAPI
 
 
 EXECUTE_PLANNING = False  # Set to True for planning
