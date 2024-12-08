@@ -11,8 +11,8 @@ from time import sleep
 from uploading_apis.instagram.graph_api import GraphAPI
 
 
-EXECUTE_PLANNING = False  # Set to True for planning
-GENERATE_POSTS = True     # Set to True for generating posts
+EXECUTE_PLANNING = False   # Set to True for planning
+GENERATE_POSTS = True    # Set to True for generating posts
 UPLOAD_POSTS = False      # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
@@ -124,6 +124,9 @@ def generate_instagram_posts():
         for day_data in week_data:
             day_folder = os.path.join(week_folder, f"day_{day_data['day']}")
             os.makedirs(day_folder, exist_ok=True)
+
+    #TODO: Add a .txt (or a .json) file on each day with the title, the hastags and the caption
+
 
     # --- Generate posts for the planning data ---
     
