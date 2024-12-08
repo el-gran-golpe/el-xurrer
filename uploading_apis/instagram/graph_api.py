@@ -5,7 +5,6 @@ import requests
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
 from generation_tools.thumbnails_generator.imghippo import ImgHippo
 
 META_API_KEY = os.path.join(os.path.dirname(__file__), 'api_key_instagram.env')
@@ -24,6 +23,8 @@ class GraphAPI:
         self.base_url = "https://graph.facebook.com/v17.0"
 
     def upload_post(self, img_path: str, caption: str):
+        assert img_path.lower().endswith('.png'), "The image file must be a .png"
+
         try:
             # Step 1: Get image URL from ImgHippo
             img_hippo = ImgHippo()
@@ -57,11 +58,12 @@ class GraphAPI:
 # Example usage
 if __name__ == "__main__":
     graph_api = GraphAPI()
-    img_path = r"C:\Users\Usuario\Downloads\image (3).webp"
-    #img_path = r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\rallying-the-troops\Rallying the Troops.png"
+    img_path = r"C:\Users\Usuario\Downloads\image (3).png"
     caption = "Check out this amazing photo!"
     response = graph_api.upload_post(img_path, caption)
     if response:
         print("Post published successfully:", response)
     else:
         print("Failed to publish post.")
+
+
