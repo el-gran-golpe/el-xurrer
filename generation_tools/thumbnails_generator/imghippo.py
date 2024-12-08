@@ -20,7 +20,7 @@ class ImgHippo:
         assert os.path.isfile(img_path), f"Image file {img_path} does not exist"
 
         # Define the API endpoint
-        url = "https://www.imghippo.com/v1/upload"
+        url = "https://api.imghippo.com/v1/upload"
 
         # Prepare the file to be uploaded
         with open(img_path, 'rb') as img_file:
