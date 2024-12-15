@@ -37,7 +37,7 @@ class GraphAPI:
                 "caption": caption,
                 "access_token": self.access_token
             }
-            response = requests.post(url, data=payload)
+            response = requests.post(url, json=payload)
             response.raise_for_status()
             creation_id = response.json().get("id")
 
