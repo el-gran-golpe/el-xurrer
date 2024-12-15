@@ -70,7 +70,7 @@ class Flux:
 									suggested_wait_time=suggested_wait_time or 60*60)
 		return client
 
-	def generate_image(self, prompt, output_path: str, seed: int|None = None, width=512, height=512,
+	def generate_image(self, prompt, output_path: str, seed: int = None, width=512, height=512,
 					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3):
 
 		assert isinstance(prompt, str), "Prompt must be a string"
