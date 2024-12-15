@@ -124,9 +124,16 @@ def generate_instagram_posts():
         for day_data in week_data:
             day_folder = os.path.join(week_folder, f"day_{day_data['day']}")
             os.makedirs(day_folder, exist_ok=True)
-
-    #TODO: Add a .txt (or a .json) file on each day with the title, the hastags and the caption
-
+            # Create a .txt file with the captions for the day
+            captions_file_path = os.path.join(day_folder, "captions.txt")
+            with open(captions_file_path, 'w', encoding='utf-8') as captions_file:
+                for post in day_data['posts']:
+                    captions_file.write(post['caption'] + "\n\n")
+            # Create a .txt file with the upload times for the day
+            upload_times_file_path = os.path.join(day_folder, "upload_times.txt")
+            with open(upload_times_file_path, 'w', encoding='utf-8') as upload_times_file:
+                for post in day_data['posts']:
+                    upload_times_file.write(post['upload_time'] + "\n")
 
     # --- Generate posts for the planning data ---
     
