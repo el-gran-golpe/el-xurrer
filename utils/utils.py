@@ -206,7 +206,7 @@ def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tu
 
 # From here on YonCarlos' methods:
 
-def read_previous_storyline(file_path: str) -> str:
+def read_cumulative_storyline(file_path: str) -> str:
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
             content = file.read().strip()

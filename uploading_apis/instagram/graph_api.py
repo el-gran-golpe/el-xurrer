@@ -2,7 +2,6 @@ import sys
 import os
 import dotenv
 import requests
-
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from generation_tools.thumbnails_generator.imghippo import ImgHippo
@@ -20,7 +19,7 @@ class GraphAPI:
         assert self.user_id, f"Instagram user ID not found in {META_API_KEY}."
 
         # Base URL for Graph API
-        self.base_url = "https://graph.facebook.com/v17.0"
+        self.base_url = "https://graph.facebook.com/v21.0"
 
     def upload_post(self, img_path: str, caption: str):
         assert img_path.lower().endswith('.png'), "The image file must be a .png"
@@ -38,6 +37,8 @@ class GraphAPI:
                 "access_token": self.access_token
             }
             response = requests.post(url, json=payload)
+            #print(f"Request payload: {payload}")
+            #print(f"Response content: {response.text}")
             response.raise_for_status()
             creation_id = response.json().get("id")
 

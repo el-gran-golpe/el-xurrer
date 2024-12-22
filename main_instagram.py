@@ -5,14 +5,14 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 from uploading_apis.instagram import graph_api
-from utils.utils import get_valid_planning_file_names, read_previous_storyline
+from utils.utils import get_valid_planning_file_names, read_cumulative_storyline
 from utils.exceptions import WaitAndRetryError
 from time import sleep
 from uploading_apis.instagram.graph_api import GraphAPI
 
 
-EXECUTE_PLANNING = False   # Set to True for planning
-GENERATE_POSTS = True    # Set to True for generating posts
+EXECUTE_PLANNING = True   # Set to True for planning
+GENERATE_POSTS = False    # Set to True for generating posts
 UPLOAD_POSTS = False      # Set to True when you want to run uploads
 
 PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'resources', 'inputs', 'instagram_profiles') 
@@ -23,70 +23,68 @@ OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'resources', 'outputs','instag
 
 
 def generate_instagram_planning():
-    # Ensure the planning template folder exists
     assert os.path.isdir(PLANNING_TEMPLATE_FOLDER), f"Planning template folder not found: {PLANNING_TEMPLATE_FOLDER}"
     
-    # List all JSON files in the planning template folder
+    # Check if there are any planning json files in the resources/inputs/instagram_profiles folder
     available_plannings = []
     for root, dirs, files in os.walk(PLANNING_TEMPLATE_FOLDER):
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
+            planning_found = False
             for file_name in os.listdir(dir_path):
-                if file_name == f"{dir_name}.json":
-                    available_plannings.append(os.path.join(dir_path, file_name))
-    
-    # Display available planning templates with their status (new or existing)
+                if file_name.endswith('.json'):
+                    assert file_name[:-len('.json')] == dir_name, f"Mismatch between folder name and file name: {dir_name} != {file_name[:-len('.json')]}"
+                    if file_name == f"{dir_name}.json":
+                        available_plannings.append(os.path.join(dir_path, file_name))
+                        planning_found = True
+            if not planning_found:
+                print(f"Warning: No planning file found for folder: {dir_name}")
+
+    print("Available planning templates:")
     for i, template in enumerate(available_plannings):
-        output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, template[:-len('.json')])
-        if not os.path.isdir(output_path):
-            subtext = "(New)"
-        else:
-            subtext = f"(Existent posts: {len(os.listdir(output_path))})"
-        print(f"{i + 1}: {template[:-len('.json')]} {subtext}")
+        grandparent_folder = os.path.basename(os.path.dirname(os.path.dirname(template)))
+        parent_folder = os.path.basename(os.path.dirname(template))
+        print(f"{i + 1}: {grandparent_folder}\\{parent_folder}")
     
-    # Automatically select the first template if only one is available
-    if len(available_plannings) == 1:
-        template_index = 0
+    # Prompt the user to select a template number or choose to process all
+    template_input = input("Select template numbers separated by commas or type 'all' to process all: ")
+    
+    if template_input.lower() == 'all':
+        selected_templates = available_plannings
     else:
-        # Prompt the user to select a template number
-        template_index = int(input("Select a template number: ")) - 1
-        assert 0 <= template_index < len(available_plannings), "Invalid template number"
+        template_indices = [int(index.strip()) - 1 for index in template_input.split(',')]
+        for index in template_indices:
+            assert 0 <= index < len(available_plannings), f"Invalid template number: {index + 1}"
+        selected_templates = [available_plannings[index] for index in template_indices]
+      
+    # Generate and save the Instagram planning for each selected template
+    for template_path in selected_templates:
+        previous_storyline = read_cumulative_storyline(os.path.join(os.path.dirname(template_path),
+                                                                     'cumulative_storyline.md'))
     
-    template_path = available_plannings[template_index]
+        planning = InstagramLLM().generate_instagram_planning(
+            prompt_template_path=template_path,
+            previous_storyline=previous_storyline
+        )
 
-    # Extract the profile name from the selected template
-    profile_name = os.path.basename(template_path)[:-len('.json')]
-
-    # Define the path to the cumulative storyline file
-    storyline_file_path = os.path.join('resources', 'inputs', 'instagram_profiles', 'laura_vigne', 'cumulative_storyline.md')
+        # We save the x2letters_planning.json file in the corresponding OUTPUT folder
+        profile_name = os.path.basename(os.path.dirname(template_path))
+        output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
+        os.makedirs(output_path, exist_ok=True)
     
-    # Read the previous storyline from the file (if it exists)
-    previous_storyline = read_previous_storyline(storyline_file_path)
-
-    # Generate the Instagram planning using the selected template
-    planning = InstagramLLM().generate_instagram_planning(
-        prompt_template_path=template_path,
-        previous_storyline=previous_storyline
-    )
-
-    # Create a folder for the planning file
-    output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, profile_name)
-    os.makedirs(output_path, exist_ok=True)
-
-    # Check if a planning file already exists and prompt for overwrite if it does
-    profile_initials = ''.join([word[0] for word in profile_name.split('_')])
-    planning_filename = f"{profile_initials}_planning.json"
-
-    if os.path.isfile(os.path.join(output_path, planning_filename)):
-        print(f"Warning: The planning file already exists in the folder: {output_path}")
-        overwrite = input("Do you want to overwrite it? (y/n): ")
-        if overwrite.lower() not in ('y', 'yes'):
-            print("The planning was not saved") #TODO: this is wronly overwritting things
-            return
-
-    # Save the generated planning to a JSON file
-    with open(os.path.join(output_path, planning_filename), 'w', encoding='utf-8') as file:
-        json.dump(planning, file, indent=4, ensure_ascii=False)
+    
+        profile_initials = ''.join([word[0] for word in profile_name.split('_')])
+        planning_filename = f"{profile_initials}_planning.json"
+    
+        if os.path.isfile(os.path.join(output_path, planning_filename)):
+            print(f"Warning: The planning file already exists in the folder: {output_path}")
+            overwrite = input("Do you want to overwrite it? (y/n): ")
+            if overwrite.lower() not in ('y', 'yes'):
+                print("The planning was not saved")
+                continue
+    
+        with open(os.path.join(output_path, planning_filename), 'w', encoding='utf-8') as file:
+            json.dump(planning, file, indent=4, ensure_ascii=False)
 
 def generate_instagram_posts():
 
