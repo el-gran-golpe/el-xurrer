@@ -12,8 +12,11 @@ from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
 
+from generation_tools.voice_generator.f5_tts.constants import PERRO_SANXE, VOICE_SOURCES, AUDIO_PATH, AUDIO_TEXT
 from utils.exceptions import WaitAndRetryError
 
+
+DEFAULT_VOICE = PERRO_SANXE
 
 class F5TTS:
     def __init__(self, src_model: str = "jpgallegoar/Spanish-F5", use_proxy: bool = True,
@@ -51,13 +54,18 @@ class F5TTS:
                                     suggested_wait_time=60 * 60)
         return client
 
-    def generate_audio(self, ref_audio_orig_path: str, ref_text: str, gen_text: str, output_path: str,
-                       model: str = "F5-TTS", remove_silence: bool = False, cross_fade_duration: float = 0.15,
-                       speed: float = 1.0, retries: int = 3):
+    def generate_audio_to_file(self, text: str, output_path: str, voice: str = DEFAULT_VOICE,
+                               model: str = "F5-TTS", remove_silence: bool = False, cross_fade_duration: float = 0.15,
+                               speed: float = 1.0, retries: int = 3):
+
+        assert voice in VOICE_SOURCES, (f"Voice {voice} not found in the available voices."
+                                        f"Available voices {tuple(VOICE_SOURCES.keys())}")
+        ref_audio_orig_path = VOICE_SOURCES[voice][AUDIO_PATH]
+        ref_text = VOICE_SOURCES[voice][AUDIO_TEXT]
 
         assert os.path.exists(ref_audio_orig_path), "Reference audio file does not exist"
         assert isinstance(ref_text, str), "Reference text must be a string"
-        assert isinstance(gen_text, str), "Generated text must be a string"
+        assert isinstance(text, str), "Generated text must be a string"
         assert 0.1 <= cross_fade_duration <= 5.0, "Cross fade duration must be between 0.1 and 5.0 seconds"
         assert 0.5 <= speed <= 2.0, "Speed must be between 0.5 and 2.0"
 
@@ -67,7 +75,7 @@ class F5TTS:
                     result = self.client.predict(
                         ref_audio_orig=handle_file(ref_audio_orig_path),
                         ref_text=ref_text,
-                        gen_text=gen_text,
+                        gen_text=text,
                         model=model,
                         remove_silence=remove_silence,
                         cross_fade_duration=cross_fade_duration,
@@ -98,9 +106,8 @@ class F5TTS:
 
 if __name__ == '__main__':
     f5tts = F5TTS()
-    ref_audio_orig_path = './sample-voice-1.wav'
-    ref_text = "Hello, how are you?"
-    gen_text = "Hello, how are you?"
+    gen_text = "Hola mi bébebe, Hola mi bébebe"
+
     output_path = "./output_audio.wav"
-    f5tts.generate_audio(ref_audio_orig_path, ref_text, gen_text, output_path)
+    f5tts.generate_audio_to_file(gen_text, output_path)
     print(f"Audio saved to {output_path}")

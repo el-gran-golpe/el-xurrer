@@ -5,6 +5,7 @@ from time import time
 from tqdm import tqdm
 
 from generation_tools.thumbnails_generator.templated import Templated
+from generation_tools.voice_generator.f5_tts.f5tts import F5TTS
 from utils.utils import time_between_two_words_in_srt, check_script_validity
 from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
 from generation_tools.voice_generator.xtts.xtts import Xtts
@@ -22,7 +23,7 @@ WH_BY_ASPECT_RATIO = {
 class Pipeline:
     def __init__(self, output_folder: str):
 
-        self.voice_generator = Xtts(load_on_demand=True)
+        self.voice_generator = F5TTS()#Xtts(load_on_demand=True)
         self.image_generator = Flux(load_on_demand=True, use_proxy=True)
         self.subtitle_generator = Whisper(load_on_demand=True)
         self.sounds_generator = AudioLDM(load_on_demand=True)
@@ -55,7 +56,7 @@ class Pipeline:
             if text and not os.path.isfile(audio_path):
                 start = time()
                 self.voice_generator.generate_audio_to_file(text=text, output_path=audio_path,
-                                                            language=lang, retries=3)
+                                                            retries=3)
                 logger.info(f"Audio generation: {time() - start:.2f}s")
                 assert os.path.isfile(audio_path), f"Audio file {audio_path} was not generated"
                 regenerate_subtitles = True

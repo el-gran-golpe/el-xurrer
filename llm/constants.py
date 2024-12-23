@@ -11,7 +11,8 @@ MODEL_BY_BACKEND = {
 }
 
 # Ordered following LMArena leaderboard https://lmarena.ai/
-DEFAULT_PREFERRED_MODELS = ('gpt-4o', 'gpt-4o-mini',
+DEFAULT_PREFERRED_MODELS = (#'o1', 'o1-mini',
+                            'gpt-4o', 'gpt-4o-mini',
                             #'mistral-large',
                             'meta-llama-3.1-405b-instruct',
                             'Phi-3-medium-128k-instruct', 'AI21-Jamba-Instruct', 'Phi-3.5-mini-instruct')
@@ -19,4 +20,5 @@ PREFERRED_PAID_MODELS = ('gpt-4o-mini', 'gpt-4o')
 
 CANNOT_ASSIST_PHRASES = ("I'm sorry, I can't assist with that", "Lo siento, no puedo procesar esa solicitud", "Lo siento, no puedo hacer eso.")
 
-INCOMPLETE_OUTPUT_PHRASES = ("Continuaré con las secciones restantes en los siguientes comentarios debido a las limitaciones de longitud.",)
+INCOMPLETE_OUTPUT_PHRASES = ("Continuaré con las secciones restantes en los siguientes comentarios debido a las limitaciones de longitud.",
+                             "(Continue similarly for the remaining scenes.)")
