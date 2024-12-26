@@ -167,7 +167,7 @@ class BaseLLM:
             finish_reason = "length"
             logger.warning("Assistant reply is incomplete. Retrying with the same conversation")
 
-        if finish_reason == "length":
+        if finish_reason == "length" or any(phrase.lower() in assistant_reply.lower() for phrase in INCOMPLETE_OUTPUT_PHRASES):
             continue_conversation = deepcopy(conversation)
             continue_conversation.append({"role": "assistant", "content": assistant_reply})
             continue_conversation.append({"role": "user", "content": "Continue EXACTLY where we left off"})
@@ -176,7 +176,6 @@ class BaseLLM:
             assistant_reply += new_assistant_reply
 
         elif finish_reason == 'content_filter':
-            print()
             logger.debug("Content filter triggered. Retrying with a different model")
             assert len(preferred_models) > 1, "No more models to try"
             assistant_reply, finish_reason = self.get_model_response(conversation=conversation, preferred_models=preferred_models[1:])

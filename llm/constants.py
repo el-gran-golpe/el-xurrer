@@ -21,4 +21,6 @@ PREFERRED_PAID_MODELS = ('gpt-4o-mini', 'gpt-4o')
 CANNOT_ASSIST_PHRASES = ("I'm sorry, I can't assist with that", "Lo siento, no puedo procesar esa solicitud", "Lo siento, no puedo hacer eso.")
 
 INCOMPLETE_OUTPUT_PHRASES = ("Continuaré con las secciones restantes en los siguientes comentarios debido a las limitaciones de longitud.",
-                             "(Continue similarly for the remaining scenes.)")
+                             "Continue similarly for the",
+                             "following the same structure and guidelines ",
+                             "Continue in this format for the remaining")
