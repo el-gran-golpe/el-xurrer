@@ -17,7 +17,7 @@ from azure.ai.inference.models import SystemMessage, UserMessage, StreamingChatC
 from azure.core.credentials import AzureKeyCredential
 
 from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS, \
-    CANNOT_ASSIST_PHRASES, INCOMPLETE_OUTPUT_PHRASES
+    CANNOT_ASSIST_PHRASES, INCOMPLETE_OUTPUT_PHRASES, MODELS_NOT_ACCEPTING_SYSTEM_ROLE, MODELS_NOT_ACCEPTING_STREAM
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -146,28 +146,33 @@ class BaseLLM:
         assistant_reply, finish_reason = "", None
         for chunk in stream:
             current_finish_reason = chunk.choices[0].finish_reason
-            new_content = chunk.choices[0].delta.content
+            # delta will be available when streaming the response. Otherwise, the info will just come at message
+            new_content = chunk.choices[0].delta.content if hasattr(chunk.choices[0], 'delta') \
+                else chunk.choices[0].message.content
+
             if new_content is not None:
                 assistant_reply += new_content
                 if verbose:
                     print(new_content, end="")
+
             if current_finish_reason is not None:
                 finish_reason = current_finish_reason
 
         # TODO: That's for non-gpt models that seems to not return a finish reason
         model = [model for model in preferred_models if model not in self.exhausted_models][0]
-        if not model.startswith("gpt-") and finish_reason is None:
+        if not (model.startswith("gpt-") or model.startswith('o1')) and finish_reason is None:
             logger.debug(f"Model {model} did not return a finish reason. Assuming stop")
             finish_reason = "stop"
 
         assert finish_reason is not None, "Finish reason not found"
-        if any(phrase.lower() in assistant_reply.lower() for phrase in INCOMPLETE_OUTPUT_PHRASES):
+        length_check_phrase = '. '.join(assistant_reply.splitlines()[-2:]).lower()
+        if any(phrase.lower() in length_check_phrase for phrase in INCOMPLETE_OUTPUT_PHRASES):
             # Remove al of them from the assistant reply with a regex
             assistant_reply = re.sub("|".join(INCOMPLETE_OUTPUT_PHRASES), "", assistant_reply, flags=re.IGNORECASE)
             finish_reason = "length"
             logger.warning("Assistant reply is incomplete. Retrying with the same conversation")
 
-        if finish_reason == "length" or any(phrase.lower() in assistant_reply.lower() for phrase in INCOMPLETE_OUTPUT_PHRASES):
+        if finish_reason == "length":
             continue_conversation = deepcopy(conversation)
             continue_conversation.append({"role": "assistant", "content": assistant_reply})
             continue_conversation.append({"role": "user", "content": "Continue EXACTLY where we left off"})
@@ -176,6 +181,7 @@ class BaseLLM:
             assistant_reply += new_assistant_reply
 
         elif finish_reason == 'content_filter':
+            print('\n')
             logger.debug("Content filter triggered. Retrying with a different model")
             assert len(preferred_models) > 1, "No more models to try"
             assistant_reply, finish_reason = self.get_model_response(conversation=conversation, preferred_models=preferred_models[1:])
@@ -184,31 +190,40 @@ class BaseLLM:
         return assistant_reply, finish_reason
 
     def __get_response_stream(self, conversation: list[dict], preferred_models: list,
-                              use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None) -> (
+                              use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None,
+                              stream_response: bool = True) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
+
+        conversation = deepcopy(conversation)
         # Select the best model that is not exhausted
         if not use_paid_api:
             preferred_models = [model for model in preferred_models if model not in self.exhausted_models]
+
         assert len(preferred_models) > 0, "No models available"
         model = preferred_models[0]
 
-        self.client = self.get_client(model=model, paid_api=use_paid_api)
+        if model in MODELS_NOT_ACCEPTING_SYSTEM_ROLE:
+            conversation = self.merge_system_and_user_messages(conversation=conversation)
 
+        self.client = self.get_client(model=model, paid_api=use_paid_api)
+        stream_response = stream_response and model not in MODELS_NOT_ACCEPTING_STREAM
         try:
             if self.active_backend == AZURE:
                 stream = self.client.complete(
                     messages=self.conversation_to_azure_format(conversation=conversation),
                     model=model,
-                    stream=True
+                    stream=stream_response
                 )
             elif self.active_backend == OPENAI:
                 stream = self.client.chat.completions.create(
                     model=model,
                     messages=conversation,
-                    stream=True
+                    stream=stream_response
                 )
             else:
                 raise NotImplementedError(f"Backend not implemented: {self.active_backend}")
+            if not stream_response:
+                stream = [stream]
         except (APIStatusError, HttpResponseError) as e:
             if isinstance(e, APIStatusError):
                 error_code, error_message = e.code, e.message
@@ -224,7 +239,7 @@ class BaseLLM:
                 logger.warning(f"Request size exceeded free github API limit. Retrying with "
                                f"OpenAI paid API ({PREFERRED_PAID_MODELS[0]})")
                 stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
-                                           use_paid_api=True)
+                                                    use_paid_api=True)
                 # Move to a different model
             elif error_code == "RateLimitReached":
                 # We have exhausted the free API limit for this model
@@ -234,7 +249,7 @@ class BaseLLM:
                 if len(preferred_models) == 1 and not use_paid_api:
                     logger.warning("No more models to try. Retrying with the paid API")
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
-                                             use_paid_api=True)
+                                                        use_paid_api=True)
                 else:
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models[1:],
                                                         use_paid_api=use_paid_api)
@@ -278,6 +293,40 @@ class BaseLLM:
             logger.error(f"Error decoding JSON from message: {message}")
             raise json.JSONDecodeError
 
+    def merge_system_and_user_messages(self, conversation: list[dict]) -> list[dict]:
+        """
+        for each message, if its 'role' is 'system', merge it with the next 'user' message
+        :param conversation: The conversation to merge. A list of dictionaries with 'role' and 'content'
+        :return: The conversation with the system messages merged with the next user message
+        """
+
+        merged_conversation, last_system_message = [], None
+        for i, message in enumerate(conversation):
+            role, content = message['role'], message['content']
+            # If is a system message, keep it in memory to merge it with the next user message
+            if role == 'system':
+                assert i < len(conversation) - 1, f"System message is the last message while merging.\n\n {conversation}"
+                assert last_system_message is None, "Two consecutive system messages found"
+                last_system_message = content
+            # If is a user message, merge it with the previous system message as user message
+            elif role == 'user':
+                # If there was a system message before, merge it with the user message
+                if last_system_message is not None:
+                    new_message = last_system_message + '\n\n' + content
+                    merged_conversation.append({'role': 'user', 'content': new_message})
+                    last_system_message = None
+                # Otherwise, just append the user message
+                else:
+                    merged_conversation.append(message)
+            # If not a system or user message, just append
+            else:
+                # First make sure that it is an assistant message
+                assert role in ('assistant',), f"Unexpected role: {role}"
+                merged_conversation.append(message)
+
+        assert last_system_message is None, "Last message was a system message. Unexpected"
+
+        return merged_conversation
 
     def _replace_prompt_placeholders(self, prompt: str, cache: dict[str, str], accept_unfilled: bool = False) -> str:
         """
