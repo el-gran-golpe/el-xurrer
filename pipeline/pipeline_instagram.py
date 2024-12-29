@@ -11,10 +11,12 @@ class PipelineInstagram:
 
     def generate_posts(self):
         for item in tqdm.tqdm(self.post_content):
-            _id, image_description = item["post_slug"], item["image_description"]
-            image_path = os.path.join(self.output_folder, f"{_id}.png")
-            if not os.path.isfile(image_path):
-                assert True, f"Generating image for ID {_id} with description '{image_description}'"
-                self.image_generator.generate_image(prompt=image_description, output_path=image_path, width=1080, height=1080, retries=2)
-                assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
-                assert True, f"Image generated and saved at {image_path}"
+            post_slug = item["post_slug"]
+            for idx, image in enumerate(item["images"]):
+                image_description = image["image_description"]
+                image_path = os.path.join(self.output_folder, f"{post_slug}_{idx}.png")
+                if not os.path.isfile(image_path):
+                    assert True, f"Generating image for ID {post_slug}_{idx} with description '{image_description}'"
+                    self.image_generator.generate_image(prompt=image_description, output_path=image_path, width=1080, height=1080, retries=2)
+                    assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
+                    assert True, f"Image generated and saved at {image_path}"
