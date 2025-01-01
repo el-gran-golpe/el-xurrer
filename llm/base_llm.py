@@ -9,6 +9,7 @@ from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
 from openai import OpenAI, APIStatusError, Stream
 from openai.types.chat import ChatCompletionChunk, ChatCompletion
+from openai.types.shared_params import ResponseFormatJSONObject
 from tqdm import tqdm
 from loguru import logger
 
@@ -83,7 +84,7 @@ class BaseLLM:
 
         self.client = OpenAI(
             base_url=base_url,
-            api_key=api_key
+            api_key=api_key,
         )
 
         self.active_backend = OPENAI
@@ -191,6 +192,7 @@ class BaseLLM:
 
     def __get_response_stream(self, conversation: list[dict], preferred_models: list,
                               use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None,
+                              as_json: bool = False,
                               stream_response: bool = True) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
 
@@ -207,6 +209,7 @@ class BaseLLM:
 
         self.client = self.get_client(model=model, paid_api=use_paid_api)
         stream_response = stream_response and model not in MODELS_NOT_ACCEPTING_STREAM
+
         try:
             if self.active_backend == AZURE:
                 stream = self.client.complete(
@@ -257,7 +260,6 @@ class BaseLLM:
                 raise PermissionError(f"Unauthorized: {error_message}")
             else:
                 raise NotImplementedError(f"Error: {error_code} - {error_message}")
-
 
         return stream
 
