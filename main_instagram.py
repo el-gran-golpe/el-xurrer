@@ -11,7 +11,7 @@ from time import sleep
 from uploading_apis.instagram.graph_api import GraphAPI
 
 
-EXECUTE_PLANNING = True   # Set to True for planning
+EXECUTE_PLANNING = False   # Set to True for planning
 GENERATE_POSTS = True    # Set to True for generating posts
 UPLOAD_POSTS = False      # Set to True when you want to run uploads
 

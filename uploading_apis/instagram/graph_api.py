@@ -22,7 +22,7 @@ class GraphAPI:
         self.base_url = "https://graph.facebook.com/v21.0"
 
     def upload_post(self, img_path: str, caption: str):
-        assert img_path.lower().endswith('.png'), "The image file must be a .png"
+        assert img_path.lower().endswith('.jpg'), "The image file must be a .jpg"
 
         try:
             # Step 1: Get image URL from ImgHippo
@@ -59,7 +59,7 @@ class GraphAPI:
 # Example usage
 if __name__ == "__main__":
     graph_api = GraphAPI()
-    img_path = r"C:\Users\Usuario\Downloads\image (3).png"
+    img_path = r"C:\Users\Usuario\Downloads\image (3).jpg"
     caption = "Check out this amazing photo!"
     response = graph_api.upload_post(img_path, caption)
     if response:
