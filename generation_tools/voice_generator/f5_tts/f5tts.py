@@ -12,7 +12,8 @@ from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
 
-from generation_tools.voice_generator.f5_tts.constants import PERRO_SANXE, VOICE_SOURCES, AUDIO_PATH, AUDIO_TEXT
+from generation_tools.voice_generator.f5_tts.constants import PERRO_SANXE, VOICE_SOURCES, AUDIO_PATH, AUDIO_TEXT, LOLI, \
+    LOLI2, LOLI_ANGRY, MISTERIOUS_VOICE
 from utils.exceptions import WaitAndRetryError
 
 
@@ -106,8 +107,10 @@ class F5TTS:
 
 if __name__ == '__main__':
     f5tts = F5TTS()
-    gen_text = "Hola mi bébebe, Hola mi bébebe"
+    gen_text = ("Ojalá vivir en un mundo sembrado de Senpais fuertes y emprendedores como mi Yon Carlos. "
+                "Mi senpai es tan fuerte que puede levantarme con un biceps, mientras con el otro "
+                "saca la cartera para pagarme el Guchi.")
 
     output_path = "./output_audio.wav"
-    f5tts.generate_audio_to_file(gen_text, output_path)
+    f5tts.generate_audio_to_file(gen_text, output_path, voice=MISTERIOUS_VOICE)
     print(f"Audio saved to {output_path}")
