@@ -64,6 +64,8 @@ VALIDATION_SYSTEM_PROMPT = ("You are a categorization assistant tasked with anal
                             "```\n"
                             "When the finish_reason is 'stop', the \"markers\" field must be an empty array.\n"
                             "Ensure that all markers are exact matches to facilitate downstream processing. "
+                            "Include any surrounding special character linked to that markers in the text, "
+                            "like '\"', '.', '*', ... \n"
                             "Be concise and focus solely on the categorization task.\n"
                             "Your output must include ONLY a single JSON object with the keys 'finish_reason' "
                             "and 'markers'. Without further context or additional information.\n"
