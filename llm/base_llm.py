@@ -18,7 +18,8 @@ from azure.ai.inference.models import SystemMessage, UserMessage, StreamingChatC
 from azure.core.credentials import AzureKeyCredential
 
 from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS, \
-    CANNOT_ASSIST_PHRASES, INCOMPLETE_OUTPUT_PHRASES, MODELS_NOT_ACCEPTING_SYSTEM_ROLE, MODELS_NOT_ACCEPTING_STREAM
+    CANNOT_ASSIST_PHRASES, MODELS_NOT_ACCEPTING_SYSTEM_ROLE, MODELS_NOT_ACCEPTING_STREAM, \
+    VALIDATION_SYSTEM_PROMPT, MODELS_ACCEPTING_JSON_FORMAT
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -35,6 +36,7 @@ class BaseLLM:
             preferred_models = [preferred_models]
 
         self.preferred_models = preferred_models
+        self.preferred_validation_models = DEFAULT_PREFERRED_MODELS[::-1]
         self.api_keys = {
             'GITHUB': [os.getenv('GITHUB_API_KEY_HARU')],
             'OPENAI': os.getenv('OPENAI_API_KEY'),
@@ -134,15 +136,18 @@ class BaseLLM:
         return output_dict
 
 
-    def get_model_response(self, conversation: list[dict], preferred_models: list = None, verbose: bool = True,
-                           structured_json: dict[str, str|dict[str]]|None = None) -> tuple:
+    def get_model_response(self, conversation: list[dict], preferred_models: list = None,
+                           preferred_validation_models: list = None,
+                           verbose: bool = True,
+                           structured_json: dict[str, str|dict[str]]|None = None, as_json: bool = False,
+                           large_output: bool = False, validate: bool = False) -> tuple:
 
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 
         stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models,
-                                            structured_json=structured_json)
+                                            structured_json=structured_json, as_json=as_json, large_output=large_output)
 
         assistant_reply, finish_reason = "", None
         for chunk in stream:
@@ -165,41 +170,47 @@ class BaseLLM:
             logger.debug(f"Model {model} did not return a finish reason. Assuming stop")
             finish_reason = "stop"
 
+        if finish_reason == "stop" and validate:
+            finish_reason, assistant_reply = self.recalculate_finish_reason(assistant_reply=assistant_reply)
         assert finish_reason is not None, "Finish reason not found"
-        length_check_phrase = '. '.join(assistant_reply.splitlines()[-2:]).lower()
-        if any(phrase.lower() in length_check_phrase for phrase in INCOMPLETE_OUTPUT_PHRASES):
-            # Remove al of them from the assistant reply with a regex
-            assistant_reply = re.sub("|".join(INCOMPLETE_OUTPUT_PHRASES), "", assistant_reply, flags=re.IGNORECASE)
-            finish_reason = "length"
-            logger.warning("Assistant reply is incomplete. Retrying with the same conversation")
 
         if finish_reason == "length":
             continue_conversation = deepcopy(conversation)
             continue_conversation.append({"role": "assistant", "content": assistant_reply})
             continue_conversation.append({"role": "user", "content": "Continue EXACTLY where we left off"})
             new_assistant_reply, finish_reason = self.get_model_response(conversation=continue_conversation,
-                                                                        preferred_models=preferred_models)
+                                                                         preferred_models=preferred_models,
+                                                                         as_json=as_json, large_output=large_output,
+                                                                         validate=validate)
             assistant_reply += new_assistant_reply
 
         elif finish_reason == 'content_filter':
             print('\n')
             logger.debug("Content filter triggered. Retrying with a different model")
             assert len(preferred_models) > 1, "No more models to try"
-            assistant_reply, finish_reason = self.get_model_response(conversation=conversation, preferred_models=preferred_models[1:])
+            assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
+                                                                     preferred_models=preferred_models[1:],
+                                                                     as_json=as_json, large_output=large_output,
+                                                                     validate=validate)
 
         assert finish_reason == "stop", f"Unexpected finish reason: {finish_reason}"
         return assistant_reply, finish_reason
 
     def __get_response_stream(self, conversation: list[dict], preferred_models: list,
                               use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None,
-                              as_json: bool = False,
+                              as_json: bool = False, large_output: bool = False,
                               stream_response: bool = True) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
 
-        conversation = deepcopy(conversation)
+        conversation, additional_params = deepcopy(conversation), {}
         # Select the best model that is not exhausted
         if not use_paid_api:
             preferred_models = [model for model in preferred_models if model not in self.exhausted_models]
+
+        if as_json:
+            preferred_models = [model for model in preferred_models if model in MODELS_ACCEPTING_JSON_FORMAT]
+            additional_params['response_format'] = {"type": "json_object"}
+
 
         assert len(preferred_models) > 0, "No models available"
         model = preferred_models[0]
@@ -212,16 +223,20 @@ class BaseLLM:
 
         try:
             if self.active_backend == AZURE:
+
                 stream = self.client.complete(
                     messages=self.conversation_to_azure_format(conversation=conversation),
                     model=model,
-                    stream=stream_response
+                    stream=stream_response,
+                    **additional_params
                 )
             elif self.active_backend == OPENAI:
+
                 stream = self.client.chat.completions.create(
                     model=model,
                     messages=conversation,
-                    stream=stream_response
+                    stream=stream_response,
+                    **additional_params
                 )
             else:
                 raise NotImplementedError(f"Backend not implemented: {self.active_backend}")
@@ -242,7 +257,7 @@ class BaseLLM:
                 logger.warning(f"Request size exceeded free github API limit. Retrying with "
                                f"OpenAI paid API ({PREFERRED_PAID_MODELS[0]})")
                 stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
-                                                    use_paid_api=True)
+                                                    use_paid_api=True, as_json=as_json)
                 # Move to a different model
             elif error_code == "RateLimitReached":
                 # We have exhausted the free API limit for this model
@@ -252,10 +267,10 @@ class BaseLLM:
                 if len(preferred_models) == 1 and not use_paid_api:
                     logger.warning("No more models to try. Retrying with the paid API")
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
-                                                        use_paid_api=True)
+                                                        use_paid_api=True, as_json=as_json)
                 else:
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models[1:],
-                                                        use_paid_api=use_paid_api)
+                                                        use_paid_api=use_paid_api, as_json=as_json, large_output=large_output)
             elif error_code == 'unauthorized':
                 raise PermissionError(f"Unauthorized: {error_message}")
             else:
@@ -362,6 +377,9 @@ class BaseLLM:
             function_call = prompt_definition.get('function_call', None)
             system_prompt = prompt_definition.get('system_prompt', None)
             structured_json = prompt_definition.get('structured_json', None)
+            as_json = prompt_definition.get('json', False)
+            large_output = prompt_definition.get('large_output', False)
+            validate = prompt_definition.get('validate', False)
             if system_prompt is not None:
                 system_prompt = self._replace_prompt_placeholders(prompt=system_prompt, cache=cache, accept_unfilled=function_call is not None)
             conversation = []
@@ -381,13 +399,20 @@ class BaseLLM:
                 # Get the assistant's response
                 assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
                                                                          preferred_models=preferred_models,
-                                                                         structured_json=structured_json)
+                                                                         structured_json=structured_json,
+                                                                         as_json=as_json,
+                                                                         large_output=large_output,
+                                                                         validate=validate)
+
                 if any(cant_assist.lower() in assistant_reply.lower() for cant_assist in CANNOT_ASSIST_PHRASES):
                     if len(preferred_models) == 0:
                         raise RuntimeError(f"No models can assist with prompt: {prompt}")
                     logger.warning(f"Assistant cannot assist with prompt: {prompt}. Retrying with a different model")
                     assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
-                                                                             preferred_models=preferred_models[1:])
+                                                                             preferred_models=preferred_models[1:],
+                                                                             as_json=as_json,
+                                                                             large_output=large_output,
+                                                                             validate=validate)
             # Add the assistant's response to the cache
             cache[cache_key] = assistant_reply
 
@@ -398,3 +423,36 @@ class BaseLLM:
         # Decode the JSON object for the last assistant_reply
         output_dict = self.decode_json_from_message(message=assistant_reply)
         return output_dict
+
+
+    def recalculate_finish_reason(self, assistant_reply: str) -> tuple[str, str]:
+        """
+        Validate that the finish reason is the expected one
+        :param finish_reason: The finish reason to validate
+        :param expected_finish_reason: The expected finish reason
+        :return: True if the finish reason is the expected one
+        """
+
+        conversation = [{"role": "system", "content": VALIDATION_SYSTEM_PROMPT},
+                        {"role": "user", "content": assistant_reply}]
+
+        print("\n\n----------------- VALIDATION -----------------")
+        output_dict, finish_reason = self.get_model_response(conversation=conversation,
+                                                                 preferred_models=self.preferred_validation_models,
+                                                                 as_json=True, validate=False, large_output=False)
+        print()
+        # Decode the JSON object for the last assistant_reply
+        output_dict = self.decode_json_from_message(message=output_dict)
+
+        assert 'finish_reason' in output_dict, f"Finish reason not found in the output: {output_dict}"
+        assert 'markers' in output_dict, f"Markers not found in the output: {output_dict}"
+
+        finish_reason, markers = output_dict['finish_reason'], output_dict['markers']
+        if finish_reason == "stop":
+            assert len(markers) == 0, (f"Markers found in the assistant reply when finish_reason is stop: "
+                                       f"{markers}")
+        for marker in markers:
+            assert marker in assistant_reply, f"Marker not found in the assistant reply: {marker}"
+            assistant_reply = assistant_reply.replace(marker, "").strip()
+
+        return finish_reason, assistant_reply
