@@ -15,7 +15,7 @@ PLANNING_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'plann
 VIDEOS_TEMPLATE_FOLDER = os.path.join('.', 'llm', 'youtube', 'prompts', 'videos')
 VIDEOS_COUNT = 40
 
-PROBABLE_OUTPUT_FOLDER_BASE_PATHS = [os.path.join('.', 'youtube_channels'), os.path.join('H:', 'Otros ordenadores', 'My Mac', 'youtube_channels')]
+PROBABLE_OUTPUT_FOLDER_BASE_PATHS = [os.path.join('.', 'youtube_channels'), os.path.join('F:', 'Other computers', 'My Mac', 'youtube_channels')]
 for output_folder in PROBABLE_OUTPUT_FOLDER_BASE_PATHS:
     if os.path.isdir(output_folder):
         OUTPUT_FOLDER_BASE_PATH = output_folder

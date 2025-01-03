@@ -16,13 +16,14 @@ kaiser
 gradio_client
 proxy-spinner
 python-slugify
-moviepy
+moviepy==1.0.3
 pysrt
 openai
 python-dotenv
 pydub
 azure-ai-inference
 numpy
+nltk
 
 # Only for Windows
 ftfy; sys_platform == 'win32'
