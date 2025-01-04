@@ -64,27 +64,87 @@ class GraphAPI:
             print(f"An error occurred while retrieving the Page Access Token: {e}")
             sys.exit(1)
 
-    def upload_instagram_publication(self, img_path: str, caption: str):
-        assert img_path.lower().endswith('.jpeg'), "The image file must be a .jpeg"
+    def upload_instagram_publication(self, img_paths: list, caption: str):
+        """
+        Uploads one or multiple images as a single post on Instagram.
+        
+        Parameters:
+        - img_paths (list or str): List of image paths to upload. Can be a single image or multiple images.
+        - caption (str): Caption for the post.
+        
+        Returns:
+        - dict: The response from the Instagram API if successful, None otherwise.
+        """
+        # Ensure img_paths is always a list, even if a single image is provided
+        if isinstance(img_paths, str):
+            img_paths = [img_paths]
 
+        if len(caption) > 2200:
+            raise ValueError("Caption exceeds the maximum allowed length of 2,200 characters.")
+
+        media_ids = []
+
+        # Step 1: Create media containers for each image
+        for img_path in img_paths:
+            assert img_path.lower().endswith(('.png', '.jpg', '.jpeg')), "Each image file must be a .png, .jpg, or .jpeg"
+
+            try:
+                # Get image URL from ImgHippo
+                img_hippo = ImgHippo()
+                image_url = img_hippo.get_url_for_image(img_path)
+
+                url = f"{self.base_url}/{self.account_id}/media"
+                payload = {
+                    "image_url": image_url,
+                    "access_token": self.page_access_token
+                }
+
+                # If it's a single image, add the caption directly to the media container
+                if len(img_paths) == 1:
+                    payload["caption"] = caption
+
+                # If multiple images, mark as part of a carousel
+                if len(img_paths) > 1:
+                    payload["is_carousel_item"] = "true"
+
+                response = requests.post(url, data=payload)
+                response.raise_for_status()
+                media_id = str(response.json().get("id"))
+                media_ids.append(media_id)
+                print(f"Created media container for {img_path} with ID: {media_id}")
+
+            except requests.exceptions.RequestException as e:
+                print(f"An error occurred while creating media container for {img_path}: {e}")
+                if response is not None:
+                    print(f"Response content: {response.content.decode()}")
+                return None
+
+        # Step 2: Decide whether to publish a single image or a carousel
+        if len(media_ids) == 1:
+            # Single image post
+            creation_id = media_ids[0]
+        else:
+            # Create a carousel container
+            try:
+                carousel_url = f"{self.base_url}/{self.account_id}/media"
+                carousel_payload = {
+                    "media_type": "CAROUSEL",
+                    "children": ",".join(media_ids),  # Join media IDs into a comma-separated string
+                    "caption": caption,
+                    "access_token": self.page_access_token
+                }
+                carousel_response = requests.post(carousel_url, data=carousel_payload)
+                carousel_response.raise_for_status()
+                creation_id = carousel_response.json().get("id")
+                print(f"Created carousel container with ID: {creation_id}")
+            except requests.exceptions.RequestException as e:
+                print(f"An error occurred while creating the carousel container: {e}")
+                if response is not None:
+                    print(f"Response content: {response.content.decode()}")
+                return None
+
+        # Step 3: Publish the post
         try:
-            # Step 1: Get image URL from ImgHippo
-            img_hippo = ImgHippo()
-            image_url = img_hippo.get_url_for_image(img_path)
-
-            # Step 2: Create media container
-            url = f"{self.base_url}/{self.account_id}/media"
-            payload = {
-                "image_url": image_url,
-                "caption": caption,
-                "access_token": self.page_access_token
-            }
-            response = requests.post(url, data=payload)
-            print(response.content)
-            response.raise_for_status()
-            creation_id = response.json().get("id")
-
-            # Step 3: Publish the media
             publish_url = f"{self.base_url}/{self.account_id}/media_publish"
             publish_payload = {
                 "creation_id": creation_id,
@@ -92,11 +152,18 @@ class GraphAPI:
             }
             publish_response = requests.post(publish_url, data=publish_payload)
             publish_response.raise_for_status()
-            
+            result = publish_response.json()
+            print("Post published successfully:", result)
+            return {
+                "id": result.get("id"),
+                "permalink": result.get("permalink"),
+                "status": "success"
+            }
 
-            return publish_response.json()
         except requests.exceptions.RequestException as e:
-            print(f"An error occurred: {e}")
+            print(f"An error occurred while publishing the post: {e}")
+            if response is not None:
+                print(f"Response content: {response.content.decode()}")
             return None
         
     def upload_facebook_publication(self, img_paths: list, caption: str):
@@ -152,15 +219,21 @@ class GraphAPI:
             print(f"An error occurred while creating the post: {e}")
             return None
 
-# Example usage
 if __name__ == "__main__":
     graph_api = GraphAPI()
+
+    # Single image case
+    # img_paths = [r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_2.png"]
+    # caption = "How you all doing? Tell me in the comments! 🌟"
+    # response = graph_api.upload_instagram_publication(img_paths, caption)
+
+    # Multiple images case
     img_paths = [
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_0.png",
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_1.png",
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_2.png"
+        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_0.png",
+        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_1.png"
     ]
-    caption = "Emergency meeting time! 🗣️ I’m calling on my amazing team to brainstorm ideas. Together, we’ll find a way through this chaos! 💪"
-    response = graph_api.upload_facebook_publication(img_paths, caption)
-    #response = graph_api.upload_instagram_publication(img_path, caption)
+    caption = "Let’s talk, my beautiful community! 💖 I want to hear your journeys toward authenticity—let's uplift each other! 😇"
+    response = graph_api.upload_instagram_publication(img_paths, caption)
+    
+
   
