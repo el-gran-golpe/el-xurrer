@@ -8,7 +8,7 @@ from generation_tools.thumbnails_generator.templated import Templated
 from generation_tools.voice_generator.f5_tts.f5tts import F5TTS
 from utils.utils import time_between_two_words_in_srt, check_script_validity
 from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
-from generation_tools.voice_generator.xtts.xtts import Xtts
+#from generation_tools.voice_generator.xtts.xtts import Xtts
 from generation_tools.image_generator.flux.flux import Flux
 from generation_tools.subtitles_generator.whisper.whisper_stt import Whisper
 from generation_tools.sounds_generator.audio_ldm import AudioLDM
