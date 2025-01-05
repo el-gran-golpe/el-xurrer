@@ -49,7 +49,7 @@ class Xtts:
                 temp_output_path = f"{temp_out_dir}/{uuid4()}.wav"
                 self._generate_audio_file(text=text, output_path=temp_output_path, language=language, speaker=speaker, speed=speed)
                 # Check if transcription sentences match with expected text
-                quality = self.transcriber.check_audio_quality(audio_path=temp_output_path, expected_text=text)
+                quality = self.transcriber.check_audio_quality(audio_path=temp_output_path, expected_text=text, language=language)
                 generated_files[temp_output_path] = quality
                 if quality > quality_threshold:
                     break

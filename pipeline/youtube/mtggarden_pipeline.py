@@ -80,7 +80,7 @@ class MTGGardenPipeline:
                 self.subtitle_generator.audio_file_to_srt(audio_path=audio_path,
                                                           srt_sentence_output_path=subtitle_sentence_path,
                                                           srt_words_output_path=subtitle_word_path,
-                                                          text_to_fit=text)
+                                                          text_to_fit=text, language='es')
                 logger.info(f"Subtitle generation: {time() - start:.2f}s")
                 assert os.path.isfile(
                     subtitle_sentence_path), f"Sentence subtitle file {subtitle_sentence_path} was not generated"

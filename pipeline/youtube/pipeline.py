@@ -71,7 +71,8 @@ class Pipeline:
             if text and (regenerate_subtitles or not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(subtitle_word_path)):
                 start = time()
                 self.subtitle_generator.audio_file_to_srt(audio_path=audio_path, srt_sentence_output_path=subtitle_sentence_path,
-                                                           srt_words_output_path=subtitle_word_path, text_to_fit=text)
+                                                           srt_words_output_path=subtitle_word_path, text_to_fit=text,
+                                                          language=lang)
                 logger.info(f"Subtitle generation: {time() - start:.2f}s")
                 assert os.path.isfile(subtitle_sentence_path), f"Sentence subtitle file {subtitle_sentence_path} was not generated"
                 assert os.path.isfile(subtitle_word_path), f"Word subtitle file {subtitle_word_path} was not generated"

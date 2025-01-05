@@ -29,23 +29,23 @@ class Whisper:
             self._model = whisper.load_model(self._size, device=device)
         return self._model
 
-    def _transcribe(self, audio_path: str, prompt: str = None) -> dict:
+    def _transcribe(self, audio_path: str, prompt: str = None, language: str = None) -> dict:
         assert any(audio_path.endswith(ext) for ext in
                    [".wav", ".mp3", ".flac"]), "Audio file must be in .wav, .mp3 or .flac format"
         assert os.path.isfile(audio_path), f"Audio file {audio_path} does not exist"
         # Try with and without prompt and get the closer result
         if prompt is None:
-            result = self.model.transcribe(audio_path, word_timestamps=True)
+            result = self.model.transcribe(audio_path, word_timestamps=True, language=language)
         else:
-            result_prompt = self.model.transcribe(audio_path, word_timestamps=True, initial_prompt=prompt)
+            result_prompt = self.model.transcribe(audio_path, word_timestamps=True, initial_prompt=prompt, language=language)
             prompt_dist = edit_distance(prompt.strip().lower(), result_prompt['text'].strip().lower())
-            result_no_prompt = self.model.transcribe(audio_path, word_timestamps=True)
+            result_no_prompt = self.model.transcribe(audio_path, word_timestamps=True, language=language)
             no_prompt_dist = edit_distance(prompt.strip().lower(), result_no_prompt['text'].strip().lower())
             result = result_prompt if prompt_dist < no_prompt_dist else result_no_prompt
         return result
 
-    def check_audio_quality(self, audio_path: str, expected_text: str) -> float:
-        result = self._transcribe(audio_path, prompt=expected_text)
+    def check_audio_quality(self, audio_path: str, expected_text: str, language: str = None) -> float:
+        result = self._transcribe(audio_path, prompt=expected_text, language=language)
         segments = result['segments']
         expected_sentences = sent_tokenize(expected_text)
         original_segments_count = len(segments)
@@ -103,9 +103,9 @@ class Whisper:
 
 
     def audio_file_to_srt(self, audio_path: str, srt_sentence_output_path: str,
-                          srt_words_output_path: str,
-                          text_to_fit: str = None):
-        result = self._transcribe(audio_path, prompt=text_to_fit)
+                          srt_words_output_path: str, text_to_fit: str = None,
+                          language: str = None):
+        result = self._transcribe(audio_path, prompt=text_to_fit, language=language)
         segments = result['segments']
 
         if text_to_fit:
