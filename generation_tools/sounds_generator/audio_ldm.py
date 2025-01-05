@@ -3,6 +3,7 @@ from diffusers import AudioLDM2Pipeline
 import torch
 import os
 import numpy as np
+from loguru import logger
 
 class AudioLDM:
     def __init__(self, load_on_demand: bool = False):
@@ -25,10 +26,11 @@ class AudioLDM:
             self._pipe = self.load_model()
         return self._pipe
 
-    def generate_audio(self, prompt: str, output_path: str, negative_prompt: str = "noise, bad quality, artifacts", num_inference_steps: int = 100, audio_length_in_s: int = 5, num_waveforms_per_prompt: int = 3):
+    def generate_audio(self, prompt: str, output_path: str, negative_prompt: str = "noise, bad quality, artifacts",
+                       num_inference_steps: int = 100, audio_length_in_s: int = 5, num_waveforms_per_prompt: int = 3):
         output_dir = os.path.dirname(output_path)
         assert os.path.isdir(output_dir), f"Output folder {output_dir} does not exist"
-
+        logger.info(f"Generating audio for: {prompt}")
         audio = self.pipe(
             prompt,
             negative_prompt=negative_prompt,
