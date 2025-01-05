@@ -111,15 +111,19 @@ def generate_videos():
                 with open(script_path, 'w', encoding='utf-8') as f:
                     json.dump(script, f, indent=4, ensure_ascii=False)
 
-            assert os.path.isfile(script_path), "Script file not found"
-
             # If the video file already exists, skip it
             if not missing_video_assets(assets_path=output_path):
                 continue
 
+            assert os.path.isfile(script_path), "Script file not found"
+
+            with open(script_path, 'r', encoding='utf-8') as f:
+                script = json.load(f)
+                lang = script["lang"]
+
             for retrial in range(25):
                 try:
-                    Pipeline(output_folder=output_path).generate_video()
+                    Pipeline(output_folder=output_path, default_lang=lang).generate_video()
                     break
                 except WaitAndRetryError as e:
                     sleep_time = e.suggested_wait_time

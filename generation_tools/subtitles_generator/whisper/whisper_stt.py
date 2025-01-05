@@ -10,29 +10,48 @@ import math
 from utils.utils import get_audio_length
 import string
 import torch
+                     # 1GB    1GB      2GB      5GB       10GB     6GB
+VALID_MODEL_NAMES = ('tiny', 'base', 'small', 'medium', 'large', 'turbo')
+ENGLISH_MODEL_VERSION_BY_NAME = {
+    'tiny': 'tiny.en',
+    'base': 'base.en',
+    'small': 'small.en',
+    'medium': 'medium.en',
+    'large': 'large',
+    'turbo': 'turbo'
+}
 
 PUNCTUATION = f"{string.punctuation}“”‘’¿¡"
 # If punkt_tab is not downloaded, download it
 nltk.download('punkt_tab')
 device = "cuda" if torch.cuda.is_available() else "cpu"
 class Whisper:
-    def __init__(self, size: str = "small", load_on_demand: bool = False):
+    def __init__(self, size: str = "small", load_on_demand: bool = False, default_lang: str = None):
+        assert size in VALID_MODEL_NAMES, f"Invalid model size {size}. Valid sizes are {VALID_MODEL_NAMES}"
+
         self._size = size
+        self._default_lang = default_lang
+        self._model_name = size if default_lang != 'en' else ENGLISH_MODEL_VERSION_BY_NAME[size]
+
         if load_on_demand:
             self._model = None
         else:
-            self._model = whisper.load_model(size, device=device)
+            self._model = whisper.load_model(self._model_name, device=device)
 
     @property
     def model(self):
         if self._model is None:
-            self._model = whisper.load_model(self._size, device=device)
+            self._model = whisper.load_model(self._model_name, device=device)
         return self._model
 
     def _transcribe(self, audio_path: str, prompt: str = None, language: str = None) -> dict:
         assert any(audio_path.endswith(ext) for ext in
                    [".wav", ".mp3", ".flac"]), "Audio file must be in .wav, .mp3 or .flac format"
         assert os.path.isfile(audio_path), f"Audio file {audio_path} does not exist"
+
+        if language is None:
+            language = self._default_lang
+
         # Try with and without prompt and get the closer result
         if prompt is None:
             result = self.model.transcribe(audio_path, word_timestamps=True, language=language)

@@ -21,11 +21,11 @@ WH_BY_ASPECT_RATIO = {
 }
 
 class Pipeline:
-    def __init__(self, output_folder: str):
+    def __init__(self, output_folder: str, default_lang: str = None):
 
-        self.voice_generator = F5TTS()#Xtts(load_on_demand=True)
+        self.voice_generator = F5TTS(load_on_demand=True, use_proxy=True)#Xtts(load_on_demand=True)
         self.image_generator = Flux(load_on_demand=True, use_proxy=True)
-        self.subtitle_generator = Whisper(load_on_demand=True)
+        self.subtitle_generator = Whisper(load_on_demand=True, default_lang=default_lang)
         self.sounds_generator = AudioLDM(load_on_demand=True)
         self.thumbnail_generator = Templated()
 
