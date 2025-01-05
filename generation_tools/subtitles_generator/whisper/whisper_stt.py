@@ -170,7 +170,8 @@ class Whisper:
     from nltk.metrics import edit_distance
     from copy import deepcopy
 
-    def _adjust_segments_to_sentences(self, segments:list[dict], sentences: list[str], force_reassignment: bool = False):
+    def _adjust_segments_to_sentences(self, segments:list[dict], sentences: list[str], force_reassignment: bool = False,
+                                       max_words_increasing_to_cut_search = 10):
         """
         Adjusts the segments to ensure the count matches the sentence count.
         This involves iteratively creating segments with increasing words until
@@ -190,14 +191,13 @@ class Whisper:
         for sentence in sentences[:-1]:
             best_segment, best_distance = None, float('inf')
             words_to_use = []
-
+            increment_dist_hist = []
             # Iteratively build the segment by adding words and checking the edit distance
             for i in range(1, len(remaining_words) + 1):
                 candidate_segment_text = "".join(word['word'] for word in remaining_words[:i]).strip()
                 clean_segment_text = candidate_segment_text.translate(str.maketrans('', '', PUNCTUATION)).strip().lower()
                 clean_sentence = sentence.translate(str.maketrans('', '', PUNCTUATION)).strip().lower()
                 distance = calculate_edit_distance(clean_segment_text, clean_sentence)
-
                 if distance < best_distance:
                     best_distance, words_to_use = distance, remaining_words[:i]
                     best_segment = {
@@ -206,6 +206,14 @@ class Whisper:
                         'text': candidate_segment_text,
                         'words': words_to_use
                     }
+                    increment_dist_hist = []
+                else:
+                    increment_dist_hist.append(distance)
+                # If the last max_words_increasing_to_cut_search distances are all greater than best_distance, break
+                # Only if the distance has been increasing consistently
+                if len(increment_dist_hist) > max_words_increasing_to_cut_search + 1 and \
+                   all(prev_dist < next_dist for prev_dist, next_dist in zip(increment_dist_hist[:-1], increment_dist_hist[1:])):
+                        break
 
             # Update the adjusted segments with the best found segment
             adjusted_segments.append(best_segment)
