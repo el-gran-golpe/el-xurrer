@@ -4,11 +4,10 @@ from llm.instagram.instagram_llm import InstagramLLM
 import json
 from slugify import slugify
 from tqdm import tqdm
-from uploading_apis.instagram import graph_api
 from utils.utils import get_valid_planning_file_names, read_initial_conditions
 from utils.exceptions import WaitAndRetryError
 from time import sleep
-from uploading_apis.instagram.graph_api import GraphAPI
+from uploader_services.meta_api.graph_api import GraphAPI
 
 
 EXECUTE_PLANNING = False   # Set to True for planning
@@ -235,53 +234,12 @@ def generate_instagram_posts():
                                 sleep(sleep_time / 100)
 
 def upload_posts():
-    uploader = GraphAPI()
+    
+    uploader_meta = GraphAPI()
 
-    # Get list of post folders
-    post_folders = [
-        folder for folder in os.listdir(OUTPUT_FOLDER_BASE_PATH_POSTS)
-        if os.path.isdir(os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, folder))
-    ]
-    assert post_folders, f"No post folders found in {OUTPUT_FOLDER_BASE_PATH_POSTS}"
+    
 
-    for post_folder in sorted(post_folders):
-        post_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_POSTS, post_folder)
-
-        # Read caption
-        # caption_path = os.path.join(post_path, 'caption.txt')
-        # assert os.path.isfile(caption_path), f"No caption.txt found in {post_folder}."
-        # with open(caption_path, 'r', encoding='utf-8') as f:
-        #     caption = f.read().strip()
-        # assert caption, f"Caption in {post_folder} is empty."
-
-        # # Read upload time
-        # upload_time_path = os.path.join(post_path, 'upload_time.txt')
-        # assert os.path.isfile(upload_time_path), f"No upload_time.txt found in {post_folder}."
-        # with open(upload_time_path, 'r') as f:
-        #     upload_time_str = f.read().strip()
-        #     # Parse the upload time in ISO 8601 format with 'Z' for UTC
-        #     try:
-        #         upload_time = datetime.strptime(upload_time_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
-        #     except ValueError:
-        #         assert False, f"Invalid date format in {upload_time_path}. Expected format: YYYY-MM-DDTHH:MM:SSZ"
-
-        # # Get current time in UTC
-        # current_time = datetime.now(timezone.utc)
-        # if current_time < upload_time:
-        #     time_to_wait = (upload_time - current_time).total_seconds()
-        #     print(f"Waiting {time_to_wait} seconds to upload {post_folder}")
-        #     time.sleep(time_to_wait)
-
-        # # Get image paths
-        # image_files = [
-        #     file for file in os.listdir(post_path)
-        #     if file.lower().endswith(('.png', '.jpg', '.jpeg'))
-        # ]
-        # assert image_files, f"No images found in {post_folder}."
-        # image_paths = [os.path.join(post_path, image_file) for image_file in sorted(image_files)]
-
-        # # Upload the post
-        # uploader.upload_post(image_paths=image_paths, caption=caption)
+       
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:
