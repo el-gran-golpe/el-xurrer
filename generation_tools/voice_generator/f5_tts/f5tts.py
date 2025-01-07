@@ -13,17 +13,28 @@ from gradio_client.exceptions import AppError
 from proxy_spinner import ProxySpinner
 
 from generation_tools.voice_generator.f5_tts.constants import PERRO_SANXE, VOICE_SOURCES, AUDIO_PATH, AUDIO_TEXT, LOLI, \
-    LOLI2, LOLI_ANGRY, MISTERIOUS_VOICE
+    MISTERIOUS_VOICE, REQUIRES_SILENCE_REMOVAL
 from utils.exceptions import WaitAndRetryError
 
 
 DEFAULT_VOICE = PERRO_SANXE
 
+SRC_MODEL_BY_LANG = {
+    "es": "jpgallegoar/Spanish-F5",
+    "en": "mrfakename/E2-F5-TTS"
+}
+
+API_NAME_BY_LANG = {
+    "es": "/infer",
+    "en": "/basic_tts"
+}
+
 class F5TTS:
-    def __init__(self, src_model: str = "jpgallegoar/Spanish-F5", use_proxy: bool = True,
-                 api_name: str = '/infer', load_on_demand: bool = False):
-        self._src_model = src_model
-        self._api_name = api_name
+    def __init__(self, lang: str = 'en', use_proxy: bool = True, load_on_demand: bool = False):
+        assert lang in SRC_MODEL_BY_LANG, f"Language {lang} not found in the available languages."
+        self._lang = lang
+        self._src_model = SRC_MODEL_BY_LANG[lang]
+        self._api_name = API_NAME_BY_LANG[lang]
         if use_proxy:
             self.proxy = ProxySpinner(proxy=None)
         else:
@@ -56,15 +67,17 @@ class F5TTS:
         return client
 
     def generate_audio_to_file(self, text: str, output_path: str, voice: str = DEFAULT_VOICE,
-                               model: str = "F5-TTS", remove_silence: bool = False, cross_fade_duration: float = 0.15,
+                               model: str = "F5-TTS", remove_silence: bool = None, cross_fade_duration: float = 0.15,
                                speed: float = 1.0, retries: int = 3):
 
         assert voice in VOICE_SOURCES, (f"Voice {voice} not found in the available voices."
                                         f"Available voices {tuple(VOICE_SOURCES.keys())}")
         ref_audio_orig_path = VOICE_SOURCES[voice][AUDIO_PATH]
         ref_text = VOICE_SOURCES[voice][AUDIO_TEXT]
+        if remove_silence is None:
+            remove_silence = VOICE_SOURCES[voice][REQUIRES_SILENCE_REMOVAL]
 
-        assert os.path.exists(ref_audio_orig_path), "Reference audio file does not exist"
+        assert os.path.exists(ref_audio_orig_path), f"Reference audio file does not exist at {ref_audio_orig_path}"
         assert isinstance(ref_text, str), "Reference text must be a string"
         assert isinstance(text, str), "Generated text must be a string"
         assert 0.1 <= cross_fade_duration <= 5.0, "Cross fade duration must be between 0.1 and 5.0 seconds"
@@ -73,16 +86,29 @@ class F5TTS:
         for i in range(retries):
             try:
                 with self.proxy:
-                    result = self.client.predict(
-                        ref_audio_orig=handle_file(ref_audio_orig_path),
-                        ref_text=ref_text,
-                        gen_text=text,
-                        model=model,
-                        remove_silence=remove_silence,
-                        cross_fade_duration=cross_fade_duration,
-                        speed=speed,
-                        api_name=self._api_name
-                    )
+                    if self._lang == 'es':
+                        result = self.client.predict(
+                            ref_audio_orig=handle_file(ref_audio_orig_path),
+                            ref_text=ref_text,
+                            gen_text=text,
+                            model=model,
+                            remove_silence=remove_silence,
+                            cross_fade_duration=cross_fade_duration,
+                            speed=speed,
+                            api_name=self._api_name
+                        )
+                    elif self._lang == 'en':
+                        result = self.client.predict(
+                            ref_audio_input=handle_file(ref_audio_orig_path),
+                            ref_text_input=ref_text,
+                            gen_text_input=text,
+                            remove_silence=remove_silence,
+                            cross_fade_duration_slider=cross_fade_duration,
+                            nfe_slider=32,
+                            speed_slider=speed,
+                            api_name=self._api_name)
+                    else:
+                        raise ValueError(f"Language {self._lang} not supported")
                     break
             except (AppError, ConnectionError, ConnectError, ConnectTimeout, httpxConnectTimeout, ReadTimeout,
                     httpxProxyError, httpxConnectError, CancelledError, ReadError, RemoteProtocolError) as e:
