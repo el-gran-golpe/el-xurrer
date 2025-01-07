@@ -7,6 +7,7 @@ from tqdm import tqdm
 from utils.exceptions import EmptyScriptException
 from utils.utils import get_audio_length, find_word_timing
 import sys
+from moviepy.video.fx.resize import resize
 
 # We could also do it with pysrt, but it becomes easier this way
 if sys.platform.startswith('win'):
@@ -43,6 +44,11 @@ class MovieEditorBase:
 
         audio_clip = mp.AudioFileClip(audio_path)
         image_clip = mp.ImageClip(image_path).set_duration(clip_length)
+
+        # Apply a zoom-out effect: Start at 110% size and end at 100%
+        image_clip = image_clip.fx(resize, 1.1)  # Start at 110% size
+        # Gradually zoom out over the clip duration
+        image_clip = image_clip.resize(lambda t: 1.1 - 0.1 * (t / clip_length))
 
         if sound is not None and os.path.isfile(sounds_path):
             assert os.path.isfile(word_subtitles_path), f"Missing word subtitle file for ID: {_id}"

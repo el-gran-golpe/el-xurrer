@@ -51,17 +51,17 @@ def generate_planning():
     planning = YoutubeLLM().generate_youtube_planning(prompt_template_path=template_path, list_count=6)
 
     # Save the planning
-    output_path = os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, channel_name)
+    output_path = OUTPUT_FOLDER_BASE_PATH_PLANNING#os.path.join(OUTPUT_FOLDER_BASE_PATH_PLANNING, channel_name)
     os.makedirs(output_path, exist_ok=True)
 
-    if os.path.isfile(os.path.join(output_path, 'mitos-y-ritos.json')):
-        print(f"Warning: The planning file already exists in the folder: {output_path}")
+    if os.path.isfile(os.path.join(output_path, f'{channel_name}.json')):
+        print(f"Warning: The planning file {channel_name}.json already exists in the folder: {output_path}")
         overwrite = input("Do you want to overwrite it? (y/n): ")
         if overwrite.lower() not in ('y', 'yes'):
             print("The planning was not saved")
             return
 
-    with open(os.path.join(output_path, 'mitos-y-ritos.json'), 'w', encoding='utf-8') as file:
+    with open(os.path.join(output_path, f'{channel_name}.json'), 'w', encoding='utf-8') as file:
         json.dump(planning, file, indent=4, ensure_ascii=False)
 
 def generate_videos():
@@ -99,7 +99,7 @@ def generate_videos():
         list_name_slug = slugify(list_name)
         for video_name, video_data in tqdm(videos_in_list.items(), desc=f"Generating videos for {list_name}", total=len(videos_in_list)):
             video_name_slug = slugify(video_name)
-            duration, description, thumbnail_text = video_data['duration_minutes'], video_data['description'], video_data['thumbnail_text']
+            duration, description = video_data['duration_minutes'], video_data['description']
             theme_prompt = f"{video_name} -- {description}"
             output_path = os.path.join(output_folder, list_name_slug, video_name_slug)
             if not os.path.isdir(output_path):
