@@ -5,7 +5,7 @@ from time import time
 from tqdm import tqdm
 
 from generation_tools.thumbnails_generator.templated import Templated
-from generation_tools.voice_generator.f5_tts.f5tts import F5TTS
+from generation_tools.voice_generator.f5_tts.f5tts import F5TTS, DEFAULT_VOICE
 from utils.utils import time_between_two_words_in_srt, check_script_validity
 from video_editors.movie_editor_sentece_subtitles import MovieEditorSentenceSubtitles
 #from generation_tools.voice_generator.xtts.xtts import Xtts
@@ -23,7 +23,7 @@ WH_BY_ASPECT_RATIO = {
 class Pipeline:
     def __init__(self, output_folder: str, default_lang: str = None):
 
-        self.voice_generator = F5TTS(load_on_demand=True, use_proxy=True)#Xtts(load_on_demand=True)
+        self.voice_generator = F5TTS(lang=default_lang, load_on_demand=True, use_proxy=True)#Xtts(load_on_demand=True)
         self.image_generator = Flux(load_on_demand=True, use_proxy=True)
         self.subtitle_generator = Whisper(load_on_demand=True, default_lang=default_lang)
         self.sounds_generator = AudioLDM(load_on_demand=True)
@@ -41,6 +41,7 @@ class Pipeline:
 
     def generate_video(self):
         lang = self.script["lang"]
+        voice = self.script.get("voice", DEFAULT_VOICE)
         w, h = WH_BY_ASPECT_RATIO[self.script["aspect_ratio"]]
 
         self._generate_thumbnail_if_not_exists()
@@ -56,7 +57,7 @@ class Pipeline:
             if text and not os.path.isfile(audio_path):
                 start = time()
                 self.voice_generator.generate_audio_to_file(text=text, output_path=audio_path,
-                                                            retries=3)
+                                                            voice=voice, retries=3)
                 logger.info(f"Audio generation: {time() - start:.2f}s")
                 assert os.path.isfile(audio_path), f"Audio file {audio_path} was not generated"
                 regenerate_subtitles = True

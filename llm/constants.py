@@ -36,6 +36,7 @@ LARGER_OUTPUT_MODELS = ('o1', 'o1-mini', 'o1-preview')
 
 MODELS_NOT_ACCEPTING_SYSTEM_ROLE = ('o1', 'o1-mini', 'o1-preview')
 MODELS_NOT_ACCEPTING_STREAM = ('o1', 'o1-mini', 'o1-preview')
+REASONING_MODELS = ('o1', 'o1-mini', 'o1-preview')
 
 PREFERRED_PAID_MODELS = ('gpt-4o-mini', )
 
@@ -50,7 +51,7 @@ VALIDATION_SYSTEM_PROMPT = ("You are a categorization assistant tasked with anal
                             "Your role is to classify the finish_reason into one of the following categories:\n\n"
                             "\t- 'stop': The output is complete and looks like a satisfactory answer.\n"
                             "\t- 'length': The output appears incomplete. Look for markers such as phrases like "
-                            "\"Due to character limitations...\", \"This pattern continues exhaustively through...\" or "
+                            "\"Due to character limitations I will continue in the next comments...\", \"This pattern continues exhaustively through...\" or "
                             "\"Continuaré con las secciones restantes en los siguientes comentarios...\"."
                             "\t- 'content_filter': The output was not completed due to a content filter being triggered. "
                             "Common markers include phrases like \"I can't assist with that task\" or similar wording.\n\n"

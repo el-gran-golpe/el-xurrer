@@ -21,7 +21,7 @@ from azure.core.credentials import AzureKeyCredential
 
 from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS, \
     CANNOT_ASSIST_PHRASES, MODELS_NOT_ACCEPTING_SYSTEM_ROLE, MODELS_NOT_ACCEPTING_STREAM, \
-    VALIDATION_SYSTEM_PROMPT, MODELS_ACCEPTING_JSON_FORMAT
+    VALIDATION_SYSTEM_PROMPT, MODELS_ACCEPTING_JSON_FORMAT, REASONING_MODELS
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -142,14 +142,15 @@ class BaseLLM:
                            preferred_validation_models: list = None,
                            verbose: bool = True,
                            structured_json: dict[str, str|dict[str]]|None = None, as_json: bool = False,
-                           large_output: bool = False, validate: bool = False) -> tuple:
+                           large_output: bool = False, validate: bool = False, force_reasoning: bool = False) -> tuple:
 
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 
         stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models,
-                                            structured_json=structured_json, as_json=as_json, large_output=large_output)
+                                            structured_json=structured_json, as_json=as_json, large_output=large_output,
+                                            force_reasoning=force_reasoning)
 
         assistant_reply, finish_reason = "", None
         for chunk in stream:
@@ -200,7 +201,7 @@ class BaseLLM:
 
     def __get_response_stream(self, conversation: list[dict], preferred_models: list,
                               use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None,
-                              as_json: bool = False, large_output: bool = False,
+                              as_json: bool = False, large_output: bool = False, force_reasoning: bool = False,
                               stream_response: bool = True) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
 
@@ -213,6 +214,13 @@ class BaseLLM:
             preferred_models = [model for model in preferred_models if model in MODELS_ACCEPTING_JSON_FORMAT]
             additional_params['response_format'] = {"type": "json_object"}
 
+        if force_reasoning:
+            # Use the order of REASONING_MODELS to be better first
+            reasoning_models = [model for model in REASONING_MODELS if model in preferred_models]
+            if len(reasoning_models) > 0:
+                preferred_models = reasoning_models
+            else:
+                logger.warning(f"Couldn't force a reasoning models because no one available. Using {preferred_models[0]}")
 
         assert len(preferred_models) > 0, "No models available"
         model = preferred_models[0]
@@ -259,7 +267,7 @@ class BaseLLM:
                 logger.warning(f"Request size exceeded free github API limit. Retrying with "
                                f"OpenAI paid API ({PREFERRED_PAID_MODELS[0]})")
                 stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
-                                                    use_paid_api=True, as_json=as_json)
+                                                    use_paid_api=True, as_json=as_json, force_reasoning=False)
                 # Move to a different model
             elif error_code == "RateLimitReached":
                 # We have exhausted the free API limit for this model
@@ -269,10 +277,11 @@ class BaseLLM:
                 if len(preferred_models) == 1 and not use_paid_api:
                     logger.warning("No more models to try. Retrying with the paid API")
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=PREFERRED_PAID_MODELS,
-                                                        use_paid_api=True, as_json=as_json)
+                                                        use_paid_api=True, as_json=as_json, force_reasoning=False)
                 else:
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models[1:],
-                                                        use_paid_api=use_paid_api, as_json=as_json, large_output=large_output)
+                                                        use_paid_api=use_paid_api, as_json=as_json, large_output=large_output,
+                                                        force_reasoning=force_reasoning)
             elif error_code == 'unauthorized':
                 raise PermissionError(f"Unauthorized: {error_message}")
             else:
@@ -380,6 +389,7 @@ class BaseLLM:
             system_prompt = prompt_definition.get('system_prompt', None)
             structured_json = prompt_definition.get('structured_json', None)
             as_json = prompt_definition.get('json', False)
+            force_reasoning = prompt_definition.get('force_reasoning', False)
             large_output = prompt_definition.get('large_output', False)
             validate = prompt_definition.get('validate', False)
             if system_prompt is not None:
@@ -404,7 +414,8 @@ class BaseLLM:
                                                                          structured_json=structured_json,
                                                                          as_json=as_json,
                                                                          large_output=large_output,
-                                                                         validate=validate)
+                                                                         validate=validate,
+                                                                         force_reasoning=force_reasoning)
 
                 if any(cant_assist.lower() in assistant_reply.lower() for cant_assist in CANNOT_ASSIST_PHRASES):
                     if len(preferred_models) == 0:
@@ -414,7 +425,8 @@ class BaseLLM:
                                                                              preferred_models=preferred_models[1:],
                                                                              as_json=as_json,
                                                                              large_output=large_output,
-                                                                             validate=validate)
+                                                                             validate=validate,
+                                                                             force_reasoning=force_reasoning)
             # Add the assistant's response to the cache
             cache[cache_key] = assistant_reply
 
@@ -441,7 +453,8 @@ class BaseLLM:
         print("\n\n----------------- VALIDATION -----------------")
         output_dict, finish_reason = self.get_model_response(conversation=conversation,
                                                                  preferred_models=self.preferred_validation_models,
-                                                                 as_json=True, validate=False, large_output=False)
+                                                                 as_json=True, validate=False, large_output=False,
+                                                             force_reasoning=False)
         print()
         # Decode the JSON object for the last assistant_reply
         output_dict = self.decode_json_from_message(message=output_dict)
