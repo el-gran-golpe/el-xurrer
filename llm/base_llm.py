@@ -282,6 +282,12 @@ class BaseLLM:
                     stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models[1:],
                                                         use_paid_api=use_paid_api, as_json=as_json, large_output=large_output,
                                                         force_reasoning=force_reasoning)
+            elif error_code == "content_filter":
+                logger.warning(f"Content filter triggered for model {model}. Retrying with a different model")
+                assert len(preferred_models) > 1, "No more models to try"
+                stream = self.__get_response_stream(conversation=conversation, preferred_models=preferred_models[1:],
+                                                    use_paid_api=use_paid_api, as_json=as_json, large_output=large_output,
+                                                    force_reasoning=force_reasoning)
             elif error_code == 'unauthorized':
                 raise PermissionError(f"Unauthorized: {error_message}")
             else:
