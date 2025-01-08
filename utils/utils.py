@@ -77,8 +77,11 @@ def time_between_two_words_in_srt(srt_file_path: str, word1: str, word2: str, ma
     if start_word1 is None or start_word2 is None:
         logger.warning(f"Could not find timing between words {word1} and {word2}")
         return None
-
-    return end_word2 - start_word1
+    length = end_word2 - start_word1
+    if length < 0:
+        logger.warning(f"Negative length for sound between: {word1}  ----- {word2}. \t Words are likely swapped")
+        length = end_word1 - start_word2
+    return length
 
 def get_audio_length(audio_path: str) -> float:
     with wave.open(audio_path, 'r') as audio_file:

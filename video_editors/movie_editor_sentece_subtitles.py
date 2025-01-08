@@ -14,6 +14,24 @@ else:
     text_reencoder = lambda text: text
 
 
+def parse_srt_file(filepath):
+    """Parses an .srt file and returns a list of (start, end, text) tuples with timestamps in seconds."""
+    import pysrt
+    subs = pysrt.open(filepath, encoding='utf-8')
+    parsed_subs = []
+
+    def time_to_seconds(time_obj):
+        """Converts a pysrt time object to seconds."""
+        return time_obj.hours * 3600 + time_obj.minutes * 60 + time_obj.seconds + time_obj.milliseconds / 1000
+
+    for sub in subs:
+        start = time_to_seconds(sub.start)
+        end = time_to_seconds(sub.end)
+        text = text_reencoder(sub.text)#.replace('\n', ' '))
+        parsed_subs.append(((start, end), text))
+
+    return parsed_subs
+
 class MovieEditorSentenceSubtitles(MovieEditorBase):
     def __init__(self, output_folder: str, check_validity: bool = True):
         super().__init__(output_folder, check_validity = check_validity)
@@ -33,8 +51,11 @@ class MovieEditorSentenceSubtitles(MovieEditorBase):
             generator = lambda txt: mp.TextClip(text_reencoder(text=txt), font='Arial-Bold', fontsize=32, color='white',
                                                 stroke_color='black', stroke_width=1, method='caption',
                                                 size=(padded_width, None))
-            subtitles = SubtitlesClip(subtitles_path, generator)
 
+            # Parse the subtitles manually to avoid encoding issues
+            parsed_subs = parse_srt_file(subtitles_path)
+            # Ensure the subtitles file is read with utf-8 encoding
+            subtitles = SubtitlesClip(parsed_subs, generator)
             # Create a dummy two-line TextClip for height estimation
             dummy_clip = generator("Line 1\nLine 2")
             subtitle_height = dummy_clip.h
