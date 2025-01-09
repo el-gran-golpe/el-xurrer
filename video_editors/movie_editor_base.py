@@ -46,9 +46,9 @@ class MovieEditorBase:
         image_clip = mp.ImageClip(image_path).set_duration(clip_length)
 
         # Apply a zoom-out effect: Start at 110% size and end at 100%
-        #image_clip = image_clip.fx(resize, 1.1)  # Start at 110% size
+        image_clip = image_clip.fx(resize, newsize=1.1) # Start at 110% size
         # Gradually zoom out over the clip duration
-        #image_clip = image_clip.resize(lambda t: 1.1 - 0.1 * (t / clip_length))
+        image_clip = image_clip.resize(lambda t: 1.1 - 0.1 * (t / clip_length))
 
         if sound is not None and os.path.isfile(sounds_path):
             assert os.path.isfile(word_subtitles_path), f"Missing word subtitle file for ID: {_id}"
@@ -71,11 +71,12 @@ class MovieEditorBase:
             sound_clip_duration = sound_clip.duration
 
             # Create the subclip with the original sound clip duration
-            sound_clip = sound_clip.subclip(0, sound_clip_duration).volumex(0.25)
+            sound_clip = sound_clip.subclip(0, min(sound_clip.duration, sound_clip_duration))
+            sound_clip = sound_clip.volumex(0.25)
             fade_duration = 1. if sound_clip_duration > 5 else sound_clip_duration / 5
             sound_clip = sound_clip.audio_fadein(fade_duration).audio_fadeout(fade_duration)
             # Position the sound clip at the desired time range in the main audio
-            sound_clip = sound_clip.set_start(sound_start).set_end(sound_end)
+            sound_clip = sound_clip.set_start(sound_start).set_end(sound_start + sound_clip.duration)
 
             # Merge the audio and sound clips
             audio_clip = mp.CompositeAudioClip([audio_clip, sound_clip])
