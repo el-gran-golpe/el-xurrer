@@ -473,7 +473,14 @@ class BaseLLM:
             assert len(markers) == 0, (f"Markers found in the assistant reply when finish_reason is stop: "
                                        f"{markers}")
         for marker in markers:
+            # Sometimes the final dots are a problem. So remove them if it's the case
+            marker = f"{marker}."
+            while marker not in assistant_reply and marker.endswith('.'):
+                marker = marker[:-1]
             assert marker in assistant_reply, f"Marker not found in the assistant reply: {marker}"
-            assistant_reply = assistant_reply.replace(marker, "").strip()
 
+            assistant_reply = assistant_reply.replace(marker, "").strip()
+        if assistant_reply == '':
+            logger.error("Assistant reply is empty after removing the markers")
+            finish_reason = "stop"
         return finish_reason, assistant_reply
