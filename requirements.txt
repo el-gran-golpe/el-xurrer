@@ -24,6 +24,7 @@ pydub
 azure-ai-inference
 numpy
 nltk
+playwright
 
 # Only for Windows
 ftfy; sys_platform == 'win32'
