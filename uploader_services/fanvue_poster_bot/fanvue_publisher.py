@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import sys
 # Add the parent directory of 'utils' to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from utils.detect_captcha import detect_and_solve_captcha  # Import the CAPTCHA detection function
+from utils.bypass_captcha import detect_and_solve_captcha  # Import the CAPTCHA detection function
 
 load_dotenv(os.path.join(os.path.dirname(__file__), 'fanvue_keys.env'))
 
@@ -71,8 +71,7 @@ class FanvuePublisher:
         # Detect and solve the CAPTCHA if present
         captcha_solved = await detect_and_solve_captcha(self.page)
         if not captcha_solved:
-            print("[ERROR] Could not solve CAPTCHA. Exiting login.")
-            return
+            raise RuntimeError("[ERROR] Could not solve CAPTCHA. Exiting login.")
 
         # Click the login button
         await self.page.click("button[type='submit']")

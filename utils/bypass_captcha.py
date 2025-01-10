@@ -1,15 +1,32 @@
 import cv2
 import numpy as np
+import os
 
 async def detect_and_solve_captcha(page):
     """Detect and solve Cloudflare Turnstile CAPTCHA on the page."""
-    # Capture a screenshot of the page
+    
+    # Define the path for saving the screenshot
     screenshot_path = "page_screenshot.png"
-    await page.screenshot(path=screenshot_path, full_page=True)
+    
+    # Capture a screenshot of the page using Playwright
+    try:
+        await page.screenshot(path=screenshot_path, full_page=True)
+        print(f"Screenshot saved at: {os.path.abspath(screenshot_path)}")
+    except Exception as e:
+        print(f"[ERROR] Failed to capture screenshot: {e}")
+        return False
 
     # Load the screenshot and template
     screenshot = cv2.imread(screenshot_path, cv2.IMREAD_GRAYSCALE)
     template = cv2.imread("captcha_template.png", cv2.IMREAD_GRAYSCALE)
+
+    # Check if images were loaded correctly
+    if screenshot is None:
+        print("[ERROR] Failed to load screenshot. Please check the file path and format.")
+        return False
+    if template is None:
+        print("[ERROR] Failed to load template image. Please check the file path.")
+        return False
 
     # Check if template is smaller than the screenshot
     if template.shape[0] > screenshot.shape[0] or template.shape[1] > screenshot.shape[1]:
