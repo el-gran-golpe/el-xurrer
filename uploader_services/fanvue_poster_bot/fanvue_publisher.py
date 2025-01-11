@@ -1,12 +1,12 @@
 import asyncio
 import random
 from playwright.async_api import Playwright, async_playwright
+from playwright_stealth import stealth_async
 import os
 from dotenv import load_dotenv
 import sys
-# Add the parent directory of 'utils' to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from utils.bypass_captcha import detect_and_solve_captcha  # Import the CAPTCHA detection function
+from utils.bypass_captcha import detect_and_solve_captcha  
 
 load_dotenv(os.path.join(os.path.dirname(__file__), 'fanvue_keys.env'))
 
@@ -42,12 +42,25 @@ class FanvuePublisher:
             no_viewport=True,
         )
 
-        # 4) Finally, store a reference to a new page for usage
-        self.page = await self.context.new_page()
+        # 4) Create a new page and apply stealth 
+        self.page = await self.context.new_page() #TODO: remove stealth because it's not working for captcha
+        # await stealth_async(self.page) 
 
-    async def login(self, alias: str):
+        # 5) Set random timezone and language to further avoid detection
+        await self.page.evaluate("""
+            () => {
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Intl.DateTimeFormat = class extends Intl.DateTimeFormat {
+                    constructor() { return new Intl.DateTimeFormat('en-US'); }
+                };
+            }
+        """)
+
+    async def login(self, alias: str, screenshot_path: str, template_path: str):
         # Convert "laura vigne" --> "LAURA_VIGNE"
-        # Or you could remove spaces, or do other custom logic:
+        assert isinstance(alias, str) and alias.strip(), "Alias must be a non-empty string"
         uppercase_alias = alias.strip().replace(' ', '_').upper()
 
         username_key = f"{uppercase_alias}_FANVUE_USERNAME"
@@ -56,10 +69,8 @@ class FanvuePublisher:
         username = os.getenv(username_key)
         password = os.getenv(password_key)
 
-        if not username or not password:
-            print(f"[ERROR] Could not find env vars for alias '{alias}' "
-                  f"(looking for {username_key}, {password_key}).")
-            return
+        assert username is not None, f"Environment variable {username_key} not found"
+        assert password is not None, f"Environment variable {password_key} not found"
 
         # Go to the login page
         await self.page.goto("https://www.fanvue.com/signin", wait_until="networkidle")
@@ -69,7 +80,7 @@ class FanvuePublisher:
         await self.page.fill("input[name='password']", password)
 
         # Detect and solve the CAPTCHA if present
-        captcha_solved = await detect_and_solve_captcha(self.page)
+        captcha_solved = await detect_and_solve_captcha(self.page, screenshot_path, template_path)
         if not captcha_solved:
             raise RuntimeError("[ERROR] Could not solve CAPTCHA. Exiting login.")
 
@@ -136,7 +147,10 @@ async def main():
     await bot.start(headless=False)
 
     # Example: login as "laura vigne"
-    await bot.login("laura vigne")
+    screenshot_path = os.path.join(os.path.dirname(__file__), 'page_screenshot.png')
+    template_path = os.path.join(os.path.dirname(__file__), 'captcha_template.png')
+    await bot.login("laura vigne", screenshot_path, template_path)
+
 
     # If that worked, let's do a post and upload a picture
     await bot.post_publication("This is an automated post created by a bot!")
