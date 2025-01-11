@@ -1,7 +1,7 @@
 import asyncio
 import random
 from playwright.async_api import Playwright, async_playwright
-#from playwright_stealth import stealth_async
+from playwright_stealth import stealth_async
 import os
 from dotenv import load_dotenv
 import sys
@@ -43,20 +43,8 @@ class FanvuePublisher:
         )
 
         # 4) Create a new page and apply stealth 
-        self.page = await self.context.new_page() #TODO: remove stealth because it's not working for captcha
-        # await stealth_async(self.page) 
-
-        # 5) Set random timezone and language to further avoid detection
-        await self.page.evaluate("""
-            () => {
-                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                Intl.DateTimeFormat = class extends Intl.DateTimeFormat {
-                    constructor() { return new Intl.DateTimeFormat('en-US'); }
-                };
-            }
-        """)
+        self.page = await self.context.new_page() 
+        #await stealth_async(self.page) 
 
     async def login(self, alias: str, screenshot_path: str, template_path: str):
         # Convert "laura vigne" --> "LAURA_VIGNE"

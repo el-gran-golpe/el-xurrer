@@ -50,8 +50,10 @@ async def detect_and_solve_captcha(page, screenshot_path, template_path):
     center_x = top_left[0] + w // 2
     center_y = top_left[1] + h // 2
 
-    # Get the viewport size to calculate scaling factors
-    viewport_size = await page.viewport_size()
+    # Get the actual window size using JavaScript
+    viewport_size = await page.evaluate("""
+        () => ({ width: window.innerWidth, height: window.innerHeight })
+    """)
     screenshot_height, screenshot_width = screenshot.shape
 
     # Calculate scaling factors
