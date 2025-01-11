@@ -1,7 +1,7 @@
 import asyncio
 import random
 from playwright.async_api import Playwright, async_playwright
-from playwright_stealth import stealth_async
+#from playwright_stealth import stealth_async
 import os
 from dotenv import load_dotenv
 import sys
