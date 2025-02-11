@@ -4,8 +4,10 @@ MODEL_BY_BACKEND = {
     'o1': OPENAI,
     'o1-preview': OPENAI,
     'o1-mini': OPENAI,
+    'o3-mini': OPENAI,
     'gpt-4o': OPENAI,
     'gpt-4o-mini': OPENAI,
+    'DeepSeek-R1': AZURE,
     'mistral-large': AZURE,
     'Meta-Llama-3.1-405B-Instruct': AZURE,
     'Meta-Llama-3.1-70B-Instruct': AZURE,
@@ -22,6 +24,7 @@ MODEL_BY_BACKEND = {
 # Ordered following LMArena leaderboard https://lmarena.ai/
 DEFAULT_PREFERRED_MODELS = ('gpt-4o', 'gpt-4o-mini',
                             'o1-mini', 'o1-preview', 'o1',
+                            'o3-mini', 'DeepSeek-R1',
                             'Llama-3.3-70B-Instruct',
                             'Meta-Llama-3.1-405B-Instruct',
                             'Meta-Llama-3.1-70B-Instruct',
@@ -32,17 +35,18 @@ DEFAULT_PREFERRED_MODELS = ('gpt-4o', 'gpt-4o-mini',
                             'Mistral-large',
                             'Mistral-Nemo')
 
-LARGER_OUTPUT_MODELS = ('o1', 'o1-mini', 'o1-preview')
+LARGER_OUTPUT_MODELS = ('o1', 'o3-mini', 'o1-mini', 'o1-preview')
 
-MODELS_NOT_ACCEPTING_SYSTEM_ROLE = ('o1', 'o1-mini', 'o1-preview')
-MODELS_NOT_ACCEPTING_STREAM = ('o1', 'o1-mini', 'o1-preview')
-REASONING_MODELS = ('o1', 'o1-mini', 'o1-preview')
+MODELS_NOT_ACCEPTING_SYSTEM_ROLE = ('o1', 'o3-mini', 'o1-mini', 'o1-preview')
+MODELS_NOT_ACCEPTING_STREAM = ('o1', 'o3-mini', 'o1-mini', 'o1-preview')
+REASONING_MODELS = ('o1', 'o3-mini', 'o1-mini', 'o1-preview')
 
 PREFERRED_PAID_MODELS = ('gpt-4o-mini', )
 
 MODELS_ACCEPTING_JSON_FORMAT = ('Mistral-large', 'Mistral-large-2411', 'Mistral-Nemo', 'Meta-Llama-3.1-70B-Instruct',
-                                'Meta-Llama-3.1-405B-Instruct', 'Llama-3.3-70B-Instruct', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o1-preview')
-
+                                'Meta-Llama-3.1-405B-Instruct', 'Llama-3.3-70B-Instruct', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o1-preview',
+                                'o3-mini')
+MODELS_INCLUDING_CHAIN_THOUGHT = ('DeepSeek-R1', )
 CANNOT_ASSIST_PHRASES = ("I'm sorry, I can't assist with that", "Lo siento, no puedo procesar esa solicitud", "Lo siento, no puedo hacer eso.")
 
 

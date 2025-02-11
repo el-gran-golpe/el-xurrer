@@ -21,7 +21,7 @@ from azure.core.credentials import AzureKeyCredential
 
 from llm.constants import MODEL_BY_BACKEND, AZURE, OPENAI, PREFERRED_PAID_MODELS, DEFAULT_PREFERRED_MODELS, \
     CANNOT_ASSIST_PHRASES, MODELS_NOT_ACCEPTING_SYSTEM_ROLE, MODELS_NOT_ACCEPTING_STREAM, \
-    VALIDATION_SYSTEM_PROMPT, MODELS_ACCEPTING_JSON_FORMAT, REASONING_MODELS
+    VALIDATION_SYSTEM_PROMPT, MODELS_ACCEPTING_JSON_FORMAT, REASONING_MODELS, MODELS_INCLUDING_CHAIN_THOUGHT
 from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
@@ -154,6 +154,8 @@ class BaseLLM:
 
         assistant_reply, finish_reason = "", None
         for chunk in stream:
+            if len(chunk.choices) == 0:
+                continue
             current_finish_reason = chunk.choices[0].finish_reason
             # delta will be available when streaming the response. Otherwise, the info will just come at message
             new_content = chunk.choices[0].delta.content if hasattr(chunk.choices[0], 'delta') \
@@ -172,6 +174,10 @@ class BaseLLM:
         if not (model.startswith("gpt-") or model.startswith('o1')) and finish_reason is None:
             logger.debug(f"Model {model} did not return a finish reason. Assuming stop")
             finish_reason = "stop"
+
+        if model in MODELS_INCLUDING_CHAIN_THOUGHT:
+            # Remove <think> ... </think> tags from the assistant reply
+            assistant_reply = re.sub(pattern=r'<think>.*?</think>', repl='', string=assistant_reply, flags=re.DOTALL).strip()
 
         if finish_reason == "stop" and validate:
             finish_reason, assistant_reply = self.recalculate_finish_reason(assistant_reply=assistant_reply)
