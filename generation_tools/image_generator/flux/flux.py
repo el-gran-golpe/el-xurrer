@@ -71,7 +71,7 @@ class Flux:
 		return client
 
 	def generate_image(self, prompt, output_path: str, seed: int = None, width=512, height=512,
-					   guidance_scale=3.5, num_inference_steps=20, retries: int = 3):
+					   guidance_scale=3.5, num_inference_steps=25, retries: int = 3):
 
 		assert isinstance(prompt, str), "Prompt must be a string"
 		assert seed is None or isinstance(seed, int), "Seed must be an integer or None"

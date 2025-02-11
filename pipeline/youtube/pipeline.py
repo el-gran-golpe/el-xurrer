@@ -14,10 +14,10 @@ from generation_tools.subtitles_generator.whisper.whisper_stt import Whisper
 from generation_tools.sounds_generator.audio_ldm import AudioLDM
 
 WH_BY_ASPECT_RATIO = {
-    "16:9": (1280, 720),
+    "16:9": (1920, 1080),
     "4:3": (960, 720),
     "1:1": (720, 720),
-    "9:16": (720, 1280),
+    "9:16": (1080, 1920),
 }
 
 class Pipeline:

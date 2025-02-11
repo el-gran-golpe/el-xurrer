@@ -4,6 +4,7 @@ PERRO_SANXE = 'perro_sanxe'
 LOLI = 'loli'
 MISTERIOUS_VOICE = 'misterious_voice'
 MISTERIOUS_VOICE_ENGLISH = 'misterious_voice_english'
+NOELLE = 'noelle'
 
 AUDIO_PATH = 'path'
 AUDIO_TEXT = 'text'
@@ -40,5 +41,14 @@ VOICE_SOURCES = {
         LANG: 'en',
         REQUIRES_SILENCE_REMOVAL: True,
         FROM_DATASET: True
+    },
+    NOELLE: {
+        AUDIO_PATH: os.path.join(os.path.dirname(__file__), 'source_voices', 'noelle.wav'),
+        AUDIO_TEXT: "My name is Noelle, maid of the Knights of Favonius, and it's my pleasure to be joininh you on your adventure today. "
+                    "Should you encounter any problems at all at any point throughout your journey, please do not hesitate to call me and "
+                    "I will be delighted to provide you with my full assistance. Yes, starting right now - what do you need?",
+        LANG: 'en',
+        REQUIRES_SILENCE_REMOVAL: False,
+        FROM_DATASET: False
     }
 }

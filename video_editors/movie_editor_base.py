@@ -46,9 +46,9 @@ class MovieEditorBase:
         image_clip = mp.ImageClip(image_path).set_duration(clip_length)
 
         # Apply a zoom-out effect: Start at 110% size and end at 100%
-        image_clip = image_clip.fx(resize, newsize=1.1) # Start at 110% size
+        #image_clip = image_clip.fx(resize, newsize=1.1) # Start at 110% size
         # Gradually zoom out over the clip duration
-        image_clip = image_clip.resize(lambda t: 1.1 - 0.1 * (t / clip_length))
+        #image_clip = image_clip.resize(lambda t: max(1.0, 1.1 - 0.1 * (t / clip_length)))
 
         if sound is not None and os.path.isfile(sounds_path):
             assert os.path.isfile(word_subtitles_path), f"Missing word subtitle file for ID: {_id}"
@@ -129,7 +129,7 @@ class MovieEditorBase:
             temp_audiofile=temp_audio_file_path,
             remove_temp=True,
             audio_codec="aac",
-            fps=24
+            fps=30
         )
         logger.info(f"Video saved to {output_video_path}")
         return output_video_path
