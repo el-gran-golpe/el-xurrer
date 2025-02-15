@@ -245,11 +245,13 @@ def get_caption_from_file(file_path: str) -> str:
     Searches for a 'captions.txt' file in the same directory as the given file path,
     reads its content, and returns it as a string.
     """
-    directory = os.path.dirname(file_path)
+    if os.path.isdir(file_path):
+        directory = file_path
+    else:
+        directory = os.path.dirname(file_path)
+
     caption_file_path = os.path.join(directory, 'captions.txt')
     
-    print(caption_file_path)
-
     if not os.path.isfile(caption_file_path):
         raise FileNotFoundError(f"No 'captions.txt' file found in directory: {directory}")
     

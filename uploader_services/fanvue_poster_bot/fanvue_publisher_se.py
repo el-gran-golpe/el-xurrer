@@ -63,7 +63,7 @@ if __name__ == "__main__":
     with SB(uc=True, test=True, locale_code="en") as driver:
         bot = FanvuePublisher(driver)
         bot.login("laura vigne")
-        file_path = r'C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_1'
+        file_path = r'C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_1\a-new-threat-emerges_0.png'
         caption = get_caption_from_file(file_path)
         bot.post_publication(file_path, caption)
 
