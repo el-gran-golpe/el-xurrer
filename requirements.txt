@@ -25,6 +25,7 @@ azure-ai-inference
 numpy
 nltk
 playwright
+playwright-stealth
 
 # Only for Windows
 ftfy; sys_platform == 'win32'

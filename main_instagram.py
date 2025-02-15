@@ -24,7 +24,8 @@ OUTPUT_FOLDER_BASE_PATH_POSTS = os.path.join('.', 'resources', 'outputs','instag
 def generate_instagram_planning():
     assert os.path.isdir(PLANNING_TEMPLATE_FOLDER), f"Planning template folder not found: {PLANNING_TEMPLATE_FOLDER}"
     
-    # 1) Gather all available .json planning templates under PLANNING_TEMPLATE_FOLDER
+    # 1) Gather all available .json planning te
+    # mplates under PLANNING_TEMPLATE_FOLDER
     available_plannings = []
     for root, dirs, files in os.walk(PLANNING_TEMPLATE_FOLDER):
         for dir_name in dirs:

@@ -44,7 +44,8 @@ class FanvuePublisher:
 
         # 4) Create a new page and apply stealth 
         self.page = await self.context.new_page() 
-        #await stealth_async(self.page) 
+        # await stealth_async(self.page)
+        # async(self.page) 
 
     async def login(self, alias: str, screenshot_path: str, template_path: str):
         # Convert "laura vigne" --> "LAURA_VIGNE"
