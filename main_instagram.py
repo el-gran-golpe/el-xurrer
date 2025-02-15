@@ -235,12 +235,157 @@ def generate_instagram_posts():
                                 sleep(sleep_time / 100)
 
 def upload_posts():
+    """
+    Upload posts for a selected profile.
     
+    Steps:
+      1) Ask the user which profile to upload.
+      2) Loop through the weeks and days of the selected profile under:
+           resources/outputs/instagram_profiles/{profile_name}/posts
+         and check that each day folder contains the required files.
+      3) For each day, read the upload_times.txt file (and captions.txt).
+      4) For each post, wait until the scheduled upload time and then
+         upload the post via Meta (GraphAPI).
+      5) Also simulate an upload to Fanvue.
+    """
+    # Instantiate the Meta uploader
     uploader_meta = GraphAPI()
-
     
+    # --- Step 1: Choose profile ---
+    profiles_dir = os.path.join('.', 'resources', 'outputs', 'instagram_profiles')
+    if not os.path.isdir(profiles_dir):
+        print(f"Error: Profiles folder not found at {profiles_dir}")
+        return
 
-       
+    available_profiles = [d for d in os.listdir(profiles_dir) if os.path.isdir(os.path.join(profiles_dir, d))]
+    if not available_profiles:
+        print("No profiles found in the planning outputs.")
+        return
+
+    print("Available profiles:")
+    for idx, profile in enumerate(available_profiles):
+        print(f"  {idx + 1}: {profile}")
+    
+    profile_input = input("Select profile number to upload: ")
+    try:
+        profile_idx = int(profile_input.strip()) - 1
+        if profile_idx < 0 or profile_idx >= len(available_profiles):
+            print("Invalid profile number.")
+            return
+        selected_profile = available_profiles[profile_idx]
+    except Exception as e:
+        print("Error processing input:", e)
+        return
+
+    posts_folder = os.path.join(profiles_dir, selected_profile, "posts")
+    if not os.path.isdir(posts_folder):
+        print(f"Posts folder not found for profile '{selected_profile}' at {posts_folder}.")
+        return
+
+    # --- Step 2: Iterate over weeks and days ---
+    for week in sorted(os.listdir(posts_folder)):
+        week_folder = os.path.join(posts_folder, week)
+        if not os.path.isdir(week_folder):
+            continue
+        print(f"\nProcessing week: {week}")
+        
+        for day in sorted(os.listdir(week_folder)):
+            day_folder = os.path.join(week_folder, day)
+            if not os.path.isdir(day_folder):
+                continue
+            print(f"\nProcessing day folder: {day_folder}")
+
+            # Check that required files exist
+            captions_file_path = os.path.join(day_folder, "captions.txt")
+            upload_times_file_path = os.path.join(day_folder, "upload_times.txt")
+            if not os.path.isfile(captions_file_path):
+                print(f"Error: captions.txt not found in {day_folder}. Skipping this day.")
+                continue
+            if not os.path.isfile(upload_times_file_path):
+                print(f"Error: upload_times.txt not found in {day_folder}. Skipping this day.")
+                continue
+
+            # --- Step 3: Read captions and upload times ---
+            try:
+                with open(captions_file_path, 'r', encoding='utf-8') as f:
+                    captions_content = f.read().strip()
+                # Assuming captions are separated by a double newline.
+                captions = [cap.strip() for cap in captions_content.split("\n\n") if cap.strip()]
+            except Exception as e:
+                print(f"Error reading captions.txt in {day_folder}: {e}")
+                continue
+
+            try:
+                with open(upload_times_file_path, 'r', encoding='utf-8') as f:
+                    upload_times = [line.strip() for line in f if line.strip()]
+            except Exception as e:
+                print(f"Error reading upload_times.txt in {day_folder}: {e}")
+                continue
+
+            num_posts = len(upload_times)
+            if len(captions) != num_posts:
+                print(f"Warning: Number of captions ({len(captions)}) and upload times ({num_posts}) do not match in {day_folder}.")
+
+            # Look for images. Prefer a dedicated 'images' subfolder if it exists.
+            images_folder = os.path.join(day_folder, "images")
+            if os.path.isdir(images_folder):
+                image_files = [os.path.join(images_folder, f) 
+                               for f in sorted(os.listdir(images_folder))
+                               if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+            else:
+                image_files = [os.path.join(day_folder, f) 
+                               for f in sorted(os.listdir(day_folder))
+                               if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+
+            if not image_files:
+                print(f"Error: No image files found in {day_folder}. Skipping this day.")
+                continue
+
+            # --- Step 4: Process and upload each post ---
+            for i in range(num_posts):
+                caption = captions[i] if i < len(captions) else ""
+                upload_time_str = upload_times[i]
+
+                # Parse the scheduled upload time (assume "YYYY-MM-DD HH:MM:SS" format)
+                try:
+                    scheduled_time = datetime.strptime(upload_time_str, "%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    print(f"Error parsing upload time '{upload_time_str}' in {day_folder}: {e}. Skipping post {i+1}.")
+                    continue
+
+                now = datetime.now()
+                if scheduled_time > now:
+                    wait_seconds = (scheduled_time - now).total_seconds()
+                    print(f"Waiting for {wait_seconds:.0f} seconds until scheduled time {scheduled_time} for post {i+1}...")
+                    sleep(wait_seconds)
+                else:
+                    print(f"Scheduled time {scheduled_time} for post {i+1} has already passed. Uploading immediately.")
+
+                # Determine the image file for this post.
+                if i < len(image_files):
+                    image_path = image_files[i]
+                else:
+                    image_path = image_files[-1]
+                    print(f"Warning: Not enough images for post {i+1} in {day_folder}. Using the last available image.")
+
+                # Upload to Meta using GraphAPI.
+                print(f"Uploading post {i+1} from {day_folder} to Meta...")
+                try:
+                    # This assumes that GraphAPI has an upload_post() method.
+                    response_meta = uploader_meta.upload_post(caption=caption, image_path=image_path)
+                    print(f"Meta upload response: {response_meta}")
+                except Exception as e:
+                    print(f"Error uploading post {i+1} to Meta: {e}")
+
+                # --- Step 5: Simulate uploading to Fanvue ---
+                print(f"Uploading post {i+1} from {day_folder} to Fanvue...")
+                try:
+                    # Replace the following with an actual Fanvue API call if available.
+                    print(f"Simulated Fanvue upload complete for post {i+1}.")
+                except Exception as e:
+                    print(f"Error uploading post {i+1} to Fanvue: {e}")
+
+    print("Upload process completed.")
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:

@@ -7,7 +7,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from pynput.keyboard import Controller, Key    
 from utils.utils import get_caption_from_file
 
-
 load_dotenv(os.path.join(os.path.dirname(__file__), 'fanvue_keys.env'))
 
 class FanvuePublisher:
@@ -42,8 +41,6 @@ class FanvuePublisher:
         self.driver.click("button[type='submit']")
        
     def post_publication(self, file_path: str, caption: str):
-        #self.driver.click("xpath=//a[.//svg[@data-testid='AddCircleOutlineIcon']]")
-        #self.driver.click("xpath=//a[@href='/create' and .//p[text()='New Post']]")
         self.driver.click("a.MuiButton-root.MuiButton-contained.MuiButton-fullWidth")
         self.driver.click("button.MuiButton-outlinedPrimary.MuiButton-colorPrimary")
         # Upload the corresponding images for the post
@@ -54,7 +51,6 @@ class FanvuePublisher:
         keyboard.press(Key.enter)
         keyboard.release(Key.enter)
         time.sleep(1)
-
         # Write the caption in the box
         self.driver.type("textarea[placeholder='Write a caption...']", caption)
         self.driver.click("button[data-sentry-element='FilledButton']")
