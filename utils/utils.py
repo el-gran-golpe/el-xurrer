@@ -239,3 +239,21 @@ def get_valid_planning_file_names(base_path: str):
         raise FileNotFoundError("No valid planning files found. Ensure a single JSON named xx_planning.json.")
 
     return valid_plannings
+
+def get_caption_from_file(file_path: str) -> str:
+    """
+    Searches for a 'captions.txt' file in the same directory as the given file path,
+    reads its content, and returns it as a string.
+    """
+    directory = os.path.dirname(file_path)
+    caption_file_path = os.path.join(directory, 'captions.txt')
+    
+    print(caption_file_path)
+
+    if not os.path.isfile(caption_file_path):
+        raise FileNotFoundError(f"No 'captions.txt' file found in directory: {directory}")
+    
+    with open(caption_file_path, 'r', encoding='utf-8') as file:
+        caption = file.read().strip()
+    
+    return caption

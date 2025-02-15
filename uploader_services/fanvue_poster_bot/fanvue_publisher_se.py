@@ -1,9 +1,12 @@
 import os
 import sys
+import time
 from dotenv import load_dotenv
 from seleniumbase import SB
-
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from pynput.keyboard import Controller, Key    
+from utils.utils import get_caption_from_file
+
 
 load_dotenv(os.path.join(os.path.dirname(__file__), 'fanvue_keys.env'))
 
@@ -28,7 +31,6 @@ class FanvuePublisher:
             raise EnvironmentError(f"Missing credentials for alias '{alias}'")
 
         # Open the Fanvue login page and activate CDP mode for captcha handling
-        #self.driver.open("https://www.fanvue.com/signin")
         self.driver.activate_cdp_mode("https://www.fanvue.com/signin")
         self.driver.type("input[name='email']", username)
         self.driver.type("input[name='password']", password)
@@ -38,33 +40,31 @@ class FanvuePublisher:
 
         # Submit the login form
         self.driver.click("button[type='submit']")
-        if self.driver.is_element_visible("//*[contains(text(), 'Dashboard')]"):
-            print(f"Login successful for '{alias}' ({username})")
-        else:
-            print(f"Login failed for '{alias}'. Check credentials.")
+       
+    def post_publication(self, file_path: str, caption: str):
+        #self.driver.click("xpath=//a[.//svg[@data-testid='AddCircleOutlineIcon']]")
+        #self.driver.click("xpath=//a[@href='/create' and .//p[text()='New Post']]")
+        self.driver.click("a.MuiButton-root.MuiButton-contained.MuiButton-fullWidth")
+        self.driver.click("button.MuiButton-outlinedPrimary.MuiButton-colorPrimary")
+        # Upload the corresponding images for the post
+        keyboard = Controller()
+        #time.sleep(1)
+        keyboard.type(file_path)
+        time.sleep(3)
+        keyboard.press(Key.enter)
+        keyboard.release(Key.enter)
+        time.sleep(1)
 
-    def post_publication(self, content: str):
-        self.driver.open("https://www.fanvue.com/new-post")
-        self.driver.type("textarea[name='postContent']", content)
-        self.driver.click("button[type='submit']")
-        if self.driver.is_element_visible("//*[contains(text(), 'Your post has been published')]"):
-            print("Post published successfully!")
-        else:
-            print("Failed to publish post.")
-
-    def upload_picture(self, file_path: str):
-        self.driver.open("https://www.fanvue.com/new-post")
-        self.driver.choose_file("input[type='file']", file_path)
-        self.driver.type("textarea[name='postContent']", "Here's an image!")
-        self.driver.click("button[type='submit']")
-        if self.driver.is_element_visible("//*[contains(text(), 'Your post has been published')]"):
-            print("Post published successfully!")
-        else:
-            print("Failed to publish post.")
+        # Write the caption in the box
+        self.driver.type("textarea[placeholder='Write a caption...']", caption)
+        self.driver.click("button[data-sentry-element='FilledButton']")
 
 if __name__ == "__main__":
     with SB(uc=True, test=True, locale_code="en") as driver:
         bot = FanvuePublisher(driver)
         bot.login("laura vigne")
-        bot.post_publication("This is an automated post created by a bot!")
-        bot.upload_picture("path/to/your/image.jpg")
+        file_path = r'C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_1'
+        caption = get_caption_from_file(file_path)
+        bot.post_publication(file_path, caption)
+
+
