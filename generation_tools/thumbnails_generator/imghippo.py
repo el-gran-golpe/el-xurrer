@@ -46,6 +46,6 @@ class ImgHippo:
 # Example usage
 if __name__ == "__main__":
     img_hippo = ImgHippo()
-    img_path = "./test.png"
+    img_path = r"C:\Users\Usuario\Downloads\WallpaperJotaroEnhanced.jpeg"
     image_url = img_hippo.get_url_for_image(img_path)
     print(f"Uploaded image URL: {image_url}")
