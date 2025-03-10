@@ -7,47 +7,75 @@ from utils.exceptions import WaitAndRetryError
 from time import sleep
 from pipeline.pipeline_instagram import PipelineInstagram
 
-def generate_instagram_posts(output_folder_base_path_planning):
+def generate_instagram_posts(profiles_base_path):
     """
     Generate Instagram posts based on planning files.
     """
-    assert os.path.isdir(output_folder_base_path_planning), f"Planning folder not found: {output_folder_base_path_planning}"
+    assert os.path.isdir(profiles_base_path), f"Profiles base path not found: {profiles_base_path}"
     
-    # Check if there are any planning json files in the planning folder
-    available_plannings = get_valid_planning_file_names(output_folder_base_path_planning)
-    assert len(available_plannings) > 0, "No planning files found, please generate a planning first"
+    # Get available profiles with planning files
+    available_profiles = []
+    
+    # Look for planning files in the new structure
+    for profile_name in os.listdir(profiles_base_path):
+        profile_path = os.path.join(profiles_base_path, profile_name)
+        if os.path.isdir(profile_path):
+            outputs_path = os.path.join(profile_path, "outputs")
+            if os.path.isdir(outputs_path):
+                for file_name in os.listdir(outputs_path):
+                    if file_name.endswith('_planning.json'):
+                        planning_path = os.path.join(outputs_path, file_name)
+                        available_profiles.append((profile_name, planning_path, "new"))
+    
+    # If no profiles found in new structure, check old structure for backward compatibility
+    if not available_profiles:
+        old_outputs_path = os.path.join('resources', 'outputs', 'instagram_profiles')
+        if os.path.isdir(old_outputs_path):
+            for profile_name in os.listdir(old_outputs_path):
+                profile_path = os.path.join(old_outputs_path, profile_name)
+                if os.path.isdir(profile_path):
+                    for file_name in os.listdir(profile_path):
+                        if file_name.endswith('_planning.json'):
+                            planning_path = os.path.join(profile_path, file_name)
+                            available_profiles.append((profile_name, planning_path, "old"))
+                            print(f"Warning: Using planning file from old structure: {planning_path}")
+    
+    assert len(available_profiles) > 0, "No planning files found, please generate a planning first"
 
-    print("Available planning templates:")
-    for i, template in enumerate(available_plannings):
-        grandparent_folder = os.path.basename(os.path.dirname(os.path.dirname(template)))
-        parent_folder = os.path.basename(os.path.dirname(template))
-        print(f"{i + 1}: {grandparent_folder}\\{parent_folder}")
+    # Display available profiles
+    print("Available profiles with planning files:")
+    for i, (profile, _, structure) in enumerate(available_profiles):
+        print(f"{i + 1}: {profile} {'(old structure)' if structure == 'old' else ''}")
 
-    # Prompt the user to select a template number or choose to process all
-    template_input = input("Select template numbers separated by commas or type 'all' to process all: ")
+    # Prompt the user to select a profile number or choose to process all
+    profile_input = input("Select profile numbers separated by commas or type 'all' to process all: ")
 
-    if template_input.lower() == 'all':
-        selected_templates = available_plannings
+    if profile_input.lower() == 'all':
+        selected_profiles = available_profiles
     else:
-        template_indices = [int(index.strip()) - 1 for index in template_input.split(',')]
-        for index in template_indices:
-            assert 0 <= index < len(available_plannings), f"Invalid template number: {index + 1}"
-        selected_templates = [available_plannings[index] for index in template_indices]
+        profile_indices = [int(index.strip()) - 1 for index in profile_input.split(',')]
+        for index in profile_indices:
+            assert 0 <= index < len(available_profiles), f"Invalid profile number: {index + 1}"
+        selected_profiles = [available_profiles[index] for index in profile_indices]
 
-    # Loop through the Instagram profiles
-    for template in selected_templates:
-        profile_name = os.path.basename(os.path.dirname(template))
-        print(f"Processing template: {profile_name}")
+    # Loop through the selected Instagram profiles
+    for profile_name, planning_file_path, structure in selected_profiles:
+        print(f"Processing profile: {profile_name}")
 
         # Load the planning data into a variable
-        planning_file_path = template + '.json'
         with open(planning_file_path, 'r', encoding='utf-8') as file:
             json_data_planning = json.load(file)
         
-        # Create the 'posts' main folder
-        profile_folder = os.path.join(output_folder_base_path_planning, profile_name)
-        assert os.path.isdir(profile_folder), f"Profile folder not found: {profile_folder}"
-        output_folder = os.path.join(profile_folder, 'posts')
+        # Create the 'posts' folder in appropriate location based on structure
+        if structure == "new":
+            output_folder = os.path.join(profiles_base_path, profile_name, 'outputs', 'posts')
+        else:  # old structure
+            output_folder = os.path.join('resources', 'outputs', 'instagram_profiles', profile_name, 'posts')
+            # Also create folder in new structure for future use
+            new_output_folder = os.path.join(profiles_base_path, profile_name, 'outputs', 'posts')
+            os.makedirs(new_output_folder, exist_ok=True)
+            print(f"Note: Future posts will be saved to new structure at: {new_output_folder}")
+            
         os.makedirs(output_folder, exist_ok=True)
         
         # Create folders for each week and day
