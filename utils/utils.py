@@ -209,18 +209,6 @@ def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tu
 
 # From here on YonCarlos' methods:
 
-def read_initial_conditions(file_path: str) -> str:
-    assert isinstance(file_path, str), "file_path must be a string"
-    assert os.path.exists(file_path), f"File does not exist: {file_path}"
-
-    try:
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
-            content = file.read().strip()
-    except Exception as e:
-        raise IOError(f"Error reading file {file_path}: {e}")
-
-    return content if content else ""
-
 def get_valid_planning_file_names(base_path: str):
     pattern = re.compile(r'^[a-zA-Z]{2}_planning\.json$')
     planning_dirs = [
