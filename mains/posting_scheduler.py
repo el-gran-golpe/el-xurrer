@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 from time import sleep
-from uploader_services.meta_api.graph_api import GraphAPI
+from bot_services.meta_api.graph_api import GraphAPI
 
 def upload_posts(profiles_base_path):
     """

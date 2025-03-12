@@ -14,6 +14,7 @@ class MetaLLM(BaseLLM):
         Works with both Instagram and Facebook content.
         
         :param prompt_template_path: Path to the prompt template file.
+        
         :param previous_storyline: The storyline from the previous season.
         :return: A dictionary containing the structured posts for uploading.
         """
