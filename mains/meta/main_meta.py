@@ -5,7 +5,7 @@ from mains.planning_manager import PlanningManager
 from mains.publications_generator import generate_instagram_posts
 from mains.uploader import upload_posts
 
-EXECUTE_PLANNING = True   # Set to True for planning
+EXECUTE_PLANNING = False   # Set to True for planning
 GENERATE_POSTS = False    # Set to True for generating posts
 UPLOAD_POSTS = False      # Set to True for uploading posts
 
