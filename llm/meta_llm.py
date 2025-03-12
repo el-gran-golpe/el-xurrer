@@ -3,6 +3,8 @@ import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 from utils.utils import get_closest_monday
+from generation_tools.image_generator.flux.flux import Flux
+from time import sleep
 
 class MetaLLM(BaseLLM):
     def __init__(self, preferred_models: list | tuple = DEFAULT_PREFERRED_MODELS):
@@ -14,7 +16,6 @@ class MetaLLM(BaseLLM):
         Works with both Instagram and Facebook content.
         
         :param prompt_template_path: Path to the prompt template file.
-        
         :param previous_storyline: The storyline from the previous season.
         :return: A dictionary containing the structured posts for uploading.
         """

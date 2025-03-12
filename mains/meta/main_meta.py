@@ -5,9 +5,9 @@ from mains.planning_manager import PlanningManager
 from mains.publications_generator import PublicationsGenerator
 from mains.posting_scheduler import upload_posts
 
-EXECUTE_PLANNING = False   # Set to True for planning
-GENERATE_POSTS = True    # Set to True for generating posts
-UPLOAD_POSTS = False      # Set to True for uploading posts
+EXECUTE_PLANNING = False       # Set to True for planning
+GENERATE_PUBLICATIONS = True    # Updated from GENERATE_POSTS
+UPLOAD_PUBLICATIONS = False      # Updated from UPLOAD_POSTS
 
 # Updated paths for new structure
 META_PROFILES_BASE_PATH = os.path.join('.', 'resources', 'meta_profiles')
@@ -23,16 +23,13 @@ if __name__ == '__main__':
         )
         planner.plan()
 
-    if GENERATE_POSTS:
+    if GENERATE_PUBLICATIONS:
         generator = PublicationsGenerator(
-            publication_template_folder=META_PROFILES_BASE_PATH,  
-            platform_name="meta",
-            llm_module_path="llm.meta_llm",  
-            llm_class_name="MetaLLM",
-            llm_method_name="generate_meta_publications"  
+            publication_template_folder=META_PROFILES_BASE_PATH,
+            platform_name="meta"
         )
         generator.generate()
 
-    if UPLOAD_POSTS:
+    if UPLOAD_PUBLICATIONS:
         pass
         #upload_posts(META_PROFILES_BASE_PATH)

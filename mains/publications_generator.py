@@ -11,16 +11,17 @@ from generation_tools.image_generator.flux.flux import Flux
 class PublicationsGenerator:
     """Universal publications generator for creating content across different platforms."""
     
-    def __init__(self, publication_template_folder, platform_name, llm_module_path, llm_class_name, llm_method_name):
+    def __init__(self, publication_template_folder, platform_name, llm_module_path=None, 
+                 llm_class_name=None, llm_method_name=None):
         """
         Initialize the publications generator.
         
         Args:
             publication_template_folder: Path to the folder containing publication templates
             platform_name: Name of the platform (meta, fanvue, etc.)
-            llm_module_path: Path to the LLM module (e.g., "llm.meta_llm")
-            llm_class_name: Name of the LLM class (e.g., "MetaLLM")
-            llm_method_name: Name of the generation method to call (e.g., "generate_meta_publications")
+            llm_module_path: (Optional) Path to the LLM module
+            llm_class_name: (Optional) Name of the LLM class
+            llm_method_name: (Optional) Name of the generation method
         """
         self.publication_template_folder = publication_template_folder
         self.platform_name = platform_name
@@ -81,20 +82,6 @@ class PublicationsGenerator:
                 print(f"Error in selection: {e}")
                 return []
     
-    def _get_llm_instance(self):
-        """Dynamically import and create an instance of the specified LLM class."""
-        try:
-            # Import the module
-            llm_module = importlib.import_module(self.llm_module_path)
-            
-            # Get the class from the module
-            llm_class = getattr(llm_module, self.llm_class_name)
-            
-            # Create an instance of the class
-            return llm_class()
-        except (ImportError, AttributeError) as e:
-            raise ImportError(f"Failed to import {self.llm_class_name} from {self.llm_module_path}: {str(e)}")
-    
     def create_publication_directories(self, profile_name, json_data_planning, output_folder):
         """Create directory structure for publications."""
         os.makedirs(output_folder, exist_ok=True)
@@ -120,7 +107,7 @@ class PublicationsGenerator:
         return output_folder
     
     def generate_images(self, publication_content, output_folder):
-        """Generate images for a publication based on platform-specific needs."""
+        """Generate images for publications based on platform."""
         if self.platform_name == "meta":
             self._generate_meta_images(publication_content, output_folder)
         elif self.platform_name == "fanvue":
@@ -188,7 +175,7 @@ class PublicationsGenerator:
                 day_number = day_data['day']
                 day_folder = os.path.join(week_folder, f"day_{day_number}")
         
-                for publication_data in day_data['posts']:  # Keep 'posts' key name for compatibility
+                for publication_data in day_data['posts']:  
                     publication_title = publication_data.get('title', '')
                     publication_slug = slugify(publication_title) if publication_title else f"publication_{day_number}"
                     caption = publication_data.get('caption', '')
@@ -196,7 +183,7 @@ class PublicationsGenerator:
                     upload_time = publication_data.get('upload_time', '')
         
                     # Prepare the publication content
-                    publication_content = [{  # Wrap in list for compatibility with original API
+                    publication_content = [{  
                         "post_title": publication_title,
                         "post_slug": publication_slug,
                         "caption": caption,
