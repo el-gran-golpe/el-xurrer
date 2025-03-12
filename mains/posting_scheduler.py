@@ -256,16 +256,3 @@ class PostingScheduler:
             else:
                 print(f"Unsupported platform: {self.platform_name}")
 
-
-# Backward compatibility function
-def upload_posts(profiles_base_path):
-    """Legacy function to upload posts for a selected profile."""
-    print("Note: Using legacy upload_posts function. Consider migrating to the PostingScheduler class.")
-    
-    scheduler = PostingScheduler(
-        publication_base_folder=profiles_base_path,
-        platform_name="meta",  # Legacy function assumes Meta platform
-        api_module_path="bot_services.meta_api.graph_api",
-        api_class_name="GraphAPI"
-    )
-    scheduler.upload()
