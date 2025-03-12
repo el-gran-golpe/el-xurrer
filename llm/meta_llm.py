@@ -4,13 +4,15 @@ from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 from utils.utils import get_closest_monday
 
-class InstagramLLM(BaseLLM):
+class MetaLLM(BaseLLM):
     def __init__(self, preferred_models: list | tuple = DEFAULT_PREFERRED_MODELS):
         super().__init__(preferred_models=preferred_models)
 
-    def generate_instagram_planning(self, prompt_template_path: str, previous_storyline: str) -> dict:
+    def generate_meta_planning(self, prompt_template_path: str, previous_storyline: str) -> dict:
         """
-        Generates a 4-week Instagram planning for the AI influencer's content.
+        Generates a 1-week Meta platform planning for the AI influencer's content.
+        Works with both Instagram and Facebook content.
+        
         :param prompt_template_path: Path to the prompt template file.
         :param previous_storyline: The storyline from the previous season.
         :return: A dictionary containing the structured posts for uploading.
@@ -38,10 +40,7 @@ class InstagramLLM(BaseLLM):
         planning = self._generate_dict_from_prompts(
             prompts=prompts,
             preferred_models=self.preferred_models,
-            desc="Generating Instagram planning"
+            desc="Generating Meta platform planning"
         )
 
         return planning
-
-
-
