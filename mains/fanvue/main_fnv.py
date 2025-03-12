@@ -3,7 +3,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from mains.planning_manager import PlanningManager
 from mains.publications_generator import PublicationsGenerator
-# Import other Fanvue-specific modules here
+from mains.posting_scheduler import PostingScheduler
 
 EXECUTE_PLANNING = True   # Set to True for planning
 GENERATE_POSTS = False    # Set to True for generating posts
@@ -27,14 +27,16 @@ if __name__ == '__main__':
 
     if GENERATE_POSTS:
         generator = PublicationsGenerator(
-            post_template_folder=os.path.join('.', 'llm', 'fanvue', 'prompts', 'posts'),
-            platform_name="fanvue",
-            llm_module_path="llm.fanvue_llm",
-            llm_class_name="FanvueLLM",
-            llm_method_name="generate_fanvue_posts"
+            publication_template_folder=FANVUE_PROFILES_BASE_PATH,
+            platform_name="fanvue"
         )
         generator.generate()
 
     if UPLOAD_POSTS:
-        # Implement post uploading for Fanvue
-        pass
+        scheduler = PostingScheduler(
+            publication_base_folder=FANVUE_PROFILES_BASE_PATH,
+            platform_name="fanvue",
+            api_module_path="bot_services.fanvue_poster_bot.fanvue_publisher_se",
+            api_class_name="FanvuePublisher"
+        )
+        scheduler.upload()

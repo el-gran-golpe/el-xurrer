@@ -3,7 +3,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from mains.planning_manager import PlanningManager
 from mains.publications_generator import PublicationsGenerator
-from mains.posting_scheduler import upload_posts
+from mains.posting_scheduler import PostingScheduler
 
 EXECUTE_PLANNING = False       # Set to True for planning
 GENERATE_PUBLICATIONS = True    # Updated from GENERATE_POSTS
@@ -31,5 +31,10 @@ if __name__ == '__main__':
         generator.generate()
 
     if UPLOAD_PUBLICATIONS:
-        pass
-        #upload_posts(META_PROFILES_BASE_PATH)
+        scheduler = PostingScheduler(
+            publication_base_folder=META_PROFILES_BASE_PATH,
+            platform_name="meta",
+            api_module_path="bot_services.meta_api.graph_api",
+            api_class_name="GraphAPI"
+        )
+        scheduler.upload()
