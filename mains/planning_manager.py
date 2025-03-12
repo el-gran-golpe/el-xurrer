@@ -136,7 +136,7 @@ class PlanningManager:
             json.dump(planning, file, indent=4, ensure_ascii=False)
         print(f"Planning saved to: {output_path}")
     
-    def generate(self):
+    def plan(self):
         """Main method to generate planning."""
         assert os.path.isdir(self.planning_template_folder), \
             f"Planning template folder not found: {self.planning_template_folder}"
