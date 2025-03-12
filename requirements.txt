@@ -24,8 +24,8 @@ pydub
 azure-ai-inference
 numpy
 nltk
-playwright
-playwright-stealth
+seleniumbase
+
 
 # Only for Windows
 ftfy; sys_platform == 'win32'

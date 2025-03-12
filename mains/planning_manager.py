@@ -190,27 +190,3 @@ class PlanningManager:
             
             # Save planning
             self.save_planning(planning, output_path)
-
-
-# Platform-specific generator functions
-def generate_instagram_planning(planning_template_folder):
-    """Generate Instagram planning based on template files."""
-    planner = PlanningManager(
-        planning_template_folder=planning_template_folder,
-        platform_name="instagram",
-        llm_module_path="llm.instagram.instagram_llm",
-        llm_class_name="InstagramLLM",
-        llm_method_name="generate_instagram_planning"
-    )
-    planner.generate()
-
-def generate_fanvue_planning(planning_template_folder):
-    """Generate Fanvue planning based on template files."""
-    planner = PlanningManager(
-        planning_template_folder=planning_template_folder,
-        platform_name="fanvue", 
-        llm_module_path="llm.fanvue.fanvue_llm",
-        llm_class_name="FanvueLLM",
-        llm_method_name="generate_fanvue_planning"
-    )
-    planner.generate()

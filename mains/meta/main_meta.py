@@ -18,7 +18,7 @@ if __name__ == '__main__':
         planner = PlanningManager(
             planning_template_folder=META_PROFILES_BASE_PATH,
             platform_name="meta",
-            llm_module_path="llm.instagram.instagram_llm",
+            llm_module_path="llm.meta.meta_llm",
             llm_class_name="InstagramLLM",
             llm_method_name="generate_instagram_planning"
         )
