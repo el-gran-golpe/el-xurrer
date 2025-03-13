@@ -1,6 +1,5 @@
 import os
 from functools import lru_cache
-
 import requests
 import dotenv
 
@@ -10,7 +9,6 @@ API_KEY_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
 class ImgHippo:
     def __init__(self):
         assert os.path.isfile(API_KEY_FILE), f"API key file not found at {API_KEY_FILE}"
-        # Load environment variables from the .env file
         dotenv.load_dotenv(API_KEY_FILE)
         self.api_key = os.getenv('IMG_HIPPO_API_KEY')
         assert self.api_key is not None, "IMG_HIPPO_API_KEY is missing in the .env file"
@@ -34,6 +32,11 @@ class ImgHippo:
             # Make the POST request to upload the image
             response = requests.post(url, files=files, data=data)
 
+        # Debug information
+        print(f"Status Code: {response.status_code}")
+        print(f"Response Headers: {response.headers}")
+        print(f"Response Content: {response.text}")
+        
         response.raise_for_status()
         assert response.status_code == 200, f"Failed to upload image: {response.text}"
 
@@ -46,6 +49,6 @@ class ImgHippo:
 # Example usage
 if __name__ == "__main__":
     img_hippo = ImgHippo()
-    img_path = r"C:\Users\Usuario\Downloads\WallpaperJotaroEnhanced.jpeg"
+    img_path = r"C:\Users\Usuario\Desktop\jesumaestromeme.jpg"
     image_url = img_hippo.get_url_for_image(img_path)
     print(f"Uploaded image URL: {image_url}")
