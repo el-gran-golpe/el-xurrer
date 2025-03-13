@@ -19,7 +19,8 @@ if __name__ == '__main__':
             platform_name="meta",
             llm_module_path="llm.meta_llm",  
             llm_class_name="MetaLLM",  
-            llm_method_name="generate_meta_planning"  
+            llm_method_name="generate_meta_planning",
+            use_initial_conditions=True  # Explicitly use initial conditions
         )
         planner.plan()
 

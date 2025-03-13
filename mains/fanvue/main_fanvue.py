@@ -15,13 +15,13 @@ PLANNING_TEMPLATE_FOLDER = FANVUE_PROFILES_BASE_PATH
 
 if __name__ == '__main__':
     if EXECUTE_PLANNING:
-        # Create Fanvue planning manager with appropriate configuration
         planner = PlanningManager(
             planning_template_folder=PLANNING_TEMPLATE_FOLDER,
             platform_name="fanvue",
-            llm_module_path="llm.fanvue.fanvue_llm",
+            llm_module_path="llm.fanvue_llm",
             llm_class_name="FanvueLLM",
-            llm_method_name="generate_fanvue_planning"
+            llm_method_name="generate_fanvue_planning",
+            use_initial_conditions=False  # Skip initial conditions for Fanvue
         )
         planner.plan()
 

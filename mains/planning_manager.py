@@ -5,7 +5,7 @@ import importlib
 class PlanningManager:
     """Universal planning manager for generating content across different platforms."""
     
-    def __init__(self, planning_template_folder, platform_name, llm_module_path, llm_class_name, llm_method_name):
+    def __init__(self, planning_template_folder, platform_name, llm_module_path, llm_class_name, llm_method_name, use_initial_conditions=True):
         """
         Initialize the planning manager.
         
@@ -15,12 +15,14 @@ class PlanningManager:
             llm_module_path: Path to the LLM module (e.g., "llm.instagram.instagram_llm")
             llm_class_name: Name of the LLM class (e.g., "InstagramLLM")
             llm_method_name: Name of the generation method to call (e.g., "generate_instagram_planning")
+            use_initial_conditions: Whether to use initial_conditions.md files (default: True)
         """
         self.planning_template_folder = planning_template_folder
         self.platform_name = platform_name
         self.llm_module_path = llm_module_path
         self.llm_class_name = llm_class_name
         self.llm_method_name = llm_method_name
+        self.use_initial_conditions = use_initial_conditions
         
     def find_available_plannings(self):
         """Find all available planning templates inside the resources folder."""
@@ -175,9 +177,14 @@ class PlanningManager:
         
         # 6) Process each template
         for profile_name, template_path, output_path in final_templates:
-            # Read previous storyline
-            initial_conditions_path = self.get_initial_conditions_path(profile_name)
-            previous_storyline = self.read_initial_conditions(initial_conditions_path)
+            # Read previous storyline if needed
+            previous_storyline = ""
+            if self.use_initial_conditions:
+                initial_conditions_path = self.get_initial_conditions_path(profile_name)
+                try:
+                    previous_storyline = self.read_initial_conditions(initial_conditions_path)
+                except (AssertionError, IOError) as e:
+                    print(f"\033[91mWarning: {e}. Proceeding with empty previous storyline.\033[0m")
             
             # Generate planning
             while True:

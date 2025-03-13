@@ -1,13 +1,14 @@
 OPENAI, AZURE = 'openai', 'azure'
 
 MODEL_BY_BACKEND = {
+    'DeepSeek-R1': AZURE, #TODO: learn how this works
+    'DeepSeek-V3': AZURE,
     'o1': OPENAI,
     'o1-preview': OPENAI,
     'o1-mini': OPENAI,
     'o3-mini': OPENAI,
     'gpt-4o': OPENAI,
     'gpt-4o-mini': OPENAI,
-    'DeepSeek-R1': AZURE,
     'mistral-large': AZURE,
     'Meta-Llama-3.1-405B-Instruct': AZURE,
     'Meta-Llama-3.1-70B-Instruct': AZURE,
@@ -24,7 +25,7 @@ MODEL_BY_BACKEND = {
 # Ordered following LMArena leaderboard https://lmarena.ai/
 DEFAULT_PREFERRED_MODELS = ('gpt-4o', 'gpt-4o-mini',
                             'o1-mini', 'o1-preview', 'o1',
-                            'o3-mini', 'DeepSeek-R1',
+                            'o3-mini', 'DeepSeek-R1', 'DeepSeek-V3',
                             'Llama-3.3-70B-Instruct',
                             'Meta-Llama-3.1-405B-Instruct',
                             'Meta-Llama-3.1-70B-Instruct',
