@@ -79,7 +79,6 @@ class Flux:
 		assert 0 < height <= 2048, "Height must be between 0 and 2048"
 		assert 0 < guidance_scale <= 10, "Guidance scale must be between 0 and 10"
 		assert 0 < num_inference_steps <= 100, "Number of inference steps must be between 0 and 100"
-
 		assert 0 < retries <= 10, "Number of retries must be between 0 and 10"
 
 		recommended_waiting_time_seconds, recommended_waiting_time_str = None, None

@@ -143,7 +143,7 @@ class PublicationsGenerator(BaseMain):
                             sleep(5)
                     
                     assert os.path.isfile(image_path), f"Image file {image_path} was not generated"
-                    print(f"Image generated and saved at {image_path}")
+                    print(f"\033[32mImage generated and saved at {image_path}\033[0m")
     
     def _generate_fanvue_images(self, publication_content, output_folder):
         """Generate images for Fanvue platform."""
@@ -153,7 +153,8 @@ class PublicationsGenerator(BaseMain):
     
     def generate_publications_from_planning(self, profile_name, planning_file_path, output_folder):
         """Generate publications for a specific profile based on planning data."""
-        print(f"Processing profile: {profile_name}")
+        # Print profile name with colors
+        print(f"\033[1;36mProcessing profile: \033[1;33m{profile_name}\033[0m")
 
         # Load the planning data
         with open(planning_file_path, 'r', encoding='utf-8') as file:
