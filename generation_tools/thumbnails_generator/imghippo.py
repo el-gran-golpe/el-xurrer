@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
-import requests
 import dotenv
+import cloudscraper
 
 API_KEY_FILE = os.path.join(os.path.dirname(__file__), 'api_key.env')
 
@@ -12,38 +12,41 @@ class ImgHippo:
         dotenv.load_dotenv(API_KEY_FILE)
         self.api_key = os.getenv('IMG_HIPPO_API_KEY')
         assert self.api_key is not None, "IMG_HIPPO_API_KEY is missing in the .env file"
+        self.scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'mobile': False
+            }
+        )
 
     @lru_cache(maxsize=128)
     def get_url_for_image(self, img_path: str) -> str:
         assert os.path.isfile(img_path), f"Image file {img_path} does not exist"
 
-        # Define the API endpoint
         url = "https://api.imghippo.com/v1/upload"
 
-        # Prepare the file to be uploaded
         with open(img_path, 'rb') as img_file:
             files = {
-                'file': img_file
-            }
-            data = {
-                'api_key': self.api_key
+                'file': (os.path.basename(img_path), img_file, 'image/jpeg')
             }
 
-            # Make the POST request to upload the image
-            response = requests.post(url, files=files, data=data)
+            data = {'api_key': self.api_key}
+
+            response = self.scraper.post(url, files=files, data=data)
 
         # Debug information
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Headers: {response.headers}")
-        print(f"Response Content: {response.text}")
-        
+        print("Request URL:", response.url)
+        print("Status Code:", response.status_code)
+        print("Response Content:", response.text)
+
         response.raise_for_status()
-        assert response.status_code == 200, f"Failed to upload image: {response.text}"
 
         response_data = response.json()
-        url = response_data['data']['view_url']
-        return url
+        assert 'data' in response_data and 'view_url' in response_data['data'], \
+            f"Unexpected response structure: {response_data}"
 
+        return response_data['data']['view_url']
 
 
 # Example usage

@@ -25,6 +25,7 @@ azure-ai-inference
 numpy
 nltk
 seleniumbase
+cloudscraper
 
 
 # Only for Windows
