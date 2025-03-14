@@ -5,9 +5,9 @@ from mains.planning_manager import PlanningManager
 from mains.publications_generator import PublicationsGenerator
 from mains.posting_scheduler import PostingScheduler
 
-EXECUTE_PLANNING = False       # Set to True for planning
+EXECUTE_PLANNING = True       # Set to True for planning
 GENERATE_PUBLICATIONS = False    # Updated from GENERATE_POSTS
-UPLOAD_PUBLICATIONS = True      # Updated from UPLOAD_POSTS
+UPLOAD_PUBLICATIONS = False      # Updated from UPLOAD_POSTS
 
 # Updated paths for new structure
 META_PROFILES_BASE_PATH = os.path.join('.', 'resources', 'meta_profiles')

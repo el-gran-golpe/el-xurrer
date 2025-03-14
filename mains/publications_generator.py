@@ -7,8 +7,9 @@ from utils.utils import get_valid_planning_file_names
 from utils.exceptions import WaitAndRetryError
 from time import sleep
 from generation_tools.image_generator.flux.flux import Flux
+from mains.base_main import BaseMain
 
-class PublicationsGenerator:
+class PublicationsGenerator(BaseMain):
     """Universal publications generator for creating content across different platforms."""
     
     def __init__(self, publication_template_folder, platform_name, llm_module_path=None, 
@@ -23,8 +24,8 @@ class PublicationsGenerator:
             llm_class_name: (Optional) Name of the LLM class
             llm_method_name: (Optional) Name of the generation method
         """
+        super().__init__(platform_name)
         self.publication_template_folder = publication_template_folder
-        self.platform_name = platform_name
         self.llm_module_path = llm_module_path
         self.llm_class_name = llm_class_name
         self.llm_method_name = llm_method_name
@@ -43,66 +44,60 @@ class PublicationsGenerator:
         
     def find_available_profiles(self):
         """Find all available profiles with planning files."""
-        available_profiles = []
         
-        # Look for planning files in the profiles folder structure
-        if os.path.isdir(self.profiles_base_path):
-            for profile_name in os.listdir(self.profiles_base_path):
-                profile_path = os.path.join(self.profiles_base_path, profile_name)
-                if os.path.isdir(profile_path):
-                    outputs_path = os.path.join(profile_path, "outputs")
-                    if os.path.isdir(outputs_path):
-                        for file_name in os.listdir(outputs_path):
-                            if file_name.endswith('_planning.json'):
-                                planning_path = os.path.join(outputs_path, file_name)
-                                available_profiles.append((profile_name, planning_path))
-    
-        return available_profiles
+        def search_pattern(profile_name, profile_path):
+            outputs_path = os.path.join(profile_path, "outputs")
+            if os.path.isdir(outputs_path):
+                for file_name in os.listdir(outputs_path):
+                    if file_name.endswith('_planning.json'):
+                        planning_path = os.path.join(outputs_path, file_name)
+                        return (profile_name, planning_path)
+            return None
+            
+        return self.find_available_items(
+            base_path=self.profiles_base_path,
+            search_pattern=search_pattern,
+            item_type="profiles with planning files"
+        )
     
     def prompt_user_selection(self, available_profiles):
         """Prompt the user to select profiles."""
-        if not available_profiles:
-            print(f"No planning files found for {self.platform_name}, please generate a planning first")
-            return []
-
-        print(f"\nAvailable {self.platform_name} profiles with planning files:")
-        for i, (profile, _) in enumerate(available_profiles):
-            print(f"{i + 1}: {profile}")
+        not_found_message = f"No planning files found for {self.platform_name}, please generate a planning first"
         
-        profile_input = input("\nSelect profile numbers separated by commas or type 'all' to process all: ")
-        if profile_input.lower() == 'all':
-            return available_profiles
-        else:
-            try:
-                profile_indices = [int(index.strip()) - 1 for index in profile_input.split(',')]
-                for index in profile_indices:
-                    assert 0 <= index < len(available_profiles), f"Invalid profile number: {index + 1}"
-                return [available_profiles[index] for index in profile_indices]
-            except (ValueError, AssertionError) as e:
-                print(f"Error in selection: {e}")
-                return []
+        def display_function(item):
+            # Display only the profile name from the tuple
+            return item[0] if isinstance(item, tuple) and len(item) > 0 else str(item)
+        
+        return super().prompt_user_selection(
+            available_items=available_profiles,
+            item_type="profiles",
+            allow_multiple=True,
+            display_function=display_function,
+            not_found_message=not_found_message
+        )
     
     def create_publication_directories(self, profile_name, json_data_planning, output_folder):
         """Create directory structure for publications."""
-        os.makedirs(output_folder, exist_ok=True)
+        self.create_directory(output_folder)
         
         # Create folders for each week and day
         for week_key, week_data in json_data_planning.items():
             week_folder = os.path.join(output_folder, week_key)
-            os.makedirs(week_folder, exist_ok=True)
+            self.create_directory(week_folder)
+            
             for day_data in week_data:
                 day_folder = os.path.join(week_folder, f"day_{day_data['day']}")
-                os.makedirs(day_folder, exist_ok=True)
-                # Create a .txt file with the captions for the day
+                self.create_directory(day_folder)
+                
+                # Create captions.txt file
+                captions = "\n\n".join([pub['caption'] for pub in day_data['posts']])
                 captions_file_path = os.path.join(day_folder, "captions.txt")
-                with open(captions_file_path, 'w', encoding='utf-8') as captions_file:
-                    for publication in day_data['posts']:  # Keep 'posts' key name for compatibility
-                        captions_file.write(publication['caption'] + "\n\n")
-                # Create a .txt file with the upload times for the day
+                self.write_to_file(captions, captions_file_path)
+                
+                # Create upload_times.txt file
+                upload_times = "\n".join([pub['upload_time'] for pub in day_data['posts']])
                 upload_times_file_path = os.path.join(day_folder, "upload_times.txt")
-                with open(upload_times_file_path, 'w', encoding='utf-8') as upload_times_file:
-                    for publication in day_data['posts']:  # Keep 'posts' key name for compatibility
-                        upload_times_file.write(publication['upload_time'] + "\n")
+                self.write_to_file(upload_times, upload_times_file_path)
         
         return output_folder
     

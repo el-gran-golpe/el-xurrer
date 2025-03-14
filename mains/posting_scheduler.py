@@ -2,8 +2,9 @@ import os
 import importlib
 from datetime import datetime, timezone
 from time import sleep
+from mains.base_main import BaseMain
 
-class PostingScheduler:
+class PostingScheduler(BaseMain):
     """Universal posting scheduler for uploading content across different platforms."""
     
     def __init__(self, publication_base_folder, platform_name, api_module_path, api_class_name):
@@ -16,8 +17,8 @@ class PostingScheduler:
             api_module_path: Path to the API module 
             api_class_name: Name of the API class
         """
+        super().__init__(platform_name)
         self.publication_base_folder = publication_base_folder
-        self.platform_name = platform_name
         self.api_module_path = api_module_path
         self.api_class_name = api_class_name
         
@@ -26,81 +27,51 @@ class PostingScheduler:
     
     def _get_api_instance(self):
         """Dynamically import and create an instance of the specified API class."""
-        try:
-            # Import the module
-            api_module = importlib.import_module(self.api_module_path)
-            
-            # Get the class from the module
-            api_class = getattr(api_module, self.api_class_name)
-            
-            # For Fanvue, we don't create the instance here since it requires a driver
-            if self.platform_name == "fanvue":
-                return api_class  # Return class rather than instance
-            
-            # For other platforms (like Meta), create an instance directly
-            return api_class()
-        except (ImportError, AttributeError) as e:
-            raise ImportError(f"Failed to import {self.api_class_name} from {self.api_module_path}: {str(e)}")
+        # For Fanvue, we don't create the instance here since it requires a driver
+        create_instance = self.platform_name != "fanvue"
+        return self.load_dynamic_class(self.api_module_path, self.api_class_name, create_instance=create_instance)
     
     def find_available_profiles(self):
         """Find all available profiles with publications to upload."""
-        available_profiles = []
         
-        # Look for publication folders in the profiles directory structure
-        if os.path.isdir(self.profiles_base_path):
-            for profile_name in os.listdir(self.profiles_base_path):
-                profile_path = os.path.join(self.profiles_base_path, profile_name)
-                if os.path.isdir(profile_path):
-                    outputs_path = os.path.join(profile_path, "outputs", "publications")
-                    if os.path.isdir(outputs_path) and os.listdir(outputs_path):
-                        available_profiles.append(profile_name)
-        
-        return available_profiles
+        def search_pattern(profile_name, profile_path):
+            outputs_path = os.path.join(profile_path, "outputs", "publications")
+            if os.path.isdir(outputs_path) and os.listdir(outputs_path):
+                return profile_name
+            return None
+            
+        return self.find_available_items(
+            base_path=self.profiles_base_path,
+            search_pattern=search_pattern,
+            item_type="profiles"
+        )
     
     def prompt_user_selection(self, available_profiles):
         """Prompt the user to select profiles for uploading."""
-        if not available_profiles:
-            print(f"No profiles found with publications to upload for {self.platform_name}.")
-            return []
-
-        print(f"\nAvailable {self.platform_name} profiles with publications:")
-        for i, profile in enumerate(available_profiles):
-            print(f"{i + 1}: {profile}")
+        not_found_message = f"No profiles found with publications to upload for {self.platform_name}."
         
-        profile_input = input("\nSelect profile number to upload: ")
-        
-        try:
-            profile_idx = int(profile_input.strip()) - 1
-            assert 0 <= profile_idx < len(available_profiles), f"Invalid profile number: {profile_idx + 1}"
-            return [available_profiles[profile_idx]]
-        except (ValueError, AssertionError) as e:
-            print(f"Error in selection: {e}")
-            return []
+        return super().prompt_user_selection(
+            available_items=available_profiles,
+            item_type="profiles",
+            allow_multiple=False,
+            not_found_message=not_found_message
+        )
     
     def _read_publication_files(self, day_folder):
         """Read caption, upload time and image files from a day folder."""
-        # Check that captions and upload_times files exist
         captions_file_path = os.path.join(day_folder, "captions.txt")
         upload_times_file_path = os.path.join(day_folder, "upload_times.txt")
         
-        if not os.path.isfile(captions_file_path) or not os.path.isfile(upload_times_file_path):
-            print(f"Error: Missing caption or upload time file in {day_folder}")
-            return None, None, []
-        
-        # Read captions
         try:
-            with open(captions_file_path, 'r', encoding='utf-8') as f:
-                caption = f.read().strip()
-        except Exception as e:
-            print(f"Error reading captions.txt in {day_folder}: {e}")
+            caption = self.read_file_content(captions_file_path)
+        except (FileNotFoundError, IOError) as e:
+            print(f"Error: {e}")
             return None, None, []
-
-        # Read upload times
+            
         try:
-            with open(upload_times_file_path, 'r', encoding='utf-8') as f:
-                upload_time_str = f.read().strip()
-        except Exception as e:
-            print(f"Error reading upload_times.txt in {day_folder}: {e}")
+            upload_time_str = self.read_file_content(upload_times_file_path)
+        except (FileNotFoundError, IOError) as e:
+            print(f"Error: {e}")
             return None, None, []
 
         # Look for images in the day folder
