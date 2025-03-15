@@ -207,7 +207,50 @@ class PostingScheduler(BaseMain):
                             sleep(5)
                         except Exception as e:
                             print(f"Error uploading {image_file} to Fanvue: {e}")
-    
+                            
+    def _clean_up_publications_folder(self, profile_name):
+        """Delete the publications folder for a profile after successful upload."""
+        import shutil
+        
+        # Assert that profile_name is not empty
+        assert profile_name, "Profile name cannot be empty"
+        
+        publications_folder = os.path.join(self.profiles_base_path, profile_name, "outputs", "publications")
+        
+        # Assert that the profiles base path exists
+        assert os.path.exists(self.profiles_base_path), f"Profiles base path does not exist: {self.profiles_base_path}"
+        
+        # Assert that the profile folder exists
+        profile_folder = os.path.join(self.profiles_base_path, profile_name)
+        assert os.path.exists(profile_folder), f"Profile folder does not exist: {profile_folder}"
+        
+        if os.path.exists(publications_folder):
+            try:
+                print(f"\nCleaning up: Removing publications folder for {profile_name}...")
+                shutil.rmtree(publications_folder)
+                
+                # Assert that the folder was actually deleted
+                assert not os.path.exists(publications_folder), f"Failed to delete publications folder: {publications_folder}"
+                
+                print(f"Successfully removed {publications_folder}")
+                
+                # Create an empty publications directory to maintain structure
+                os.makedirs(publications_folder, exist_ok=True)
+                
+                # Assert the directory was created
+                assert os.path.exists(publications_folder), f"Failed to recreate publications folder: {publications_folder}"
+                
+                readme_path = os.path.join(publications_folder, "README.txt")
+                with open(readme_path, "w") as f:
+                    f.write(f"Publications for {profile_name} were successfully uploaded and this folder was cleaned up on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
+                
+                # Assert README file exists
+                assert os.path.exists(readme_path), f"Failed to create README file: {readme_path}"
+            except Exception as e:
+                print(f"Error while removing publications folder: {e}")
+        else:
+            print(f"Publications folder not found for {profile_name}: {publications_folder}")
+
     def upload(self):
         """Main method to upload publications."""
         assert os.path.isdir(self.profiles_base_path), \
@@ -232,8 +275,14 @@ class PostingScheduler(BaseMain):
         for profile_name in selected_profiles:
             if self.platform_name == "meta":
                 self._process_meta_publications(profile_name, api_instance_or_class)
+                # Delete the publications folder after successful execution to keep the environment clean
+                self._clean_up_publications_folder(profile_name)
             elif self.platform_name == "fanvue":
                 self._process_fanvue_publications(profile_name, api_instance_or_class)
+                # Same as above, delete the publications folder after successful execution
+                self._clean_up_publications_folder(profile_name)
             else:
                 print(f"Unsupported platform: {self.platform_name}")
+
+
 
