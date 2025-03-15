@@ -154,7 +154,9 @@ class PlanningManager(BaseMain):
             # Generate planning
             while True:
                 try:
-                    planning = self.generate_planning_with_llm(template_path, previous_storyline)
+                    # TODO: check if the previous_storyline is correctly implemented, that is,
+                    # it's not being used when the initial conditions are set to false.
+                    planning = self.generate_planning_with_llm(template_path, previous_storyline) 
                     break
                 except (json.decoder.JSONDecodeError, TypeError) as e:
                     print(f"Error decoding JSON or TypeError: {e}. Retrying...")

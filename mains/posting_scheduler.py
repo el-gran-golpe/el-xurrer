@@ -275,11 +275,16 @@ class PostingScheduler(BaseMain):
         for profile_name in selected_profiles:
             if self.platform_name == "meta":
                 self._process_meta_publications(profile_name, api_instance_or_class)
-                # Delete the publications folder after successful execution to keep the environment clean
+
+                # TODO: after successfully completing this step, it would be nice to read the lv_planning.json file, 
+                # then summarize the content and append it to the initial_conditions.md file so that the storyline can progress
+                # without repeating the same information over and over again
+
+                # Delete the publications folder after successful execution of _process_meta_publications to keep the environment clean
                 self._clean_up_publications_folder(profile_name)
             elif self.platform_name == "fanvue":
                 self._process_fanvue_publications(profile_name, api_instance_or_class)
-                # Same as above, delete the publications folder after successful execution
+                # Same as above, delete the publications folder after successful execution of the fanvue publications uloading
                 self._clean_up_publications_folder(profile_name)
             else:
                 print(f"Unsupported platform: {self.platform_name}")
