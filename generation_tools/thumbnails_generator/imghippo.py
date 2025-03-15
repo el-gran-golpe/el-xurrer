@@ -37,8 +37,8 @@ class ImgHippo:
 
         # Debug information
         print("Request URL:", response.url)
-        print("Status Code:", response.status_code)
-        print("Response Content:", response.text)
+        print("Status Code:", "\033[92m" + str(response.status_code) + "\033[0m")
+        #print("Response Content:", response.text)
 
         response.raise_for_status()
 

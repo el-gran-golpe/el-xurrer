@@ -139,6 +139,15 @@ class PostingScheduler(BaseMain):
                     if response_instagram and response_facebook:
                         print(f"Publication uploaded successfully to Instagram: {response_instagram}")
                         print(f"Publication uploaded successfully to Facebook: {response_facebook}")
+                        print("I proceed to delete the just uploaded publication(s) to avoid double uploding mistakes:")
+                        for image_file in image_files:
+                            os.remove(image_file)
+                            assert not os.path.exists(image_file), f"Failed to delete {image_file}"
+                            # Create a marker file to indicate this day's images have been uploaded
+                            marker_file_path = os.path.join(day_folder, "uploaded.txt")
+                            with open(marker_file_path, "w") as f:
+                                f.write("All of the images for this particular day have already been uploaded.")
+                            print(f"Created marker file at {marker_file_path}")
                     else:
                         print(f"Failed to upload publication.")
                 except Exception as e:
@@ -216,7 +225,7 @@ class PostingScheduler(BaseMain):
             return
         
         # 3) Get the API instance or class
-        api_instance_or_class = self._get_api_instance()
+        api_instance_or_class = self._get_api_instance() 
         
         # 4) Process each selected profile based on platform
         for profile_name in selected_profiles:
