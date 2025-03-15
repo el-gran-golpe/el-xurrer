@@ -145,7 +145,7 @@ class Flux:
 if __name__ == '__main__':
 
 	flux = Flux()
-	prompt = "A girl pouring oil on her feet with colored nails. Erotic, sensual, and sexy."
+	prompt = "A sexy blonde girl with blue eyes in Lyon showing a sex position and showing her pussy superrealistic"
 	output_path = "./output.jpg"
 	flux.generate_image(prompt, output_path, width=1080, height=1080)
 	print(f"Image saved to {output_path}")

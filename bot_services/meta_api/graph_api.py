@@ -3,6 +3,8 @@ import os
 import dotenv
 import requests
 import json
+from datetime import datetime, timezone
+
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from generation_tools.thumbnails_generator.imghippo import ImgHippo
@@ -32,7 +34,7 @@ class GraphAPI:
             response.raise_for_status()
             pages = response.json().get("data", [])
             
-            # Iterate through all pages and return the first page_id found
+            # Iterate through pages and return the first page_id found
             for page in pages:
                 if "id" in page:
                     print(f"Retrieved Page ID for page: {page['name']}")
@@ -53,7 +55,7 @@ class GraphAPI:
             response.raise_for_status()
             pages = response.json().get("data", [])
             
-            # Iterate through all pages and return the first access_token found
+            # Iterate through pages and return the first access_token found
             for page in pages:
                 if "access_token" in page:
                     print(f"Retrieved Page Access Token for page: {page['name']}")
@@ -64,16 +66,26 @@ class GraphAPI:
             print(f"An error occurred while retrieving the Page Access Token: {e}")
             sys.exit(1)
 
-    def upload_instagram_publication(self, img_paths: list, caption: str):
+    def _convert_iso_to_unix(self, iso_str: str) -> int:
         """
-        Uploads one or multiple images as a single post on Instagram.
-        
+        Convert an ISO-formatted datetime string (e.g., "2023-10-16T09:00:00Z")
+        to a Unix timestamp (seconds since epoch in UTC).
+        """
+        dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+
+    def upload_instagram_publication(self, img_paths: list, caption: str, upload_time_str: str = None):
+        """
+        Uploads one or multiple images as a scheduled post on Instagram.
+
         Parameters:
-        - img_paths (list or str): List of image paths to upload. Can be a single image or multiple images.
-        - caption (str): Caption for the post.
-        
+            - img_paths (list or str): List of image paths to upload.
+            - caption (str): Caption for the post.
+            - upload_time_str (str, optional): ISO formatted upload time (e.g., '2023-10-16T09:00:00Z').
+                                               If not provided, post is published immediately.
+
         Returns:
-        - dict: The response from the Instagram API if successful, None otherwise.
+            - dict: The response from the Instagram API if successful, None otherwise.
         """
         # Ensure img_paths is always a list, even if a single image is provided
         if isinstance(img_paths, str):
@@ -86,7 +98,8 @@ class GraphAPI:
 
         # Step 1: Create media containers for each image
         for img_path in img_paths:
-            assert img_path.lower().endswith(('.png', '.jpg', '.jpeg')), "Each image file must be a .png, .jpg, or .jpeg"
+            assert img_path.lower().endswith(('.png', '.jpg', '.jpeg')), \
+                "Each image file must be a .png, .jpg, or .jpeg"
 
             try:
                 # Get image URL from ImgHippo
@@ -99,11 +112,11 @@ class GraphAPI:
                     "access_token": self.page_access_token
                 }
 
-                # If it's a single image, add the caption directly to the media container
+                # Add caption if a single image; carousel items will inherit caption later
                 if len(img_paths) == 1:
                     payload["caption"] = caption
 
-                # If multiple images, mark as part of a carousel
+                # For multiple images, mark as a carousel item
                 if len(img_paths) > 1:
                     payload["is_carousel_item"] = "true"
 
@@ -119,17 +132,15 @@ class GraphAPI:
                     print(f"Response content: {response.content.decode()}")
                 return None
 
-        # Step 2: Decide whether to publish a single image or a carousel
+        # Step 2: Create a carousel container if needed
         if len(media_ids) == 1:
-            # Single image post
             creation_id = media_ids[0]
         else:
-            # Create a carousel container
             try:
                 carousel_url = f"{self.base_url}/{self.account_id}/media"
                 carousel_payload = {
                     "media_type": "CAROUSEL",
-                    "children": ",".join(media_ids),  # Join media IDs into a comma-separated string
+                    "children": ",".join(media_ids),  # Comma-separated list of media IDs
                     "caption": caption,
                     "access_token": self.page_access_token
                 }
@@ -139,51 +150,62 @@ class GraphAPI:
                 print(f"Created carousel container with ID: {creation_id}")
             except requests.exceptions.RequestException as e:
                 print(f"An error occurred while creating the carousel container: {e}")
-                if response is not None:
-                    print(f"Response content: {response.content.decode()}")
+                if 'carousel_response' in locals() and carousel_response is not None:
+                    print(f"Response content: {carousel_response.content.decode()}")
                 return None
 
-        # Step 3: Publish the post
+        # Step 3: Schedule the post by converting the ISO time to Unix timestamp
         try:
             publish_url = f"{self.base_url}/{self.account_id}/media_publish"
             publish_payload = {
                 "creation_id": creation_id,
                 "access_token": self.page_access_token
             }
+
+            if upload_time_str:
+                scheduled_timestamp = self._convert_iso_to_unix(upload_time_str)
+                publish_payload["published"] = "false"  # Do not publish immediately
+                publish_payload["scheduled_publish_time"] = scheduled_timestamp
+
             publish_response = requests.post(publish_url, data=publish_payload)
             publish_response.raise_for_status()
             result = publish_response.json()
-            print("Post published successfully:", result)
+            
+            status = "scheduled" if upload_time_str else "published"
+            print(f"Instagram post {status} successfully:", result)
+            
             return {
                 "id": result.get("id"),
-                "permalink": result.get("permalink"),
-                "status": "success"
+                "permalink": result.get("permalink", ""),
+                "status": status
             }
 
         except requests.exceptions.RequestException as e:
-            print(f"An error occurred while publishing the post: {e}")
-            if response is not None:
-                print(f"Response content: {response.content.decode()}")
+            print(f"An error occurred while publishing the Instagram post: {e}")
+            if 'publish_response' in locals() and publish_response is not None:
+                print(f"Response content: {publish_response.content.decode()}")
             return None
-        
-    def upload_facebook_publication(self, img_paths: list, caption: str):
+
+    def upload_facebook_publication(self, img_paths: list, caption: str, upload_time_str: str = None):
         """
-        Uploads one or multiple images as a single post on the Facebook Page.
-        
+        Uploads one or multiple images as a scheduled post on the Facebook Page.
+
         Parameters:
-        - img_paths (list): List of image paths to upload. Can be one or multiple images.
-        - caption (str): Caption for the post.
-        
+            - img_paths (list): List of image paths to upload.
+            - caption (str): Caption for the post.
+            - upload_time_str (str, optional): ISO formatted upload time (e.g., '2023-10-16T09:00:00Z').
+                                               If not provided, post is published immediately.
+
         Returns:
-        - dict: The response from the Facebook API if successful, None otherwise.
+            - dict: The response from the Facebook API if successful, None otherwise.
         """
-        # Ensure img_paths is a list, even if a single image is provided
+        # Ensure img_paths is a list
         if isinstance(img_paths, str):
             img_paths = [img_paths]
 
         media_ids = []
 
-        # Step 1: Upload each photo as unpublished
+        # Step 1: Upload each photo as unpublished media
         for img_path in img_paths:
             url = f"{self.base_url}/{self.page_id}/photos"
             files = {'source': open(img_path, 'rb')}
@@ -234,6 +256,5 @@ if __name__ == "__main__":
     ]
     caption = "Let’s talk, my beautiful community! 💖 I want to hear your journeys toward authenticity—let's uplift each other! 😇"
     response = graph_api.upload_instagram_publication(img_paths, caption)
-    
 
-  
+

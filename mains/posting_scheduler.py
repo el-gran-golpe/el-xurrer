@@ -126,19 +126,20 @@ class PostingScheduler(BaseMain):
                 if not caption or not upload_time_str or not image_files:
                     continue
                 
-                # Wait for the scheduled time
-                if not self._wait_for_scheduled_time(upload_time_str, day_folder):
-                    continue
+                # Wait for the scheduled time (not applicable anymore to Meta)
+                #if not self._wait_for_scheduled_time(upload_time_str, day_folder):
+                #    continue
                 
                 # Upload to Meta using GraphAPI
                 print(f"Uploading publication from {day_folder} to Meta...")
                 try:
-                    response_instagram = api_instance.upload_instagram_publication(image_files, caption)
-                    response_facebook = api_instance.upload_facebook_publication(image_files, caption)
+                    # Instead, now I input the upload_time_str to the Graph API so that Meta is the one responsible to upload the publication
+                    response_instagram = api_instance.upload_instagram_publication(image_files, caption, upload_time_str)
+                    response_facebook = api_instance.upload_facebook_publication(image_files, caption, upload_time_str)
                     
                     if response_instagram and response_facebook:
-                        print(f"Publication uploaded successfully to Instagram: {response_instagram}")
-                        print(f"Publication uploaded successfully to Facebook: {response_facebook}")
+                        print(f"Publication uploaded successfully to Instagram: {response_instagram} at specific time: {upload_time_str}")
+                        print(f"Publication uploaded successfully to Facebook: {response_facebook} at specific time: {upload_time_str}")
                         print("I proceed to delete the just uploaded publication(s) to avoid double uploding mistakes:")
                         for image_file in image_files:
                             os.remove(image_file)
