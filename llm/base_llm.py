@@ -45,8 +45,11 @@ class BaseLLM:
         }
 
         self.exhausted_models = []
-        self.client, self.active_backend = None, None
+        self.client = None
+        self.active_backend = None
         self.using_paid_api = False
+
+
     def get_client(self, model: str, paid_api: bool = False):
         assert model in MODEL_BY_BACKEND, f"Model not found: {model}"
         backend = MODEL_BY_BACKEND[model]
@@ -105,37 +108,6 @@ class BaseLLM:
         conversation = deepcopy(conversation_history)
         conversation.append({"role": "assistant", "content": output_assistant_message})
         return conversation
-
-    def _generate_dict_from_plain_string_prompts(self, prompts, preferred_models: list = None, desc: str = "Generating",
-                                    system_prompt: str | None = None) -> dict:
-
-        if preferred_models is None:
-            assert len(self.preferred_models) > 0, "No preferred models found"
-            preferred_models = self.preferred_models
-
-        conversation = []
-        if system_prompt:
-            conversation.append({"role": "system", "content": system_prompt})
-
-        # Loop through each prompt and get a response
-        for i, user_prompt in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
-            # Append the user's prompt to the conversation
-            conversation = self._update_conversation_before_model_pass(conversation_history=conversation,
-                                                                       new_user_message=user_prompt, step=i)
-            # Get the assistant's response
-            assistant_reply, finish_reason = self.get_model_response(conversation=conversation,
-                                                                     preferred_models=preferred_models)
-
-            # If it was an improvement prompt, remove the previous message and answer
-            # Append the assistant's reply to the conversation
-            conversation = self._update_conversation_after_model_pass(conversation_history=conversation,
-                                                                      output_assistant_message=assistant_reply, step=i)
-
-        # The last message contains a json object with the script
-        last_message = conversation[-1]["content"]
-        # Decode the JSON object
-        output_dict = self.decode_json_from_message(last_message)
-        return output_dict
 
 
     def get_model_response(self, conversation: list[dict], preferred_models: list = None,
@@ -206,12 +178,14 @@ class BaseLLM:
         return assistant_reply, finish_reason
 
     def __get_response_stream(self, conversation: list[dict], preferred_models: list,
-                              use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None,
+                              use_paid_api: bool = False, structured_json: dict[str, str|dict[str]]|None = None, # TODO:  remove unused code
                               as_json: bool = False, large_output: bool = False, force_reasoning: bool = False,
                               stream_response: bool = True) -> (
             Iterable[StreamingChatCompletionsUpdate] | ChatCompletions | Stream[ChatCompletionChunk] | ChatCompletion):
 
         conversation, additional_params = deepcopy(conversation), {}
+
+        #--------------------------------------------------------------------
         # Select the best model that is not exhausted
         if not use_paid_api:
             preferred_models = [model for model in preferred_models if model not in self.exhausted_models]
@@ -322,6 +296,8 @@ class BaseLLM:
     def decode_json_from_message(self, message: str) -> dict:
         if message.startswith('```json'):
             message = message[len('```json'): -len('```')]
+
+            #THOUGHTS: Check why is this used three times, I think is because of the json format but check it anyway
             message = message.replace('\n```json', '').replace('```json\n', '').replace('```json', '')
 
         message = message.strip('"')
@@ -339,7 +315,8 @@ class BaseLLM:
         :param conversation: The conversation to merge. A list of dictionaries with 'role' and 'content'
         :return: The conversation with the system messages merged with the next user message
         """
-
+        # TODO: why is this a for loop? This is called for a conversation that seems to be composed of system_prompt
+        #  and prompt
         merged_conversation, last_system_message = [], None
         for i, message in enumerate(conversation):
             role, content = message['role'], message['content']
@@ -396,21 +373,28 @@ class BaseLLM:
         # Loop through each prompt and get a response
         for i, prompt_definition in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
             assert all(key in prompt_definition for key in ('prompt', 'cache_key')), "Invalid prompt definition"
+
             prompt, cache_key = prompt_definition['prompt'], prompt_definition['cache_key']
-            function_call = prompt_definition.get('function_call', None)
+            function_call = prompt_definition.get('function_call', None) # FIXME: ask Haru what is the use of that
             system_prompt = prompt_definition.get('system_prompt', None)
             structured_json = prompt_definition.get('structured_json', None)
             as_json = prompt_definition.get('json', False)
             force_reasoning = prompt_definition.get('force_reasoning', False)
             large_output = prompt_definition.get('large_output', False)
             validate = prompt_definition.get('validate', False)
-            if system_prompt is not None:
-                system_prompt = self._replace_prompt_placeholders(prompt=system_prompt, cache=cache, accept_unfilled=function_call is not None)
+
             conversation = []
             if system_prompt is not None:
+                system_prompt = self._replace_prompt_placeholders(prompt=system_prompt,
+                                                                  cache=cache,
+                                                                  accept_unfilled=function_call is not None)
                 conversation.append({'role': 'system', 'content': system_prompt})
-            prompt = self._replace_prompt_placeholders(prompt=prompt, cache=cache, accept_unfilled=function_call is not None)
+
+            prompt = self._replace_prompt_placeholders(prompt=prompt,
+                                                       cache=cache,
+                                                       accept_unfilled=function_call is not None)
             conversation.append({'role': 'user', 'content': prompt})
+
             if function_call is not None:
                 assert isinstance(function_call, str), "Invalid function call"
                 assert hasattr(self, function_call), f"Function not found: {function_call}"

@@ -3,8 +3,6 @@ import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 from utils.utils import get_closest_monday
-from generation_tools.image_generator.flux.flux import Flux
-from time import sleep
 
 class MetaLLM(BaseLLM):
     def __init__(self, preferred_models: list | tuple = DEFAULT_PREFERRED_MODELS):
@@ -36,6 +34,7 @@ class MetaLLM(BaseLLM):
 
         # Insert variables into the prompt text
         prompts[0]['prompt'] = prompts[0]['prompt'].format(previous_storyline=previous_storyline)
+        # TODO: this have to be done using the cache or placeholders method
         prompts[1]['system_prompt'] = prompts[1]['system_prompt'].format(day=day)
 
         # Generate the planning using the language model

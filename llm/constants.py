@@ -48,7 +48,9 @@ MODELS_ACCEPTING_JSON_FORMAT = ('Mistral-large', 'Mistral-large-2411', 'Mistral-
                                 'Meta-Llama-3.1-405B-Instruct', 'Llama-3.3-70B-Instruct', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o1-preview',
                                 'o3-mini')
 MODELS_INCLUDING_CHAIN_THOUGHT = ('DeepSeek-R1', )
-CANNOT_ASSIST_PHRASES = ("I'm sorry, I can't assist with that", "Lo siento, no puedo procesar esa solicitud", "Lo siento, no puedo hacer eso.")
+CANNOT_ASSIST_PHRASES = ("I'm sorry, I can't assist with that",
+                         "Lo siento, no puedo procesar esa solicitud",
+                         "Lo siento, no puedo hacer eso.")
 
 
 VALIDATION_SYSTEM_PROMPT = ("You are a categorization assistant tasked with analyzing the finish_reason "
