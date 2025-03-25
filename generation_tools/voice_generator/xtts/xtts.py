@@ -9,6 +9,7 @@ from generation_tools.voice_generator.denoising.denoiser import Denoiser
 from generation_tools.voice_generator.xtts.constants import (
     SAMPLE_VOICES,
     AVAILABLE_SPEAKERS,
+    DECENT_SPEAKERS_ENGLISH,
 )
 from generation_tools.subtitles_generator.whisper.whisper_stt import Whisper
 from utils.utils import trim_silence_from_audio
@@ -109,7 +110,7 @@ class Xtts:
             speaker_name = None
             speaker_wav = SAMPLE_VOICES[speaker]
 
-        ret = self.tts.tts_to_file(
+        self.tts.tts_to_file(
             text=text,
             file_path=output_path,
             speaker_wav=speaker_wav,

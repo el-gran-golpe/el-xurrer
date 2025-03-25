@@ -213,7 +213,7 @@ def missing_video_assets(assets_path: str) -> bool:
 
     assert "content" in script, "Content not found in script"
     for item in script["content"]:
-        _id, text, image_prompt, sound = (
+        _id, text, _, sound = (
             item["id"],
             item["text"],
             item["image"],
