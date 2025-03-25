@@ -6,20 +6,25 @@ import json
 from datetime import datetime, timezone
 
 # Add the parent directory to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from generation_tools.thumbnails_generator.imghippo import ImgHippo
 
-META_API_KEY = os.path.join(os.path.dirname(__file__), 'api_key_instagram.env')
+META_API_KEY = os.path.join(os.path.dirname(__file__), "api_key_instagram.env")
+
 
 class GraphAPI:
     def __init__(self):
         dotenv.load_dotenv(META_API_KEY)
-        self.account_id = os.getenv('INSTAGRAM_ACCOUNT_ID')
-        self.user_access_token = os.getenv('USER_ACCESS_TOKEN')
-        self.app_scoped_user_id = os.getenv('APP_SCOPED_USER_ID')
+        self.account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+        self.user_access_token = os.getenv("USER_ACCESS_TOKEN")
+        self.app_scoped_user_id = os.getenv("APP_SCOPED_USER_ID")
         assert self.account_id, f"Instagram account ID not found in {META_API_KEY}."
-        assert self.user_access_token, f"Meta user access token not found in {META_API_KEY}."
-        assert self.app_scoped_user_id, f"Meta app scoped user ID not found in {META_API_KEY}."
+        assert self.user_access_token, (
+            f"Meta user access token not found in {META_API_KEY}."
+        )
+        assert self.app_scoped_user_id, (
+            f"Meta app scoped user ID not found in {META_API_KEY}."
+        )
         self.base_url = "https://graph.facebook.com/v21.0"
         self.page_access_token = self._get_page_access_token()
         self.page_id = self._get_page_id()
@@ -28,12 +33,12 @@ class GraphAPI:
         """Retrieve the Page ID using the User Access Token."""
         url = f"{self.base_url}/{self.app_scoped_user_id}/accounts"
         payload = {"access_token": self.user_access_token}
-        
+
         try:
             response = requests.get(url, params=payload)
             response.raise_for_status()
             pages = response.json().get("data", [])
-            
+
             # Iterate through pages and return the first page_id found
             for page in pages:
                 if "id" in page:
@@ -49,19 +54,21 @@ class GraphAPI:
         """Retrieve the Page Access Token using the User Access Token."""
         url = f"{self.base_url}/{self.app_scoped_user_id}/accounts"
         payload = {"access_token": self.user_access_token}
-        
+
         try:
             response = requests.get(url, params=payload)
             response.raise_for_status()
             pages = response.json().get("data", [])
-            
+
             # Iterate through pages and return the first access_token found
             for page in pages:
                 if "access_token" in page:
                     print(f"Retrieved Page Access Token for page: {page['name']}")
                     return page["access_token"]
 
-            raise ValueError("No page found with the linked Instagram Business Account.")
+            raise ValueError(
+                "No page found with the linked Instagram Business Account."
+            )
         except requests.exceptions.RequestException as e:
             print(f"An error occurred while retrieving the Page Access Token: {e}")
             sys.exit(1)
@@ -71,10 +78,14 @@ class GraphAPI:
         Convert an ISO-formatted datetime string (e.g., "2023-10-16T09:00:00Z")
         to a Unix timestamp (seconds since epoch in UTC).
         """
-        dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         return int(dt.timestamp())
 
-    def upload_instagram_publication(self, img_paths: list, caption: str, upload_time_str: str = None):
+    def upload_instagram_publication(
+        self, img_paths: list, caption: str, upload_time_str: str = None
+    ):
         """
         Uploads one or multiple images as a scheduled post on Instagram.
 
@@ -92,14 +103,17 @@ class GraphAPI:
             img_paths = [img_paths]
 
         if len(caption) > 2200:
-            raise ValueError("Caption exceeds the maximum allowed length of 2,200 characters.")
+            raise ValueError(
+                "Caption exceeds the maximum allowed length of 2,200 characters."
+            )
 
         media_ids = []
 
         # Step 1: Create media containers for each image
         for img_path in img_paths:
-            assert img_path.lower().endswith(('.png', '.jpg', '.jpeg')), \
+            assert img_path.lower().endswith((".png", ".jpg", ".jpeg")), (
                 "Each image file must be a .png, .jpg, or .jpeg"
+            )
 
             try:
                 # Get image URL from ImgHippo
@@ -109,7 +123,7 @@ class GraphAPI:
                 url = f"{self.base_url}/{self.account_id}/media"
                 payload = {
                     "image_url": image_url,
-                    "access_token": self.page_access_token
+                    "access_token": self.page_access_token,
                 }
 
                 # Add caption if a single image; carousel items will inherit caption later
@@ -127,7 +141,9 @@ class GraphAPI:
                 print(f"Created media container for {img_path} with ID: {media_id}")
 
             except requests.exceptions.RequestException as e:
-                print(f"An error occurred while creating media container for {img_path}: {e}")
+                print(
+                    f"An error occurred while creating media container for {img_path}: {e}"
+                )
                 if response is not None:
                     print(f"Response content: {response.content.decode()}")
                 return None
@@ -140,9 +156,11 @@ class GraphAPI:
                 carousel_url = f"{self.base_url}/{self.account_id}/media"
                 carousel_payload = {
                     "media_type": "CAROUSEL",
-                    "children": ",".join(media_ids),  # Comma-separated list of media IDs
+                    "children": ",".join(
+                        media_ids
+                    ),  # Comma-separated list of media IDs
                     "caption": caption,
-                    "access_token": self.page_access_token
+                    "access_token": self.page_access_token,
                 }
                 carousel_response = requests.post(carousel_url, data=carousel_payload)
                 carousel_response.raise_for_status()
@@ -150,7 +168,7 @@ class GraphAPI:
                 print(f"Created carousel container with ID: {creation_id}")
             except requests.exceptions.RequestException as e:
                 print(f"An error occurred while creating the carousel container: {e}")
-                if 'carousel_response' in locals() and carousel_response is not None:
+                if "carousel_response" in locals() and carousel_response is not None:
                     print(f"Response content: {carousel_response.content.decode()}")
                 return None
 
@@ -159,7 +177,7 @@ class GraphAPI:
             publish_url = f"{self.base_url}/{self.account_id}/media_publish"
             publish_payload = {
                 "creation_id": creation_id,
-                "access_token": self.page_access_token
+                "access_token": self.page_access_token,
             }
 
             if upload_time_str:
@@ -170,23 +188,25 @@ class GraphAPI:
             publish_response = requests.post(publish_url, data=publish_payload)
             publish_response.raise_for_status()
             result = publish_response.json()
-            
+
             status = "scheduled" if upload_time_str else "published"
             print(f"Instagram post {status} successfully:", result)
-            
+
             return {
                 "id": result.get("id"),
                 "permalink": result.get("permalink", ""),
-                "status": status
+                "status": status,
             }
 
         except requests.exceptions.RequestException as e:
             print(f"An error occurred while publishing the Instagram post: {e}")
-            if 'publish_response' in locals() and publish_response is not None:
+            if "publish_response" in locals() and publish_response is not None:
                 print(f"Response content: {publish_response.content.decode()}")
             return None
 
-    def upload_facebook_publication(self, img_paths: list, caption: str, upload_time_str: str = None):
+    def upload_facebook_publication(
+        self, img_paths: list, caption: str, upload_time_str: str = None
+    ):
         """
         Uploads one or multiple images as a scheduled post on the Facebook Page.
 
@@ -208,10 +228,10 @@ class GraphAPI:
         # Step 1: Upload each photo as unpublished media
         for img_path in img_paths:
             url = f"{self.base_url}/{self.page_id}/photos"
-            files = {'source': open(img_path, 'rb')}
+            files = {"source": open(img_path, "rb")}
             data = {
-                'published': 'false',  # Upload as unpublished media
-                'access_token': self.page_access_token
+                "published": "false",  # Upload as unpublished media
+                "access_token": self.page_access_token,
             }
 
             try:
@@ -227,9 +247,9 @@ class GraphAPI:
         # Step 2: Create a post with attached media
         post_url = f"{self.base_url}/{self.page_id}/feed"
         post_data = {
-            'attached_media': json.dumps(media_ids),
-            'message': caption,
-            'access_token': self.page_access_token
+            "attached_media": json.dumps(media_ids),
+            "message": caption,
+            "access_token": self.page_access_token,
         }
 
         try:
@@ -240,6 +260,7 @@ class GraphAPI:
         except requests.exceptions.RequestException as e:
             print(f"An error occurred while creating the post: {e}")
             return None
+
 
 if __name__ == "__main__":
     graph_api = GraphAPI()
@@ -252,9 +273,7 @@ if __name__ == "__main__":
     # Multiple images case
     img_paths = [
         r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_0.png",
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_1.png"
+        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_1.png",
     ]
     caption = "Let’s talk, my beautiful community! 💖 I want to hear your journeys toward authenticity—let's uplift each other! 😇"
     response = graph_api.upload_instagram_publication(img_paths, caption)
-
-

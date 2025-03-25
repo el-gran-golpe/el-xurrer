@@ -1,0 +1,13 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+    -   id: check-yaml # Check yaml files syntax
+    -   id: end-of-file-fixer # Ensure files end with a newline
+    -   id: trailing-whitespace # Remove trailing whitespaces
+        args: [--markdown-linebreak-ext=md]
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+    #-   id: ruff
+    -   id: ruff-format

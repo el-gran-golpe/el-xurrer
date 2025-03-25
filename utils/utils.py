@@ -17,7 +17,9 @@ from slugify import slugify
 PUNCTUATION = f"{string.punctuation}“”‘’¿¡"
 
 
-def find_word_timing(srt_file_path: str, word: str, max_distance: int = 1, retrieve_last: bool = False):
+def find_word_timing(
+    srt_file_path: str, word: str, max_distance: int = 1, retrieve_last: bool = False
+):
     """
     Find the start and end times of a word in a subtitle file.
 
@@ -27,18 +29,20 @@ def find_word_timing(srt_file_path: str, word: str, max_distance: int = 1, retri
     :param retrieve_last: If True, retrieves the last occurrence instead of the first
     :return: A tuple with start time and end time in seconds, or (None, None) if the word is not found
     """
-    assert os.path.isfile(srt_file_path), f"Subtitle file {srt_file_path} does not exist"
+    assert os.path.isfile(srt_file_path), (
+        f"Subtitle file {srt_file_path} does not exist"
+    )
     assert max_distance >= 0, "max_distance must be a non-negative integer"
     assert isinstance(word, str) and word != "", "word must be a non-empty string"
 
-    #TODO: Accept complete phrases
+    # TODO: Accept complete phrases
     # By the moment, if it is a phrase just keep the last word if retrieve_last and the first word if not retrieve_last
     if " " in word:
         words = word.split()
         word = words[-1] if retrieve_last else words[0]
 
     # Normalize the search word: strip, lowercase, remove punctuation
-    normalized_word = word.strip().lower().translate(str.maketrans('', '', PUNCTUATION))
+    normalized_word = word.strip().lower().translate(str.maketrans("", "", PUNCTUATION))
 
     # Load the .srt file
     subs = pysrt.open(srt_file_path)
@@ -51,7 +55,9 @@ def find_word_timing(srt_file_path: str, word: str, max_distance: int = 1, retri
 
         for srt_word in srt_words:
             # Normalize the current subtitle word
-            normalized_srt_word = srt_word.strip().lower().translate(str.maketrans('', '', PUNCTUATION))
+            normalized_srt_word = (
+                srt_word.strip().lower().translate(str.maketrans("", "", PUNCTUATION))
+            )
 
             # Use edit_distance to compare words
             if edit_distance(normalized_srt_word, normalized_word) <= max_distance:
@@ -70,35 +76,56 @@ def find_word_timing(srt_file_path: str, word: str, max_distance: int = 1, retri
     logger.warning(f"Could not find word {word} in subtitle file {srt_file_path}")
     return None, None
 
-def time_between_two_words_in_srt(srt_file_path: str, word1: str, word2: str, max_distance=1):
-    start_word1, end_word1 = find_word_timing(srt_file_path=srt_file_path, word=word1, max_distance=max_distance, retrieve_last=False)
-    start_word2, end_word2 = find_word_timing(srt_file_path=srt_file_path, word=word2, max_distance=max_distance, retrieve_last=True)
+
+def time_between_two_words_in_srt(
+    srt_file_path: str, word1: str, word2: str, max_distance=1
+):
+    start_word1, end_word1 = find_word_timing(
+        srt_file_path=srt_file_path,
+        word=word1,
+        max_distance=max_distance,
+        retrieve_last=False,
+    )
+    start_word2, end_word2 = find_word_timing(
+        srt_file_path=srt_file_path,
+        word=word2,
+        max_distance=max_distance,
+        retrieve_last=True,
+    )
 
     if start_word1 is None or start_word2 is None:
         logger.warning(f"Could not find timing between words {word1} and {word2}")
         return None
     length = end_word2 - start_word1
     if length < 0:
-        logger.warning(f"Negative length for sound between: {word1}  ----- {word2}. \t Words are likely swapped")
+        logger.warning(
+            f"Negative length for sound between: {word1}  ----- {word2}. \t Words are likely swapped"
+        )
         length = end_word1 - start_word2
     return length
 
+
 def get_audio_length(audio_path: str) -> float:
-    with wave.open(audio_path, 'r') as audio_file:
+    with wave.open(audio_path, "r") as audio_file:
         frames = audio_file.getnframes()
         rate = audio_file.getframerate()
         duration = frames / float(rate)
     return duration
 
-def trim_silence_from_audio(input_file, output_file, silence_thresh=-40, min_silence_len=500, keep_silence=350):
+
+def trim_silence_from_audio(
+    input_file, output_file, silence_thresh=-40, min_silence_len=500, keep_silence=350
+):
     # Load the audio file
     audio = AudioSegment.from_wav(input_file)
 
     # Split the audio where silence is detected
-    chunks = split_on_silence(audio,
-                              min_silence_len=min_silence_len,
-                              silence_thresh=silence_thresh,
-                              keep_silence=keep_silence)
+    chunks = split_on_silence(
+        audio,
+        min_silence_len=min_silence_len,
+        silence_thresh=silence_thresh,
+        keep_silence=keep_silence,
+    )
 
     # Combine the chunks together
     trimmed_audio = AudioSegment.silent(duration=0)
@@ -118,7 +145,7 @@ def get_closest_monday():
     """
     today = datetime.now()
     weekday = today.weekday()  # Monday = 0, Sunday = 6
-    
+
     if weekday == 0:  # If today is Monday
         return today
     elif weekday < 4:  # Tuesday (1), Wednesday (2), Thursday (3)
@@ -136,10 +163,9 @@ def generate_ids_in_script(script: dict):
     for i, item in enumerate(script["content"]):
         assert isinstance(item, dict), "Items in content must be dictionaries"
         if "id" not in item:
-            section_slug = slugify(item.get('section', 'NoSection'))
+            section_slug = slugify(item.get("section", "NoSection"))
             item["id"] = f"{section_slug}--{i + 1}--{str(uuid4())[:4]}"
     return script
-
 
 
 def check_script_validity(script) -> None:
@@ -151,75 +177,119 @@ def check_script_validity(script) -> None:
     assert isinstance(content, list), "Content must be a list"
     assert len(content) > 0, "Content must not be empty"
 
-    assert all("text" in item for item in content), "All items in content must contain a text key"
-    assert all("image" in item for item in content), "All items in content must contain an image key"
-    assert all("sound" in item for item in content), "All items in content must contain a sound key"
-    assert all("id" in item for item in content), "All items in content must contain an id key"
+    assert all("text" in item for item in content), (
+        "All items in content must contain a text key"
+    )
+    assert all("image" in item for item in content), (
+        "All items in content must contain an image key"
+    )
+    assert all("sound" in item for item in content), (
+        "All items in content must contain a sound key"
+    )
+    assert all("id" in item for item in content), (
+        "All items in content must contain an id key"
+    )
 
     for item in content:
         if item["sound"] is not None:
-            assert all(key in item["sound"] for key in ("from", "to", "prompt")), \
+            assert all(key in item["sound"] for key in ("from", "to", "prompt")), (
                 "Sound must contain from, to and prompt keys"
-        assert all(isinstance(item[key], str) for key in ("text", "image")), \
+            )
+        assert all(isinstance(item[key], str) for key in ("text", "image")), (
             "Text and image must be strings"
+        )
+
 
 def missing_video_assets(assets_path: str) -> bool:
     """
     Check if the video assets are missing
     """
     assert os.path.isdir(assets_path), f"Assets file {assets_path} does not exist"
-    script_path = os.path.join(assets_path, 'script.json')
+    script_path = os.path.join(assets_path, "script.json")
     if not os.path.isfile(script_path):
         return True
-    with open(script_path, 'r', encoding='utf-8') as f:
+    with open(script_path, "r", encoding="utf-8") as f:
         script = json.load(f)
 
-    assert 'content' in script, "Content not found in script"
+    assert "content" in script, "Content not found in script"
     for item in script["content"]:
-        _id, text, image_prompt, sound = item["id"], item["text"], item["image"], item["sound"]
-        audio_path = os.path.join(assets_path, 'audio', f"{_id}.wav")
-        image_path = os.path.join(assets_path, 'images', f"{_id}.png")
-        sounds_path = os.path.join(assets_path, 'sounds', f"{_id}.wav")
-        subtitle_sentence_path = os.path.join(assets_path, 'subtitles', 'sentence', f"{_id}.srt")
-        subtitle_word_path = os.path.join(assets_path, 'subtitles', 'word', f"{_id}.srt")
+        _id, text, image_prompt, sound = (
+            item["id"],
+            item["text"],
+            item["image"],
+            item["sound"],
+        )
+        audio_path = os.path.join(assets_path, "audio", f"{_id}.wav")
+        image_path = os.path.join(assets_path, "images", f"{_id}.png")
+        sounds_path = os.path.join(assets_path, "sounds", f"{_id}.wav")
+        subtitle_sentence_path = os.path.join(
+            assets_path, "subtitles", "sentence", f"{_id}.srt"
+        )
+        subtitle_word_path = os.path.join(
+            assets_path, "subtitles", "word", f"{_id}.srt"
+        )
         if text and not os.path.isfile(audio_path):
             return True
         if not os.path.isfile(image_path):
             return True
-        if text and not os.path.isfile(subtitle_sentence_path) or not os.path.isfile(subtitle_word_path):
+        if (
+            text
+            and not os.path.isfile(subtitle_sentence_path)
+            or not os.path.isfile(subtitle_word_path)
+        ):
             return True
         if sound is not None and not os.path.isfile(sounds_path):
             return True
-    video_path = os.path.join(assets_path, 'video.mp4')
+    video_path = os.path.join(assets_path, "video.mp4")
     if not os.path.isfile(video_path):
         return True
     return False
 
 
-def generate_ids_in_dict(dict_to_fill: dict, parent_key='', leaf_suggestions: tuple = ()) -> dict:
+def generate_ids_in_dict(
+    dict_to_fill: dict, parent_key="", leaf_suggestions: tuple = ()
+) -> dict:
     for key, value in dict_to_fill.items():
         current_key = f"{parent_key}--{key}" if parent_key else key
         if isinstance(value, dict):
             # If the value is a dictionary, recursively call the function
-            dict_to_fill[key] = generate_ids_in_dict(dict_to_fill=value, parent_key=current_key, leaf_suggestions=leaf_suggestions)
+            dict_to_fill[key] = generate_ids_in_dict(
+                dict_to_fill=value,
+                parent_key=current_key,
+                leaf_suggestions=leaf_suggestions,
+            )
             # If it's a leaf dictionary (no nested dictionaries), add an ID
         elif isinstance(value, (list, tuple)):
             # If the value is a list, recursively call the function for each element
-            dict_to_fill[key] = [generate_ids_in_dict(dict_to_fill=v, parent_key=current_key, leaf_suggestions=leaf_suggestions)
-                                 if isinstance(v, dict) else v for v in value]
+            dict_to_fill[key] = [
+                generate_ids_in_dict(
+                    dict_to_fill=v,
+                    parent_key=current_key,
+                    leaf_suggestions=leaf_suggestions,
+                )
+                if isinstance(v, dict)
+                else v
+                for v in value
+            ]
 
-    if all(not isinstance(v, (dict,)) for v in dict_to_fill.values()) and 'id' not in dict_to_fill and len(list(dict_to_fill.keys())) > 1:
+    if (
+        all(not isinstance(v, (dict,)) for v in dict_to_fill.values())
+        and "id" not in dict_to_fill
+        and len(list(dict_to_fill.keys())) > 1
+    ):
         for suggestion in leaf_suggestions:
             if suggestion in dict_to_fill:
                 parent_key = f"{parent_key}--{dict_to_fill[suggestion]}"
 
-        dict_to_fill['id'] = slugify(f"{parent_key}--{str(uuid4())[:8]}")
+        dict_to_fill["id"] = slugify(f"{parent_key}--{str(uuid4())[:8]}")
     return dict_to_fill
+
 
 # From here on YonCarlos' methods:
 
+
 def get_valid_planning_file_names(base_path: str):
-    pattern = re.compile(r'^[a-zA-Z]{2}_planning\.json$')
+    pattern = re.compile(r"^[a-zA-Z]{2}_planning\.json$")
     planning_dirs = [
         os.path.join(base_path, folder)
         for folder in os.listdir(base_path)
@@ -228,14 +298,17 @@ def get_valid_planning_file_names(base_path: str):
 
     valid_plannings = []
     for pdir in planning_dirs:
-        json_files = [f for f in os.listdir(pdir) if f.lower().endswith('.json')]
+        json_files = [f for f in os.listdir(pdir) if f.lower().endswith(".json")]
         if len(json_files) == 1 and pattern.match(json_files[0]):
             valid_plannings.append(os.path.join(pdir, json_files[0][:-5]))
 
     if not valid_plannings:
-        raise FileNotFoundError("No valid planning files found. Ensure a single JSON named xx_planning.json.")
+        raise FileNotFoundError(
+            "No valid planning files found. Ensure a single JSON named xx_planning.json."
+        )
 
     return valid_plannings
+
 
 def get_caption_from_file(file_path: str) -> str:
     """
@@ -247,12 +320,14 @@ def get_caption_from_file(file_path: str) -> str:
     else:
         directory = os.path.dirname(file_path)
 
-    caption_file_path = os.path.join(directory, 'captions.txt')
-    
+    caption_file_path = os.path.join(directory, "captions.txt")
+
     if not os.path.isfile(caption_file_path):
-        raise FileNotFoundError(f"No 'captions.txt' file found in directory: {directory}")
-    
-    with open(caption_file_path, 'r', encoding='utf-8') as file:
+        raise FileNotFoundError(
+            f"No 'captions.txt' file found in directory: {directory}"
+        )
+
+    with open(caption_file_path, "r", encoding="utf-8") as file:
         caption = file.read().strip()
-    
+
     return caption

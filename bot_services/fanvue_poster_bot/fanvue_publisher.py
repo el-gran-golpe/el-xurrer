@@ -5,15 +5,17 @@ from playwright_stealth import stealth_async
 import os
 from dotenv import load_dotenv
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from utils.bypass_captcha import detect_and_solve_captcha  
 
-load_dotenv(os.path.join(os.path.dirname(__file__), 'fanvue_keys.env'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from utils.bypass_captcha import detect_and_solve_captcha
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "fanvue_keys.env"))
+
 
 class FanvuePublisher:
     """
     A bot to automate Fanvue actions such as logging in, creating a new post,
-    or uploading pictures. 
+    or uploading pictures.
     """
 
     def __init__(self):
@@ -28,8 +30,7 @@ class FanvuePublisher:
 
         # 2) Launch the browser (chromium, firefox, or webkit)
         self.browser = await self.playwright.chromium.launch(
-            headless=headless,
-            args=["--start-maximized"]
+            headless=headless, args=["--start-maximized"]
         )
 
         # 3) Create the main context with a specific user agent and NO viewport
@@ -42,15 +43,17 @@ class FanvuePublisher:
             no_viewport=True,
         )
 
-        # 4) Create a new page and apply stealth 
-        self.page = await self.context.new_page() 
+        # 4) Create a new page and apply stealth
+        self.page = await self.context.new_page()
         # await stealth_async(self.page)
-        # async(self.page) 
+        # async(self.page)
 
     async def login(self, alias: str, screenshot_path: str, template_path: str):
         # Convert "laura vigne" --> "LAURA_VIGNE"
-        assert isinstance(alias, str) and alias.strip(), "Alias must be a non-empty string"
-        uppercase_alias = alias.strip().replace(' ', '_').upper()
+        assert isinstance(alias, str) and alias.strip(), (
+            "Alias must be a non-empty string"
+        )
+        uppercase_alias = alias.strip().replace(" ", "_").upper()
 
         username_key = f"{uppercase_alias}_FANVUE_USERNAME"
         password_key = f"{uppercase_alias}_FANVUE_PASSWORD"
@@ -69,7 +72,9 @@ class FanvuePublisher:
         await self.page.fill("input[name='password']", password)
 
         # Detect and solve the CAPTCHA if present
-        captcha_solved = await detect_and_solve_captcha(self.page, screenshot_path, template_path)
+        captcha_solved = await detect_and_solve_captcha(
+            self.page, screenshot_path, template_path
+        )
         if not captcha_solved:
             raise RuntimeError("[ERROR] Could not solve CAPTCHA. Exiting login.")
 
@@ -84,7 +89,9 @@ class FanvuePublisher:
 
     async def post_publication(self, content: str):
         """Go to the new-post page, fill in content, and publish a text-only post."""
-        await self.page.goto("https://www.fanvue.com/new-post", wait_until="networkidle")
+        await self.page.goto(
+            "https://www.fanvue.com/new-post", wait_until="networkidle"
+        )
 
         # Fill in the post content
         await self.page.fill("textarea[name='postContent']", content)
@@ -100,7 +107,9 @@ class FanvuePublisher:
 
     async def upload_picture(self, file_path: str):
         """Attach a file, optionally fill in text, and publish."""
-        await self.page.goto("https://www.fanvue.com/new-post", wait_until="networkidle")
+        await self.page.goto(
+            "https://www.fanvue.com/new-post", wait_until="networkidle"
+        )
 
         # Upload the image
         await self.page.set_input_files("input[type='file']", file_path)
@@ -129,6 +138,7 @@ class FanvuePublisher:
 # If you run this file directly, it will perform an example workflow.
 # Otherwise, you can import and use the FanvuePublisher class in your own code.
 
+
 async def main():
     bot = FanvuePublisher()
 
@@ -136,10 +146,9 @@ async def main():
     await bot.start(headless=False)
 
     # Example: login as "laura vigne"
-    screenshot_path = os.path.join(os.path.dirname(__file__), 'page_screenshot.png')
-    template_path = os.path.join(os.path.dirname(__file__), 'captcha_template.png')
+    screenshot_path = os.path.join(os.path.dirname(__file__), "page_screenshot.png")
+    template_path = os.path.join(os.path.dirname(__file__), "captcha_template.png")
     await bot.login("laura vigne", screenshot_path, template_path)
-
 
     # If that worked, let's do a post and upload a picture
     await bot.post_publication("This is an automated post created by a bot!")
@@ -147,6 +156,7 @@ async def main():
 
     # Close
     await bot.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -5,22 +5,25 @@ import os
 import dotenv
 
 # Load environment variables from .env file
-API_KEY_PATH = os.path.join(os.path.dirname(__file__), 'api_key_x.env')
+API_KEY_PATH = os.path.join(os.path.dirname(__file__), "api_key_x.env")
 dotenv.load_dotenv(API_KEY_PATH)
+
 
 class XAPI:
     def __init__(self):
-        self.api_key = os.getenv('API_KEY')
-        self.api_key_secret = os.getenv('API_KEY_SECRET')
-        self.access_token = os.getenv('ACCESS_TOKEN')
-        self.access_token_secret = os.getenv('ACCESS_TOKEN_SECRET')
-        
+        self.api_key = os.getenv("API_KEY")
+        self.api_key_secret = os.getenv("API_KEY_SECRET")
+        self.access_token = os.getenv("ACCESS_TOKEN")
+        self.access_token_secret = os.getenv("ACCESS_TOKEN_SECRET")
+
         # Ensure all necessary credentials are loaded
         assert self.api_key, "API_KEY not found in environment variables."
         assert self.api_key_secret, "API_KEY_SECRET not found in environment variables."
         assert self.access_token, "ACCESS_TOKEN not found in environment variables."
-        assert self.access_token_secret, "ACCESS_TOKEN_SECRET not found in environment variables."
-        
+        assert self.access_token_secret, (
+            "ACCESS_TOKEN_SECRET not found in environment variables."
+        )
+
         # Authenticate with the X API using tweepy
         auth = tweepy.OAuthHandler(self.api_key, self.api_key_secret)
         auth.set_access_token(self.access_token, self.access_token_secret)
@@ -29,7 +32,9 @@ class XAPI:
     def post_tweet(self, message):
         """Post a simple text tweet."""
         if len(message) > 280:
-            raise ValueError("Tweet exceeds the maximum allowed length of 280 characters.")
+            raise ValueError(
+                "Tweet exceeds the maximum allowed length of 280 characters."
+            )
         try:
             response = self.api.update_status(message)
             print(f"Tweet posted successfully: {response.id}")
@@ -40,14 +45,16 @@ class XAPI:
 
     def post_tweet_with_media(self, message, media_paths):
         """Post a tweet with attached images or videos.
-        
+
         Parameters:
         - message (str): The text of the tweet.
         - media_paths (list): List of file paths to media (images or videos) to attach.
         """
         if len(message) > 280:
-            raise ValueError("Tweet exceeds the maximum allowed length of 280 characters.")
-        
+            raise ValueError(
+                "Tweet exceeds the maximum allowed length of 280 characters."
+            )
+
         media_ids = []
         try:
             # Upload media and collect media IDs
@@ -55,7 +62,7 @@ class XAPI:
                 media = self.api.media_upload(media_path)
                 media_ids.append(media.media_id)
                 print(f"Uploaded media: {media_path}, ID: {media.media_id}")
-            
+
             # Post tweet with media
             response = self.api.update_status(status=message, media_ids=media_ids)
             print(f"Tweet with media posted successfully: {response.id}")
@@ -63,6 +70,7 @@ class XAPI:
         except tweepy.TweepyException as e:
             print(f"Error posting tweet with media: {e}")
             return None
+
 
 if __name__ == "__main__":
     # Initialize the X API class
@@ -76,7 +84,7 @@ if __name__ == "__main__":
     media_paths = [
         r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_0.png",
         r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_1.png",
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_2.png"
+        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_2\gathering-my-tribe_2.png",
     ]
-    message_with_media = "Emergency meeting time! 🗣️ I’m calling on my amazing team to brainstorm ideas. Together, we’ll find a way through this chaos! 💪"    
+    message_with_media = "Emergency meeting time! 🗣️ I’m calling on my amazing team to brainstorm ideas. Together, we’ll find a way through this chaos! 💪"
     x_api.post_tweet_with_media(message_with_media, media_paths)

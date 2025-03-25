@@ -1,33 +1,35 @@
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 from mains.planning_manager import PlanningManager
 from mains.publications_generator import PublicationsGenerator
 from mains.posting_scheduler import PostingScheduler
 
-EXECUTE_PLANNING = True       
-GENERATE_PUBLICATIONS = False  
-UPLOAD_PUBLICATIONS = False   
+EXECUTE_PLANNING = True
+GENERATE_PUBLICATIONS = False
+UPLOAD_PUBLICATIONS = False
 
 # Updated paths for new structure
-META_PROFILES_BASE_PATH = os.path.join('.', 'resources', 'meta_profiles')
+META_PROFILES_BASE_PATH = os.path.join(".", "resources", "meta_profiles")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if EXECUTE_PLANNING:
         planner = PlanningManager(
             planning_template_folder=META_PROFILES_BASE_PATH,
             platform_name="meta",
-            llm_module_path="llm.meta_llm",  
-            llm_class_name="MetaLLM",  
+            llm_module_path="llm.meta_llm",
+            llm_class_name="MetaLLM",
             llm_method_name="generate_meta_planning",
-            use_initial_conditions=True  # Explicitly use initial conditions
+            use_initial_conditions=True,  # Explicitly use initial conditions
         )
         planner.plan()
 
     if GENERATE_PUBLICATIONS:
         generator = PublicationsGenerator(
-            publication_template_folder=META_PROFILES_BASE_PATH,
-            platform_name="meta"
+            publication_template_folder=META_PROFILES_BASE_PATH, platform_name="meta"
         )
         generator.generate()
 
@@ -36,6 +38,6 @@ if __name__ == '__main__':
             publication_base_folder=META_PROFILES_BASE_PATH,
             platform_name="meta",
             api_module_path="bot_services.meta_api.graph_api",
-            api_class_name="GraphAPI"
+            api_class_name="GraphAPI",
         )
         scheduler.upload()

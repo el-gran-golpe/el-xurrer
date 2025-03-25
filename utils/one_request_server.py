@@ -1,9 +1,10 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
+
 class OneRequestServer:
     def __init__(self, port=8080):
-        self.server_address = ('', port)
+        self.server_address = ("", port)
         self.httpd = HTTPServer(self.server_address, self.RequestHandler)
         self.params = None
 
@@ -15,7 +16,7 @@ class OneRequestServer:
 
             # Respond to the client with a fancier HTML message
             self.send_response(200)
-            self.send_header('Content-type', 'text/html')
+            self.send_header("Content-type", "text/html")
             self.end_headers()
 
             # Fancy HTML message
@@ -57,7 +58,7 @@ class OneRequestServer:
             </body>
             </html>
             """
-            self.wfile.write(html_response.encode('utf-8'))
+            self.wfile.write(html_response.encode("utf-8"))
 
         def log_message(self, format, *args):
             # Suppress default logging
