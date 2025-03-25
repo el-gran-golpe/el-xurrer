@@ -8,8 +8,8 @@ from mains.planning_manager import PlanningManager
 from mains.publications_generator import PublicationsGenerator
 from mains.posting_scheduler import PostingScheduler
 
-EXECUTE_PLANNING = True
-GENERATE_PUBLICATIONS = False
+EXECUTE_PLANNING = False
+GENERATE_PUBLICATIONS = True
 UPLOAD_PUBLICATIONS = False
 
 # Updated paths for new structure

@@ -1,5 +1,4 @@
 import os
-import importlib
 from datetime import datetime, timezone
 from time import sleep
 from mains.base_main import BaseMain
@@ -185,7 +184,7 @@ class PostingScheduler(BaseMain):
                                 )
                             print(f"Created marker file at {marker_file_path}")
                     else:
-                        print(f"Failed to upload publication.")
+                        print("Failed to upload publication.")
                 except Exception as e:
                     print(f"Error uploading publication: {e}")
 

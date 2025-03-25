@@ -11,7 +11,6 @@ from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
 from openai import OpenAI, APIStatusError, Stream
 from openai.types.chat import ChatCompletionChunk, ChatCompletion
-from openai.types.shared_params import ResponseFormatJSONObject
 from tqdm import tqdm
 from loguru import logger
 
@@ -39,7 +38,6 @@ from llm.constants import (
     REASONING_MODELS,
     MODELS_INCLUDING_CHAIN_THOUGHT,
 )
-from utils.utils import get_closest_monday
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), "api_key.env")
 

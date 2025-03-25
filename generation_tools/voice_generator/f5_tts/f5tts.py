@@ -21,7 +21,6 @@ from generation_tools.voice_generator.f5_tts.constants import (
     VOICE_SOURCES,
     AUDIO_PATH,
     AUDIO_TEXT,
-    LOLI,
     MISTERIOUS_VOICE,
     REQUIRES_SILENCE_REMOVAL,
 )

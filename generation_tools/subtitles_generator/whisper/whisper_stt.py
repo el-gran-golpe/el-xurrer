@@ -4,7 +4,7 @@ import whisper
 import os
 import nltk
 from nltk.metrics import edit_distance
-from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.tokenize import sent_tokenize
 from loguru import logger
 import math
 from utils.utils import get_audio_length

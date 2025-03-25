@@ -30,3 +30,7 @@ cloudscraper
 
 # Only for Windows
 ftfy; sys_platform == 'win32'
+
+# Pre-commit hooks
+pre-commit
+ruff == 0.11.2

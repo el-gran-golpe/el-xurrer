@@ -25,7 +25,7 @@ from generation_tools.image_generator.flux.constants import (
     QUOTA_EXCEEDED_ERRORS,
     ORIGINAL_FLUX_DEV_SPACE,
 )
-from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
+from utils.exceptions import WaitAndRetryError
 
 
 # Switch the spaces to work with the alternative space first
@@ -186,7 +186,7 @@ class Flux:
                         )
                     else:
                         raise WaitAndRetryError(
-                            message=f"Failed to generate image with unknown errors",
+                            message="Failed to generate image with unknown errors",
                             suggested_wait_time=60 * 60,
                         )
 

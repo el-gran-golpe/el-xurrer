@@ -1,33 +1,14 @@
-from concurrent.futures import CancelledError
 from io import BytesIO
 
 import requests
-from gradio_client import Client
 from PIL import Image
-import os
-import re
-from httpx import ReadTimeout, ConnectError, ReadError
-from huggingface_hub.utils import RepositoryNotFoundError
 from loguru import logger
-from contextlib import nullcontext
-from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
-from httpx import (
-    ConnectTimeout as httpxConnectTimeout,
-    ProxyError as httpxProxyError,
-    ConnectError as httpxConnectError,
-    RemoteProtocolError as httpxRemoteProtocolError,
-)
-from gradio_client.exceptions import AppError
 
-from proxy_spinner import ProxySpinner
 
 from generation_tools.image_generator.flux.constants import (
-    SPACE_IS_DOWN_ERRORS,
     ALTERNATIVE_FLUX_DEV_SPACE,
-    QUOTA_EXCEEDED_ERRORS,
     ORIGINAL_FLUX_DEV_SPACE,
 )
-from utils.exceptions import WaitAndRetryError, HFSpaceIsDownError
 
 # Switch the spaces to work with the alternative space first
 ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = (

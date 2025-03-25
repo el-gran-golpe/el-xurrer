@@ -195,7 +195,7 @@ class DiffusersImageOutpainting:
                         )
                     else:
                         raise WaitAndRetryError(
-                            message=f"Failed to generate image with unknown errors",
+                            message="Failed to generate image with unknown errors",
                             suggested_wait_time=60 * 60,
                         )
 
