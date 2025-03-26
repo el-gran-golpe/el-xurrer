@@ -22,7 +22,7 @@ MODEL_BY_BACKEND = {
 }
 
 # Ordered following LMArena leaderboard https://lmarena.ai/
-DEFAULT_PREFERRED_MODELS = (
+DEFAULT_PREFERRED_MODELS = [
     "gpt-4o",
     "gpt-4o-mini",
     "o1-mini",
@@ -40,7 +40,7 @@ DEFAULT_PREFERRED_MODELS = (
     "Mistral-large-2411",
     "Mistral-large",
     "Mistral-Nemo",
-)
+]
 
 LARGER_OUTPUT_MODELS = ("o1", "o3-mini", "o1-mini", "o1-preview")
 

@@ -5,7 +5,7 @@ import random
 from copy import deepcopy
 import json
 import re
-from typing import Iterable
+from typing import Iterable, Union
 
 from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
@@ -43,7 +43,9 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), "api_key.env")
 
 
 class BaseLLM:
-    def __init__(self, preferred_models: list[str] | str = DEFAULT_PREFERRED_MODELS):
+    def __init__(
+        self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
+    ) -> None:
         assert os.path.isfile(ENV_FILE), (
             f"Missing API key file: {ENV_FILE}. "
             f"This file should have the following format:\n"
