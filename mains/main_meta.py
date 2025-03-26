@@ -1,12 +1,14 @@
 import os
 import sys
 
+from main_components.planning_manager import PlanningManager
+from main_components.posting_scheduler import PostingScheduler
+from main_components.publications_generator import PublicationsGenerator
+
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
-from mains.planning_manager import PlanningManager
-from mains.publications_generator import PublicationsGenerator
-from mains.posting_scheduler import PostingScheduler
+
 
 EXECUTE_PLANNING = False
 GENERATE_PUBLICATIONS = True

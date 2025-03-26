@@ -1,7 +1,8 @@
 import os
 from datetime import datetime, timezone
 from time import sleep
-from mains.base_main import BaseMain
+
+from main_components.base_main import BaseMain
 
 
 class PostingScheduler(BaseMain):

@@ -34,3 +34,7 @@ ftfy; sys_platform == 'win32'
 # Pre-commit hooks
 pre-commit
 ruff == 0.11.2
+mypy == 1.15.0
+
+# typing-extensions
+types-pynput == 1.8.1.20250318

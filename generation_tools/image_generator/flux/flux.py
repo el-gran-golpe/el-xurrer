@@ -1,7 +1,7 @@
+import shutil
 from concurrent.futures import CancelledError
 
 from gradio_client import Client
-from PIL import Image
 import os
 import re
 from httpx import ReadTimeout, ConnectError, ReadError
@@ -195,10 +195,8 @@ class Flux:
                     self.proxy.renew_proxy()
                     self._client = self.get_new_client(retries=1)
 
-        # Open the image from the temporary path
-        image = Image.open(image_path)
-        # Save the image to the specified output path
-        image.save(output_path)
+        shutil.copy(image_path, output_path)
+
         # Remove the image from the original temporary folder
         os.remove(image_path)
 

@@ -1,6 +1,7 @@
 import os
 import json
-from mains.base_main import BaseMain
+
+from main_components.base_main import BaseMain
 
 
 class PlanningManager(BaseMain):
