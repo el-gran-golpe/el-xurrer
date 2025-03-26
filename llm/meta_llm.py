@@ -2,7 +2,7 @@ import os
 import json
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
-from utils.utils import get_closest_monday
+from llm.utils.utils import get_closest_monday
 
 
 class MetaLLM(BaseLLM):

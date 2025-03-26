@@ -2,10 +2,11 @@ import os
 import json
 from slugify import slugify
 from tqdm import tqdm
+
+from main_components.base_main import BaseMain
 from utils.exceptions import WaitAndRetryError
 from time import sleep
 from generation_tools.image_generator.flux.flux import Flux
-from mains.base_main import BaseMain
 
 
 class PublicationsGenerator(BaseMain):

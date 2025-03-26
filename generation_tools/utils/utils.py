@@ -7,7 +7,6 @@ from nltk.metrics import edit_distance
 from loguru import logger
 import wave
 import string
-from datetime import datetime, timedelta
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 import json
@@ -134,26 +133,6 @@ def trim_silence_from_audio(
 
     # Export the trimmed audio
     trimmed_audio.export(output_file, format="wav")
-
-
-def get_closest_monday():
-    """
-    Get the closest Monday to today's date.
-    If today is Monday, returns today.
-    If today is Thursday or later, returns next Monday.
-    If today is Tuesday or Wednesday, returns previous Monday.
-    """
-    today = datetime.now()
-    weekday = today.weekday()  # Monday = 0, Sunday = 6
-
-    if weekday == 0:  # If today is Monday
-        return today
-    elif weekday < 4:  # Tuesday (1), Wednesday (2), Thursday (3)
-        # Return Monday of current week (go back to the most recent Monday)
-        return today - timedelta(days=weekday)
-    else:  # Friday (4), Saturday (5), Sunday (6)
-        # Return next Monday (go forward to the upcoming Monday)
-        return today + timedelta(days=(7 - weekday))
 
 
 def generate_ids_in_script(script: dict):
@@ -308,26 +287,3 @@ def get_valid_planning_file_names(base_path: str):
         )
 
     return valid_plannings
-
-
-def get_caption_from_file(file_path: str) -> str:
-    """
-    Searches for a 'captions.txt' file in the same directory as the given file path,
-    reads its content, and returns it as a string.
-    """
-    if os.path.isdir(file_path):
-        directory = file_path
-    else:
-        directory = os.path.dirname(file_path)
-
-    caption_file_path = os.path.join(directory, "captions.txt")
-
-    if not os.path.isfile(caption_file_path):
-        raise FileNotFoundError(
-            f"No 'captions.txt' file found in directory: {directory}"
-        )
-
-    with open(caption_file_path, "r", encoding="utf-8") as file:
-        caption = file.read().strip()
-
-    return caption

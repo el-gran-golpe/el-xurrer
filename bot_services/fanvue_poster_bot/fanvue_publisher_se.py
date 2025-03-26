@@ -6,7 +6,6 @@ from seleniumbase import SB
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from pynput.keyboard import Controller, Key
-from utils.utils import get_caption_from_file
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "fanvue_keys.env"))
 
@@ -57,6 +56,29 @@ class FanvuePublisher:
         # Write the caption in the box
         self.driver.type("textarea[placeholder='Write a caption...']", caption)
         self.driver.click("button[data-sentry-element='FilledButton']")
+
+
+def get_caption_from_file(file_path: str) -> str:
+    """
+    Searches for a 'captions.txt' file in the same directory as the given file path,
+    reads its content, and returns it as a string.
+    """
+    if os.path.isdir(file_path):
+        directory = file_path
+    else:
+        directory = os.path.dirname(file_path)
+
+    caption_file_path = os.path.join(directory, "captions.txt")
+
+    if not os.path.isfile(caption_file_path):
+        raise FileNotFoundError(
+            f"No 'captions.txt' file found in directory: {directory}"
+        )
+
+    with open(caption_file_path, "r", encoding="utf-8") as file:
+        caption = file.read().strip()
+
+    return caption
 
 
 if __name__ == "__main__":

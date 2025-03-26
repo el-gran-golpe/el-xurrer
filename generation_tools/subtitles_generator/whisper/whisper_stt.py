@@ -7,9 +7,10 @@ from nltk.metrics import edit_distance
 from nltk.tokenize import sent_tokenize
 from loguru import logger
 import math
-from utils.utils import get_audio_length
 import string
 import torch
+
+from generation_tools.utils.utils import get_audio_length
 
 # 1GB    1GB      2GB      5GB       10GB     6GB
 VALID_MODEL_NAMES = ("tiny", "base", "small", "medium", "large", "turbo")

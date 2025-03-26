@@ -1,5 +1,7 @@
 import sys
 import os
+from typing import Optional
+
 import dotenv
 import requests
 import json
@@ -84,7 +86,7 @@ class GraphAPI:
         return int(dt.timestamp())
 
     def upload_instagram_publication(
-        self, img_paths: list, caption: str, upload_time_str: str = None
+        self, img_paths: list, caption: str, upload_time_str: Optional[str] = None
     ):
         """
         Uploads one or multiple images as a scheduled post on Instagram.
@@ -205,8 +207,9 @@ class GraphAPI:
             return None
 
     def upload_facebook_publication(
-        self, img_paths: list, caption: str, upload_time_str: str = None
+        self, img_paths: list, caption: str, upload_time_str: Optional[str] = None
     ):
+        # FIXME: upload_time_str is not used, so now facebook publications are post immediately
         """
         Uploads one or multiple images as a scheduled post on the Facebook Page.
 
