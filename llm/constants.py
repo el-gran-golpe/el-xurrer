@@ -1,4 +1,7 @@
-OPENAI, AZURE = "openai", "azure"
+from typing import Literal
+
+OPENAI: Literal["openai"] = "openai"
+AZURE: Literal["azure"] = "azure"
 
 MODEL_BY_BACKEND = {
     "DeepSeek-R1": AZURE,  # TODO: learn how this works

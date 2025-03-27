@@ -5,7 +5,7 @@ import random
 from copy import deepcopy
 import json
 import re
-from typing import Iterable, Union, Optional
+from typing import Iterable, Union, Optional, Literal
 
 from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
@@ -63,7 +63,7 @@ class BaseLLM:
             preferred_models = [preferred_models]
 
         self.preferred_models = preferred_models
-        self.preferred_validation_models = DEFAULT_PREFERRED_MODELS[::-1]
+        self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
 
         if (
             os.getenv("GITHUB_API_KEY_HARU") is None
@@ -87,7 +87,7 @@ class BaseLLM:
 
         self.exhausted_models: list[str] = []
         self.client: Optional[Union[ChatCompletionsClient, OpenAI]] = None
-        self.active_backend = None
+        self.active_backend: Optional[Union[Literal["openai", "azure"]]] = None
         self.using_paid_api = False
 
     def get_client(self, model: str, paid_api: bool = False):
@@ -129,7 +129,7 @@ class BaseLLM:
         # We are routing to azure first because it's free using our GitHub api keys and also because azure api is
         # compatible with OpenAI's API
         if not paid_api:
-            api_key = random.choice(self.github_api_keys)
+            api_key: ApiKey = random.choice(self.github_api_keys)
             base_url = "https://models.inference.ai.azure.com"
         else:
             api_key = self.openai_api_key
@@ -145,8 +145,11 @@ class BaseLLM:
         return self.client
 
     def _update_conversation_before_model_pass(
-        self, conversation_history: list[dict], new_user_message: str, step: int = None
+        self,
+        conversation_history: list[dict],
+        new_user_message: str,  # , step: int = None
     ) -> list[dict]:
+        # FIXME: What is this for?  ask Haru
         conversation = deepcopy(conversation_history)
         conversation.append({"role": "user", "content": new_user_message})
         return conversation
@@ -155,8 +158,9 @@ class BaseLLM:
         self,
         conversation_history: list[dict],
         output_assistant_message: str,
-        step: int = None,
+        # step: int = None,
     ) -> list[dict]:
+        # FIXME: What is this for?  ask Haru
         conversation = deepcopy(conversation_history)
         conversation.append({"role": "assistant", "content": output_assistant_message})
         return conversation
@@ -164,16 +168,16 @@ class BaseLLM:
     def get_model_response(
         self,
         conversation: list[dict],
-        preferred_models: list = None,
-        preferred_validation_models: list = None,
+        preferred_models: list[str] = [],
+        preferred_validation_models: list[str] = [],
         verbose: bool = True,
-        structured_json: dict[str, str | dict[str]] | None = None,
+        structured_json: Optional[dict[str, Union[str, dict[str]]]] = None,
         as_json: bool = False,
         large_output: bool = False,
         validate: bool = False,
         force_reasoning: bool = False,
     ) -> tuple:
-        if preferred_models is None:
+        if len(preferred_models) == 0:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 
@@ -520,7 +524,7 @@ class BaseLLM:
     def _generate_dict_from_prompts(
         self,
         prompts: list[dict],
-        preferred_models: list = None,
+        preferred_models: list[str] = None,
         desc: str = "Generating",
         cache: dict[str, str] = dict(),
     ) -> dict:
