@@ -10,8 +10,8 @@ sys.path.append(
 )
 
 
-EXECUTE_PLANNING = False
-GENERATE_PUBLICATIONS = True
+EXECUTE_PLANNING = True
+GENERATE_PUBLICATIONS = False
 UPLOAD_PUBLICATIONS = False
 
 # Updated paths for new structure

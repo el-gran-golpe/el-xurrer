@@ -1,12 +1,16 @@
 import os
 import json
+from typing import Union
+
 from llm.base_llm import BaseLLM
 from llm.constants import DEFAULT_PREFERRED_MODELS
 from llm.utils.utils import get_closest_monday
 
 
 class FanvueLLM(BaseLLM):
-    def __init__(self, preferred_models: list | tuple = DEFAULT_PREFERRED_MODELS):
+    def __init__(
+        self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
+    ):
         super().__init__(preferred_models=preferred_models)
 
     def generate_fanvue_planning(

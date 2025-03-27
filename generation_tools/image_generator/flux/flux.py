@@ -1,5 +1,6 @@
 import shutil
 from concurrent.futures import CancelledError
+from typing import Optional
 
 from gradio_client import Client
 import os
@@ -40,11 +41,13 @@ class Flux:
     ):
         self._src_model = src_model
         self._api_name = api_name
+
         if use_proxy:
             self.proxy = ProxySpinner(proxy=None)
         else:
             self.proxy = nullcontext()
-            self.proxy.renew_proxy = lambda: None
+            self.proxy.__setattr__("renew_proxy", lambda: None)
+
         if load_on_demand:
             self._client = None
         else:
@@ -103,7 +106,7 @@ class Flux:
         self,
         prompt,
         output_path: str,
-        seed: int = None,
+        seed: Optional[int] = None,
         width=512,
         height=512,
         guidance_scale=3.5,
@@ -160,9 +163,9 @@ class Flux:
                 ):
                     logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
                     # Get the waiting time like 1:35:06 at the end of the message
-                    waiting_time = re.search(r"\d+:\d+:\d+", error_message)
-                    if waiting_time:
-                        waiting_time = waiting_time.group()
+                    waiting_time_re = re.search(r"\d+:\d+:\d+", error_message)
+                    if waiting_time_re:
+                        waiting_time = waiting_time_re.group()
                         hours, minutes, seconds = map(int, waiting_time.split(":"))
                         recommended_waiting_time_str = waiting_time
                         recommended_waiting_time_seconds = (

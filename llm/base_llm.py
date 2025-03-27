@@ -5,12 +5,13 @@ import random
 from copy import deepcopy
 import json
 import re
-from typing import Iterable, Union
+from typing import Iterable, Union, Optional
 
 from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
 from openai import OpenAI, APIStatusError, Stream
 from openai.types.chat import ChatCompletionChunk, ChatCompletion
+from pydantic import BaseModel
 from tqdm import tqdm
 from loguru import logger
 
@@ -42,6 +43,11 @@ from llm.constants import (
 ENV_FILE = os.path.join(os.path.dirname(__file__), "api_key.env")
 
 
+class ApiKey(BaseModel):
+    api_key: str
+    paid: bool = False
+
+
 class BaseLLM:
     def __init__(
         self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
@@ -58,13 +64,29 @@ class BaseLLM:
 
         self.preferred_models = preferred_models
         self.preferred_validation_models = DEFAULT_PREFERRED_MODELS[::-1]
-        self.api_keys = {
-            "GITHUB": [os.getenv("GITHUB_API_KEY_HARU")],
-            "OPENAI": os.getenv("OPENAI_API_KEY"),
-        }
 
-        self.exhausted_models = []
-        self.client = None
+        if (
+            os.getenv("GITHUB_API_KEY_HARU") is None
+            and os.getenv("GITHUB_API_KEY_MOI") is None
+        ):
+            raise ValueError("No GitHub API keys found")
+        self.github_api_keys: list[ApiKey] = [
+            ApiKey(api_key=key, paid=False)
+            for key in [
+                os.getenv("GITHUB_API_KEY_HARU"),
+                os.getenv("GITHUB_API_KEY_MOI"),
+            ]
+            if key is not None
+        ]
+
+        if os.getenv("OPENAI_API_KEY") is None:
+            raise ValueError("No OpenAI API key found")
+        self.openai_api_key: ApiKey = ApiKey(
+            api_key=os.environ["OPENAI_API_KEY"], paid=True
+        )
+
+        self.exhausted_models: list[str] = []
+        self.client: Optional[Union[ChatCompletionsClient, OpenAI]] = None
         self.active_backend = None
         self.using_paid_api = False
 
@@ -89,11 +111,10 @@ class BaseLLM:
             raise NotImplementedError(f"Backend not implemented: {backend}")
 
     def get_new_client_azure(self):
-        github_api_key = self.api_keys["GITHUB"]
-        assert len(github_api_key) > 0, (
+        assert len(self.github_api_keys) > 0, (
             "Missing GITHUB_API_KEY for Azure authentication"
         )
-        github_api_key = random.choice(github_api_key)
+        github_api_key = random.choice(self.github_api_keys)
         if github_api_key:
             self.client = ChatCompletionsClient(
                 endpoint="https://models.inference.ai.azure.com",
@@ -105,19 +126,18 @@ class BaseLLM:
 
     def get_new_client_openai(self, paid_api: bool = False):
         # First of all, try to use the GitHub API key if available (Is free)
+        # We are routing to azure first because it's free using our GitHub api keys and also because azure api is
+        # compatible with OpenAI's API
         if not paid_api:
-            assert len(self.api_keys["GITHUB"]) > 0, "No GitHub API keys found"
-            api_key, base_url = (
-                random.choice(self.api_keys["GITHUB"]),
-                "https://models.inference.ai.azure.com",
-            )
+            api_key = random.choice(self.github_api_keys)
+            base_url = "https://models.inference.ai.azure.com"
         else:
-            assert self.api_keys["OPENAI"] is not None, "No OpenAI API key found"
-            api_key, base_url = self.api_keys["OPENAI"], None
+            api_key = self.openai_api_key
+            base_url = None
 
         self.client = OpenAI(
             base_url=base_url,
-            api_key=api_key,
+            api_key=api_key.api_key,
         )
 
         self.active_backend = OPENAI
@@ -502,13 +522,11 @@ class BaseLLM:
         prompts: list[dict],
         preferred_models: list = None,
         desc: str = "Generating",
-        cache: dict = frozenset({}),
+        cache: dict[str, str] = dict(),
     ) -> dict:
         if preferred_models is None:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
-
-        cache = dict(deepcopy(cache))
 
         # Loop through each prompt and get a response
         for i, prompt_definition in tqdm(
