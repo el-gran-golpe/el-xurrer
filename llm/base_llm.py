@@ -5,7 +5,7 @@ import random
 from copy import deepcopy
 import json
 import re
-from typing import Iterable, Union, Optional, Literal
+from typing import Iterable, Union, Optional, Literal, Any
 
 from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
@@ -20,8 +20,9 @@ from azure.ai.inference.models import (
     SystemMessage,
     UserMessage,
     StreamingChatCompletionsUpdate,
-    ChatCompletions,
     AssistantMessage,
+    ChatRequestMessage,
+    ChatCompletions,
 )
 from azure.core.credentials import AzureKeyCredential
 
@@ -171,7 +172,7 @@ class BaseLLM:
         preferred_models: list[str] = [],
         preferred_validation_models: list[str] = [],
         verbose: bool = True,
-        structured_json: Optional[dict[str, Union[str, dict[str]]]] = None,
+        structured_json: Optional[dict[str, Union[str, dict[str, Any]]]] = None,
         as_json: bool = False,
         large_output: bool = False,
         validate: bool = False,
@@ -271,9 +272,9 @@ class BaseLLM:
     def __get_response_stream(
         self,
         conversation: list[dict],
-        preferred_models: list,
+        preferred_models: list[str],
         use_paid_api: bool = False,
-        structured_json: dict[str, str | dict[str]]
+        structured_json: dict[str, str | dict]
         | None = None,  # TODO:  remove unused code
         as_json: bool = False,
         large_output: bool = False,
@@ -281,11 +282,12 @@ class BaseLLM:
         stream_response: bool = True,
     ) -> (
         Iterable[StreamingChatCompletionsUpdate]
-        | ChatCompletions
+        | Iterable[ChatCompletions]
         | Stream[ChatCompletionChunk]
-        | ChatCompletion
+        | Iterable[ChatCompletion]
     ):
-        conversation, additional_params = deepcopy(conversation), {}
+        conversation = deepcopy(conversation)
+        additional_params: dict[str, Any] = {}
 
         # --------------------------------------------------------------------
         # Select the best model that is not exhausted
@@ -303,6 +305,8 @@ class BaseLLM:
                 if model in MODELS_ACCEPTING_JSON_FORMAT
             ]
             additional_params["response_format"] = {"type": "json_object"}
+            # FIXME: This can be done in a way more explicit, for example using a flag and it has to be specific for
+            #  OpenAI and Azure because the API is different
 
         if force_reasoning:
             # Use the order of REASONING_MODELS to be better first
@@ -317,7 +321,7 @@ class BaseLLM:
                 )
 
         assert len(preferred_models) > 0, "No models available"
-        model = preferred_models[0]
+        model: str = preferred_models[0]
 
         if model in MODELS_NOT_ACCEPTING_SYSTEM_ROLE:
             conversation = self.merge_system_and_user_messages(
@@ -329,6 +333,8 @@ class BaseLLM:
 
         try:
             if self.active_backend == AZURE:
+                if not isinstance(self.client, ChatCompletionsClient):
+                    raise ValueError(f"Client is not Azure: {self.client} - {model}")
                 stream = self.client.complete(
                     messages=self.conversation_to_azure_format(
                         conversation=conversation
@@ -338,9 +344,11 @@ class BaseLLM:
                     **additional_params,
                 )
             elif self.active_backend == OPENAI:
+                if not isinstance(self.client, OpenAI):
+                    raise ValueError(f"Client is not OpenAI: {self.client} - {model}")
                 stream = self.client.chat.completions.create(
-                    model=model,
                     messages=conversation,
+                    model=model,
                     stream=stream_response,
                     **additional_params,
                 )
@@ -352,9 +360,19 @@ class BaseLLM:
                 stream = [stream]
         except (APIStatusError, HttpResponseError) as e:
             if isinstance(e, APIStatusError):
-                error_code, error_message = e.code, e.message
+                error_code = e.code
+                error_message = e.message
             elif isinstance(e, HttpResponseError):
-                error_code, error_message = e.error.code, e.error.message
+                error_code = (
+                    e.error.code
+                    if e.error is not None and e.error.code is not None
+                    else str(e)
+                )
+                error_message = (
+                    e.error.message
+                    if e.error is not None and e.error.message is not None
+                    else str(e)
+                )
             else:
                 raise e
 
@@ -421,7 +439,9 @@ class BaseLLM:
 
         return stream
 
-    def conversation_to_azure_format(self, conversation: list[dict]) -> list:
+    def conversation_to_azure_format(
+        self, conversation: list[dict]
+    ) -> list[ChatRequestMessage]:
         azure_conversation = []
         for message in conversation:
             assert "content" in message and "role" in message, (
@@ -429,14 +449,14 @@ class BaseLLM:
             )
             content, role = message["content"], message["role"]
             if role == "user":
-                message = UserMessage(content=content)
+                azure_message: ChatRequestMessage = UserMessage(content=content)
             elif role == "assistant":
-                message = AssistantMessage(content=content)
+                azure_message = AssistantMessage(content=content)
             elif role == "system":
-                message = SystemMessage(content=content)
+                azure_message = SystemMessage(content=content)
             else:
                 raise ValueError(f"Invalid role: {role}")
-            azure_conversation.append(message)
+            azure_conversation.append(azure_message)
         return azure_conversation
 
     def decode_json_from_message(self, message: str) -> dict:
@@ -457,7 +477,7 @@ class BaseLLM:
             return json.loads(message)
         except json.JSONDecodeError:
             logger.error(f"Error decoding JSON from message: {message}")
-            raise json.JSONDecodeError
+            raise
 
     def merge_system_and_user_messages(self, conversation: list[dict]) -> list[dict]:
         """
@@ -524,11 +544,11 @@ class BaseLLM:
     def _generate_dict_from_prompts(
         self,
         prompts: list[dict],
-        preferred_models: list[str] = None,
+        preferred_models: list[str] = [],
         desc: str = "Generating",
         cache: dict[str, str] = dict(),
     ) -> dict:
-        if preferred_models is None:
+        if len(preferred_models) == 0:
             assert len(self.preferred_models) > 0, "No preferred models found"
             preferred_models = self.preferred_models
 

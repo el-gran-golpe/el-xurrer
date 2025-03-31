@@ -51,7 +51,9 @@ MODELS_NOT_ACCEPTING_SYSTEM_ROLE = ("o1", "o3-mini", "o1-mini", "o1-preview")
 MODELS_NOT_ACCEPTING_STREAM = ("o1", "o3-mini", "o1-mini", "o1-preview")
 REASONING_MODELS = ("o1", "o3-mini", "o1-mini", "o1-preview")
 
-PREFERRED_PAID_MODELS = ("gpt-4o-mini",)
+PREFERRED_PAID_MODELS = [
+    "gpt-4o-mini",
+]
 
 MODELS_ACCEPTING_JSON_FORMAT = (
     "Mistral-large",
