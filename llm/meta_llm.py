@@ -45,8 +45,16 @@ class MetaLLM(BaseLLM):
         prompts[0]["prompt"] = prompts[0]["prompt"].format(
             previous_storyline=previous_storyline
         )
-        # TODO: this have to be done using the cache or placeholders method
-        prompts[1]["system_prompt"] = prompts[1]["system_prompt"].format(day=day)
+
+        # Format all system prompts with the day variable
+        for prompt in prompts:
+            if "system_prompt" in prompt:
+                system_prompt = prompt["system_prompt"]
+                if "{day}" not in system_prompt:
+                    raise ValueError(
+                        f"System prompt missing '{{day}}' placeholder: {system_prompt}"
+                    )
+                prompt["system_prompt"] = system_prompt.format(day=day)
 
         # Generate the planning using the language model
         planning = self._generate_dict_from_prompts(
