@@ -1,11 +1,21 @@
-# TODO: use alpine to reduce the image size
+
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 LABEL authors="moises"
 
 WORKDIR /app
 COPY requirements.txt .
-RUN apt update && apt install -y gcc
-RUN uv pip install --system --no-cache-dir -r requirements.txt
+# TODO: reduce size of the image
+# The next run layer is about 7.x GB in size
+RUN apt update  \
+    && apt install -y --no-install-recommends gcc python3-dev libc-dev \
+    && uv venv .venv \
+    && . .venv/bin/activate  \
+    && uv pip install --no-cache-dir -r requirements.txt \
+    && apt remove -y gcc python3-dev libc-dev && apt autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Use virtual environment
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy only necesary files
 COPY bot_services/ ./bot_services/
@@ -15,7 +25,5 @@ COPY main_components/ ./main_components/
 COPY mains/ ./mains/
 COPY resources/ ./resources/
 COPY utils/ ./utils/
-
-
 
 ENTRYPOINT ["python", "mains/main_meta.py"]
