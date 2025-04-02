@@ -5,12 +5,18 @@ import random
 from copy import deepcopy
 import json
 import re
-from typing import Iterable, Union, Optional, Literal, Any
+from typing import Iterable, Union, Optional, Literal, Any, cast
 
 from azure.core.exceptions import HttpResponseError
 from dotenv import load_dotenv
-from openai import OpenAI, APIStatusError, Stream
-from openai.types.chat import ChatCompletionChunk, ChatCompletion
+from openai import OpenAI, APIStatusError
+from openai.types.chat import (
+    ChatCompletionChunk,
+    ChatCompletion,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+    ChatCompletionAssistantMessageParam,
+)
 from pydantic import BaseModel
 from tqdm import tqdm
 from loguru import logger
@@ -47,6 +53,16 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), "api_key.env")
 class ApiKey(BaseModel):
     api_key: str
     paid: bool = False
+
+
+ResponseChunk = Union[
+    (
+        StreamingChatCompletionsUpdate,
+        ChatCompletions,
+        ChatCompletionChunk,
+        ChatCompletion,
+    )
+]
 
 
 class BaseLLM:
@@ -280,12 +296,7 @@ class BaseLLM:
         large_output: bool = False,
         force_reasoning: bool = False,
         stream_response: bool = True,
-    ) -> (
-        Iterable[StreamingChatCompletionsUpdate]
-        | Iterable[ChatCompletions]
-        | Stream[ChatCompletionChunk]
-        | Iterable[ChatCompletion]
-    ):
+    ) -> Iterable[ResponseChunk]:
         conversation = deepcopy(conversation)
         additional_params: dict[str, Any] = {}
 
@@ -330,12 +341,13 @@ class BaseLLM:
 
         self.client = self.get_client(model=model, paid_api=use_paid_api)
         stream_response = stream_response and model not in MODELS_NOT_ACCEPTING_STREAM
+        raw_response: Union[Iterable[ResponseChunk], ResponseChunk]
 
         try:
             if self.active_backend == AZURE:
                 if not isinstance(self.client, ChatCompletionsClient):
                     raise ValueError(f"Client is not Azure: {self.client} - {model}")
-                stream = self.client.complete(
+                raw_response = self.client.complete(
                     messages=self.conversation_to_azure_format(
                         conversation=conversation
                     ),
@@ -346,8 +358,10 @@ class BaseLLM:
             elif self.active_backend == OPENAI:
                 if not isinstance(self.client, OpenAI):
                     raise ValueError(f"Client is not OpenAI: {self.client} - {model}")
-                stream = self.client.chat.completions.create(
-                    messages=conversation,
+                raw_response = self.client.chat.completions.create(
+                    messages=self.conversation_to_openai_format(
+                        conversation=conversation
+                    ),
                     model=model,
                     stream=stream_response,
                     **additional_params,
@@ -356,8 +370,12 @@ class BaseLLM:
                 raise NotImplementedError(
                     f"Backend not implemented: {self.active_backend}"
                 )
-            if not stream_response:
-                stream = [stream]
+
+            if not stream_response and not isinstance(raw_response, Iterable):
+                stream: Iterable[ResponseChunk] = [raw_response]
+            else:
+                stream = cast(Iterable[ResponseChunk], raw_response)
+
         except (APIStatusError, HttpResponseError) as e:
             if isinstance(e, APIStatusError):
                 error_code = e.code
@@ -699,3 +717,37 @@ class BaseLLM:
             logger.error("Assistant reply is empty after removing the markers")
             finish_reason = "stop"
         return finish_reason, assistant_reply
+
+    def conversation_to_openai_format(
+        self, conversation: list[dict]
+    ) -> list[
+        Union[
+            ChatCompletionSystemMessageParam,
+            ChatCompletionUserMessageParam,
+            ChatCompletionAssistantMessageParam,
+        ]
+    ]:
+        openai_conversation = []
+        for message in conversation:
+            assert "content" in message and "role" in message, (
+                f"Invalid message format: {message}"
+            )
+            content, role = message["content"], message["role"]
+            if role == "user":
+                openai_message: Union[
+                    ChatCompletionUserMessageParam,
+                    ChatCompletionSystemMessageParam,
+                    ChatCompletionAssistantMessageParam,
+                ] = ChatCompletionUserMessageParam(content=content, role=role)
+            elif role == "assistant":
+                openai_message = ChatCompletionAssistantMessageParam(
+                    content=content, role=role
+                )
+            elif role == "system":
+                openai_message = ChatCompletionSystemMessageParam(
+                    content=content, role=role
+                )
+            else:
+                raise ValueError(f"Invalid role: {role}")
+            openai_conversation.append(openai_message)
+        return openai_conversation
