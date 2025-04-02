@@ -26,6 +26,8 @@ numpy
 nltk
 seleniumbase
 cloudscraper
+requests
+
 
 
 # Only for Windows
@@ -38,3 +40,5 @@ mypy == 1.15.0
 
 # typing-extensions
 types-pynput == 1.8.1.20250318
+types-requests
+types-tqdm
