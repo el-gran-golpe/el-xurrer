@@ -2,6 +2,8 @@
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 LABEL authors="moises"
 
+# TODO: Run this as non-root user
+
 WORKDIR /app
 COPY requirements.txt .
 # TODO: reduce size of the image
@@ -23,6 +25,7 @@ COPY generation_tools/ ./generation_tools/
 COPY llm/ ./llm/
 COPY main_components/ ./main_components/
 COPY mains/ ./mains/
+# TODO: this should be a volume
 COPY resources/ ./resources/
 COPY utils/ ./utils/
 
