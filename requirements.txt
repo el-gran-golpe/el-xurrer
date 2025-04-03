@@ -27,6 +27,8 @@ nltk
 seleniumbase
 cloudscraper
 requests
+typer
+pydantic
 
 
 

@@ -1,7 +1,9 @@
 import os
 import json
+from typing import LiteralString, Union
 
 from main_components.base_main import BaseMain
+from main_components.profile import Profile
 
 
 class PlanningManager(BaseMain):
@@ -10,6 +12,7 @@ class PlanningManager(BaseMain):
     def __init__(
         self,
         planning_template_folder,
+        template_profiles: list[Profile],
         platform_name,
         llm_module_path,
         llm_class_name,
@@ -29,6 +32,7 @@ class PlanningManager(BaseMain):
         """
         super().__init__(platform_name)
         self.planning_template_folder = planning_template_folder
+        self.template_profiles = template_profiles
         self.llm_module_path = llm_module_path
         self.llm_class_name = llm_class_name
         self.llm_method_name = llm_method_name
@@ -84,21 +88,30 @@ class PlanningManager(BaseMain):
         """Ask user if they want to overwrite existing files."""
         return super().prompt_overwrite(existing_files, path_index=2)
 
-    def get_initial_conditions_path(self, profile_name):
+    def get_initial_conditions_path(
+        self, inputs_path
+    ) -> Union[str, LiteralString, bytes]:
         """Get the path to initial conditions file."""
         return os.path.join(
             self.planning_template_folder,
-            profile_name,
-            "inputs",
-            "initial_conditions.md",
+            inputs_path,
+            "initial_conditions.md",  # THOUGHTS: this is hardcoded
         )
 
-    def read_initial_conditions(self, file_path: str) -> str:
+    def read_initial_conditions(
+        self, file_path: Union[str, LiteralString, bytes]
+    ) -> str:
         """Read initial conditions from a markdown file."""
         try:
             return self.read_file_content(file_path, file_type="text")
         except (FileNotFoundError, IOError) as e:
             raise IOError(f"{e}")
+
+    def read_previous_storyline(
+        self, file_path: Union[str, LiteralString, bytes]
+    ) -> str:
+        """Read previous storyline from a markdown file."""
+        return ""
 
     def _get_llm_instance(self):
         """Dynamically import and create an instance of the specified LLM class."""
@@ -121,73 +134,70 @@ class PlanningManager(BaseMain):
 
     def plan(self):
         """Main method to generate planning."""
-        assert os.path.isdir(self.planning_template_folder), (
-            f"Planning template folder not found: {self.planning_template_folder}"
-        )
+        # assert os.path.isdir(self.planning_template_folder), (
+        #     f"Planning template folder not found: {self.planning_template_folder}"
+        # ) # FIXME: this should be handled in the base class or Profile class
 
         # 1) Find available planning templates
-        available_plannings = self.find_available_plannings()
-        print("\nFound planning templates:")
-        for i, (profile, template) in enumerate(available_plannings):
-            print(
-                f"{i + 1}. Profile: \033[92m{profile}\033[0m"
-            )  # prints only profile in green color
-            print(f"   Template path: {template}")
-        print()
-        if not available_plannings:
-            return
+        # available_plannings = self.find_available_plannings()
+        # print("\nFound planning templates:")
+        # for i, (profile, template) in enumerate(available_plannings):
+        #     print(
+        #         f"{i + 1}. Profile: \033[92m{profile}\033[0m"
+        #     )  # prints only profile in green color
+        #     print(f"   Template path: {template}")
+        # print()
+        # if not available_plannings:
+        #     return
 
         # 2) Let user select templates
-        selected_templates = self.prompt_user_selection(available_plannings)
-        if not selected_templates:
-            return
+        # selected_templates = self.prompt_user_selection(available_plannings)
+        # if not selected_templates:
+        #     return
 
         # 3) Check which selected templates have existing output files
-        existing_files, not_existing_files = self.check_existing_files(
-            selected_templates
-        )
+        # existing_files, not_existing_files = self.check_existing_files(
+        #     selected_templates
+        # )
 
         # 4) Ask if user wants to overwrite existing files
-        overwrite_all = self.prompt_overwrite(existing_files)
+        # overwrite_all = self.prompt_overwrite(existing_files)
 
         # 5) Prepare final list of templates to process
-        final_templates = []
-        for item in existing_files:
-            if overwrite_all:
-                final_templates.append(item)
-            else:
-                print(f"Skipping overwrite for {item[2]}")
-
-        # Add the files that don't exist yet (always processed)
-        final_templates.extend(not_existing_files)
+        # final_templates = []
+        # for item in existing_files:
+        #     if overwrite_all:
+        #         final_templates.append(item)
+        #     else:
+        #         print(f"Skipping overwrite for {item[2]}")
+        #
+        # # Add the files that don't exist yet (always processed)
+        # final_templates.extend(not_existing_files)
 
         # 6) Process each template
-        for profile_name, template_path, output_path in final_templates:
+        for profile_name, input_path, output_path in self.template_profiles:
             # Read previous storyline if needed
-            previous_storyline = ""
-            if self.use_initial_conditions:
-                initial_conditions_path = self.get_initial_conditions_path(profile_name)
-                try:
-                    previous_storyline = self.read_initial_conditions(
-                        initial_conditions_path
-                    )
-                except (AssertionError, IOError) as e:
-                    print(
-                        f"\033[91mWarning: {e}. Proceeding with empty previous storyline.\033[0m"
-                    )
+            initial_conditions_path = self.get_initial_conditions_path(input_path)
+            storyline = self.read_initial_conditions(initial_conditions_path)
+            try:
+                # TODO: implement this method
+                previous_storyline = self.read_previous_storyline(
+                    initial_conditions_path
+                )
+                storyline.join(previous_storyline)
+            except (AssertionError, IOError) as e:
+                print(
+                    f"\033[91mWarning: {e}. Proceeding with empty previous storyline.\033[0m"
+                )
 
             # Generate planning
             while True:
                 try:
                     # TODO: check if the previous_storyline is correctly implemented, that is,
-                    # it's not being used when the initial conditions are set to false.
-                    planning = self.generate_planning_with_llm(
-                        template_path, previous_storyline
-                    )
+                    #  it's not being used when the initial conditions are set to false.
+                    planning = self.generate_planning_with_llm(input_path, storyline)
+                    # Save planning
+                    self.save_planning(planning, output_path)
                     break
                 except (json.decoder.JSONDecodeError, TypeError) as e:
                     print(f"Error decoding JSON or TypeError: {e}. Retrying...")
-                    continue
-
-            # Save planning
-            self.save_planning(planning, output_path)
