@@ -1,13 +1,14 @@
 import os
 import sys
+from typing import Optional
 
 import typer
 
 from main_components.base_main import BaseMain
+from main_components.planning_manager import PlanningManager
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main_components.planning_manager import PlanningManager
 from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 
@@ -24,14 +25,35 @@ app = typer.Typer()
 def profiles():
     """List available profiles."""
     base = BaseMain()
-    base.find_available_profiles()
+    base.find_available_items()
+
+
+ProfileIdentifier = int
 
 
 @app.command()
-def plan():
+def plan(
+    profiles_index: list[ProfileIdentifier] = typer.Option(
+        [], "-p", "--profiles", help="Index of the profile to use"
+    ),
+    profile_names: Optional[str] = typer.Option(
+        None, "-n", "--profile-names", help="Comma-separated list of profile names"
+    ),
+):
+    if len(profiles_index) == 0 and profile_names is None:
+        raise ValueError(
+            "Please provide at least one profile index or a list of profile names."
+        )
+
+    if len(profiles_index) > 0:
+        pass
+
+    else:
+        pass
+
     planner = PlanningManager(
         planning_template_folder=META_PROFILES_BASE_PATH,
-        template_profiles=[],  # FIXME: Laura vigne and others goes here
+        template_profiles=profiles,  # FIXME: Laura vigne and others goes here
         platform_name="meta",
         llm_module_path="llm.meta_llm",
         llm_class_name="MetaLLM",
