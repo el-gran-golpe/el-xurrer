@@ -1,4 +1,13 @@
 repos:
+-   repo: local
+    hooks:
+    -   id: prevent-nocommit
+        name: "Prevent commit if NOCOMMIT found"
+        entry: 'NOCOMMIT'
+        language: pygrep
+        files: \.(py|txt|md|yaml|json|toml|yml)$
+        exclude: ^\.pre-commit-config\.yaml$
+
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:
