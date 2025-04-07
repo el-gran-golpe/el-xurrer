@@ -1,11 +1,13 @@
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 import typer
 
-from main_components.base_main import BaseMain
+from main_components.constants import Platform
 from main_components.planning_manager import PlanningManager
+from main_components.profile import ProfileManager
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -13,22 +15,27 @@ from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 
 # Updated paths for new structure
-META_PROFILES_BASE_PATH = os.path.join(".", "resources", "meta_profiles")
+META_PROFILES_BASE_PATH = os.path.join(".", "resources", "meta")
 # - ProfileName
 #     - inputs
 #     - outputs
 
 app = typer.Typer()
+profile_manager = ProfileManager(Path.cwd().joinpath(Path("resources")))
+
+ProfileIdentifier = int
 
 
 @app.command()
-def profiles():
+def list_profiles():
     """List available profiles."""
-    base = BaseMain()
-    base.find_available_items()
+    profiles = profile_manager.load_profiles()
+    if len(profiles) == 0:
+        print("No profiles found.")
+        return
 
-
-ProfileIdentifier = int
+    for i, profile in enumerate(profiles):
+        print(f"{i}: {profile.name}")
 
 
 @app.command()
@@ -39,6 +46,9 @@ def plan(
     profile_names: Optional[str] = typer.Option(
         None, "-n", "--profile-names", help="Comma-separated list of profile names"
     ),
+    overwrite_outputs: bool = typer.Option(
+        False, "--overwrite", "-o", help="Overwrite existing outputs"
+    ),
 ):
     if len(profiles_index) == 0 and profile_names is None:
         raise ValueError(
@@ -46,15 +56,34 @@ def plan(
         )
 
     if len(profiles_index) > 0:
-        pass
+        profiles = [
+            profile_manager.get_profile_by_index(index) for index in profiles_index
+        ]
 
     else:
-        pass
+        profile_names = profile_names.split(",")
+        profiles = [
+            profile_manager.get_profile_by_name(name.strip()) for name in profile_names
+        ]
+
+    filtered_profiles = []
+    if not overwrite_outputs:
+        # Filter profiles from list if they have files in meta platform output folder
+        for profile in profiles:
+            meta_outputs = profile.platform_info[Platform.META].outputs_path
+            if len(os.listdir(meta_outputs)) > 0:
+                print(
+                    f"Profile {profile.name} has existing outputs in {meta_outputs}. Skipping."
+                )
+            else:
+                filtered_profiles.append(profile)
+    else:
+        filtered_profiles = profiles
 
     planner = PlanningManager(
-        planning_template_folder=META_PROFILES_BASE_PATH,
-        template_profiles=profiles,  # FIXME: Laura vigne and others goes here
-        platform_name="meta",
+        # planning_template_folder=META_PROFILES_BASE_PATH,
+        template_profiles=filtered_profiles,  # FIXME: Laura vigne and others goes here
+        platform_name=Platform.META,
         llm_module_path="llm.meta_llm",
         llm_class_name="MetaLLM",
         llm_method_name="generate_meta_planning",
@@ -83,4 +112,6 @@ def upload():
 
 
 if __name__ == "__main__":
+    # read profiles
+    profile_manager.load_profiles()
     app()

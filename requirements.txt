@@ -39,6 +39,7 @@ ftfy; sys_platform == 'win32'
 pre-commit
 ruff == 0.11.2
 mypy == 1.15.0
+pygrep == 0.3.1
 
 # typing-extensions
 types-pynput == 1.8.1.20250318

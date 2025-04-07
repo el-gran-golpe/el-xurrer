@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from main_components.constants import Platform
+
 
 class PlatformInfo(BaseModel):
     """Platform information model."""
@@ -15,7 +17,10 @@ class Profile(BaseModel):
     """Profile model for Meta profiles."""
 
     name: str
-    platform_info: dict[str, PlatformInfo] = {}
+    platform_info: dict[Platform, PlatformInfo] = {}
+
+    def __str__(self):
+        return self.name
 
 
 class ProfileManager:
@@ -23,7 +28,8 @@ class ProfileManager:
 
     def __init__(self, resource_path: Path):
         self.resource_path = resource_path
-        self.profiles: dict[str, Profile] = {}
+        self.__profiles_by_name: dict[str, Profile] = {}
+        self.__profiles_by_index: list[Profile] = []
 
     def load_profiles(self):
         """Load profiles from the base path."""
@@ -37,14 +43,14 @@ class ProfileManager:
                 continue
 
             profile_name = profile_dir.name
-            # Check profile name is in snake case
+            # TODO: Check profile name is in snake case
 
             platforms_info = {}
             for platform_dir in profile_dir.iterdir():
                 if not platform_dir.is_dir():
                     continue
 
-                platform_name = platform_dir.name
+                platform_name = Platform(platform_dir.name)
                 inputs_path = platform_dir / "inputs"
                 outputs_path = platform_dir / "outputs"
 
@@ -73,7 +79,24 @@ class ProfileManager:
                     outputs_path=outputs_path,
                 )
                 platforms_info[platform_name] = platform_info
-            self.profiles[profile_name] = Profile(
+
+            self.__profiles_by_name[profile_name] = Profile(
                 name=profile_name,
                 platform_info=platforms_info,
             )
+            self.__profiles_by_index.append(
+                Profile(
+                    name=profile_name,
+                    platform_info=platforms_info,
+                )
+            )
+
+    def get_profile_by_name(self, name: str) -> Profile:
+        """Get a profile by its name."""
+        return self.__profiles_by_name[name]
+
+    def get_profile_by_index(self, index: int) -> Profile:
+        """Get a profile by its index."""
+        if index < 0 or index >= len(self.__profiles_by_index):
+            raise IndexError("Profile index out of range.")
+        return self.__profiles_by_index[index]

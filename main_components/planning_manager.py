@@ -3,6 +3,7 @@ import json
 from typing import LiteralString, Union
 
 from main_components.base_main import BaseMain
+from main_components.constants import Platform
 from main_components.profile import Profile
 
 
@@ -11,12 +12,12 @@ class PlanningManager(BaseMain):
 
     def __init__(
         self,
-        planning_template_folder,
+        # planning_template_folder: str,
         template_profiles: list[Profile],
-        platform_name,
-        llm_module_path,
-        llm_class_name,
-        llm_method_name,
+        platform_name: Platform,
+        llm_module_path: str,
+        llm_class_name: str,
+        llm_method_name: str,
         use_initial_conditions=True,
     ):
         """
@@ -31,7 +32,7 @@ class PlanningManager(BaseMain):
             use_initial_conditions: Whether to use initial_conditions.md files (default: True)
         """
         super().__init__(platform_name)
-        self.planning_template_folder = planning_template_folder
+        # self.planning_template_folder = planning_template_folder
         self.template_profiles = template_profiles
         self.llm_module_path = llm_module_path
         self.llm_class_name = llm_class_name
@@ -93,7 +94,7 @@ class PlanningManager(BaseMain):
     ) -> Union[str, LiteralString, bytes]:
         """Get the path to initial conditions file."""
         return os.path.join(
-            self.planning_template_folder,
+            # self.planning_template_folder,
             inputs_path,
             "initial_conditions.md",  # THOUGHTS: this is hardcoded
         )
@@ -175,9 +176,11 @@ class PlanningManager(BaseMain):
         # final_templates.extend(not_existing_files)
 
         # 6) Process each template
-        for profile_name, input_path, output_path in self.template_profiles:
+        for profile in self.template_profiles:
+            inputs_path = profile.platform_info[self.platform_name].inputs_path
+            outputs_path = profile.platform_info[self.platform_name].outputs_path
             # Read previous storyline if needed
-            initial_conditions_path = self.get_initial_conditions_path(input_path)
+            initial_conditions_path = self.get_initial_conditions_path(inputs_path)
             storyline = self.read_initial_conditions(initial_conditions_path)
             try:
                 # TODO: implement this method
@@ -195,9 +198,11 @@ class PlanningManager(BaseMain):
                 try:
                     # TODO: check if the previous_storyline is correctly implemented, that is,
                     #  it's not being used when the initial conditions are set to false.
-                    planning = self.generate_planning_with_llm(input_path, storyline)
+                    planning = self.generate_planning_with_llm(
+                        inputs_path.joinpath(profile.name + ".json"), storyline
+                    )
                     # Save planning
-                    self.save_planning(planning, output_path)
+                    self.save_planning(planning, outputs_path)
                     break
                 except (json.decoder.JSONDecodeError, TypeError) as e:
                     print(f"Error decoding JSON or TypeError: {e}. Retrying...")
