@@ -137,47 +137,6 @@ class PlanningManager(BaseMain):
 
     def plan(self):
         """Main method to generate planning."""
-        # assert os.path.isdir(self.planning_template_folder), (
-        #     f"Planning template folder not found: {self.planning_template_folder}"
-        # ) # FIXME: this should be handled in the base class or Profile class
-
-        # 1) Find available planning templates
-        # available_plannings = self.find_available_plannings()
-        # print("\nFound planning templates:")
-        # for i, (profile, template) in enumerate(available_plannings):
-        #     print(
-        #         f"{i + 1}. Profile: \033[92m{profile}\033[0m"
-        #     )  # prints only profile in green color
-        #     print(f"   Template path: {template}")
-        # print()
-        # if not available_plannings:
-        #     return
-
-        # 2) Let user select templates
-        # selected_templates = self.prompt_user_selection(available_plannings)
-        # if not selected_templates:
-        #     return
-
-        # 3) Check which selected templates have existing output files
-        # existing_files, not_existing_files = self.check_existing_files(
-        #     selected_templates
-        # )
-
-        # 4) Ask if user wants to overwrite existing files
-        # overwrite_all = self.prompt_overwrite(existing_files)
-
-        # 5) Prepare final list of templates to process
-        # final_templates = []
-        # for item in existing_files:
-        #     if overwrite_all:
-        #         final_templates.append(item)
-        #     else:
-        #         print(f"Skipping overwrite for {item[2]}")
-        #
-        # # Add the files that don't exist yet (always processed)
-        # final_templates.extend(not_existing_files)
-
-        # 6) Process each template
         for profile in self.template_profiles:
             inputs_path = profile.platform_info[self.platform_name].inputs_path
             outputs_path = profile.platform_info[self.platform_name].outputs_path

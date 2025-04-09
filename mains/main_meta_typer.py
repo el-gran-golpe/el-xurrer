@@ -15,10 +15,8 @@ from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 
 # Updated paths for new structure
-META_PROFILES_BASE_PATH = os.path.join(".", "resources", "meta")
-# - ProfileName
-#     - inputs
-#     - outputs
+META_PROFILES_BASE_PATH = os.path.join(".", "resources", Platform.META.value)
+
 
 app = typer.Typer()
 profile_manager = ProfileManager(Path.cwd().joinpath(Path("resources")))
@@ -41,13 +39,13 @@ def list_profiles():
 @app.command()
 def plan(
     profiles_index: list[ProfileIdentifier] = typer.Option(
-        [], "-p", "--profiles", help="Index of the profile to use"
+        [], "-p", "--profile-indexes", help="Index of the profile to use"
     ),
     profile_names: Optional[str] = typer.Option(
         None, "-n", "--profile-names", help="Comma-separated list of profile names"
     ),
     overwrite_outputs: bool = typer.Option(
-        False, "--overwrite", "-o", help="Overwrite existing outputs"
+        False, "-o", "--overwrite-outputs", help="Overwrite existing outputs"
     ),
 ):
     if len(profiles_index) == 0 and profile_names is None:
@@ -61,9 +59,13 @@ def plan(
         ]
 
     else:
-        profile_names = profile_names.split(",")
+        assert profile_names is not None, (
+            "Profile names cannot be None if index is not provided."
+        )
+        profile_names_splitted = profile_names.split(",")
         profiles = [
-            profile_manager.get_profile_by_name(name.strip()) for name in profile_names
+            profile_manager.get_profile_by_name(name.strip())
+            for name in profile_names_splitted
         ]
 
     filtered_profiles = []
@@ -82,7 +84,7 @@ def plan(
 
     planner = PlanningManager(
         # planning_template_folder=META_PROFILES_BASE_PATH,
-        template_profiles=filtered_profiles,  # FIXME: Laura vigne and others goes here
+        template_profiles=filtered_profiles,
         platform_name=Platform.META,
         llm_module_path="llm.meta_llm",
         llm_class_name="MetaLLM",
@@ -93,9 +95,32 @@ def plan(
 
 
 @app.command()
-def generate_publications():
+def generate_publications(
+    profiles_index: list[ProfileIdentifier] = typer.Option(
+        [], "-p", "--profile-indexes", help="Index of the profile to use"
+    ),
+    profile_names: Optional[str] = typer.Option(
+        None, "-n", "--profile-names", help="Comma-separated list of profile names"
+    ),
+):
+    if len(profiles_index) > 0:
+        profiles = [
+            profile_manager.get_profile_by_index(index) for index in profiles_index
+        ]
+
+    else:
+        assert profile_names is not None, (
+            "Profile names cannot be None if index is not provided."
+        )
+        profile_names_splitted = profile_names.split(",")
+        profiles = [
+            profile_manager.get_profile_by_name(name.strip())
+            for name in profile_names_splitted
+        ]
+
     generator = PublicationsGenerator(
-        publication_template_folder=META_PROFILES_BASE_PATH, platform_name="meta"
+        template_profiles=profiles,
+        platform_name=Platform.META,
     )
     generator.generate()
 

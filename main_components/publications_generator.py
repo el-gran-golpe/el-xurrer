@@ -14,8 +14,8 @@ class PublicationsGenerator(BaseMain):
 
     def __init__(
         self,
-        publication_template_folder,
         platform_name,
+        template_profiles,
         llm_module_path=None,
         llm_class_name=None,
         llm_method_name=None,
@@ -24,22 +24,16 @@ class PublicationsGenerator(BaseMain):
         Initialize the publications generator.
 
         Args:
-            publication_template_folder: Path to the folder containing publication templates
             platform_name: Name of the platform (meta, fanvue, etc.)
             llm_module_path: (Optional) Path to the LLM module
             llm_class_name: (Optional) Name of the LLM class
             llm_method_name: (Optional) Name of the generation method
         """
         super().__init__(platform_name)
-        self.publication_template_folder = publication_template_folder
+        self.template_profiles = template_profiles
         self.llm_module_path = llm_module_path
         self.llm_class_name = llm_class_name
         self.llm_method_name = llm_method_name
-
-        # Determine the profiles base path based on platform
-        self.profiles_base_path = os.path.join(
-            ".", "resources", f"{platform_name}_profiles"
-        )
 
         # Initialize image generator (lazy loading)
         self.image_generator = None
@@ -243,30 +237,21 @@ class PublicationsGenerator(BaseMain):
 
     def generate(self):
         """Main method to generate publications."""
-        assert os.path.isdir(self.profiles_base_path), (
-            f"Profiles base path not found: {self.profiles_base_path}"
-        )
 
-        # 1) Find available _planning.json files for the different profiles
-        available_profiles = self.find_available_profiles()
-
-        if not available_profiles:
-            print(
-                f"No planning files found for {self.platform_name}. Please generate planning first."
-            )
-            return
-
-        # 2) Let user select profiles to process
-        selected_profiles = self.prompt_user_selection(available_profiles)
-        if not selected_profiles:
-            return
-
-        # 3) Process each selected profile
-        for profile_name, planning_file_path in selected_profiles:
+        for profile in self.template_profiles:
             # Define output folder path
-            output_folder = os.path.join(
-                self.profiles_base_path, profile_name, "outputs", "publications"
+            planning_file_name = "".join(
+                [word[0] for word in profile.name.split("_")]
+            )  # THOUGHTS: This could be added in the Profile itself
+            planning_file_path = os.path.join(
+                profile.platform_info[self.platform_name].outputs_path,
+                planning_file_name + "_planning.json",
             )
+
+            output_folder = os.path.join(
+                profile.platform_info[self.platform_name].outputs_path, "publications"
+            )
+
             self.generate_publications_from_planning(
-                profile_name, planning_file_path, output_folder
+                profile.name, planning_file_path, output_folder
             )
