@@ -251,7 +251,9 @@ class BaseLLM:
             finish_reason, assistant_reply = self.recalculate_finish_reason(
                 assistant_reply=assistant_reply
             )
-        assert finish_reason is not None, "Finish reason not found"
+        assert finish_reason is not None, (
+            "Finish reason not found"
+        )  # FIXME: This is a problem for unattended running
 
         if finish_reason == "length":
             continue_conversation = deepcopy(conversation)
@@ -333,6 +335,7 @@ class BaseLLM:
 
         assert len(preferred_models) > 0, "No models available"
         model: str = preferred_models[0]
+        logger.info(f"Using model: {model}")
 
         if model in MODELS_NOT_ACCEPTING_SYSTEM_ROLE:
             conversation = self.merge_system_and_user_messages(
