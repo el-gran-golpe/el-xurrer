@@ -129,7 +129,9 @@ class PlanningManager(BaseMain):
 
     def save_planning(self, planning, output_path):
         """Save planning content to file."""
-        success = self.write_to_file(planning, output_path, file_type="json")
+        success = self.write_to_file(
+            content=planning, file_path=output_path, file_type="json"
+        )
         if success:
             print(f"Planning saved to: {output_path}")
 
@@ -183,7 +185,8 @@ class PlanningManager(BaseMain):
             initial_conditions_path = self.get_initial_conditions_path(inputs_path)
             storyline = self.read_initial_conditions(initial_conditions_path)
             try:
-                # TODO: implement this method
+                # TODO: check if the previous_storyline is correctly implemented, that is,
+                #  it's not being used when the initial conditions are set to false.
                 previous_storyline = self.read_previous_storyline(
                     initial_conditions_path
                 )
@@ -196,13 +199,18 @@ class PlanningManager(BaseMain):
             # Generate planning
             while True:
                 try:
-                    # TODO: check if the previous_storyline is correctly implemented, that is,
-                    #  it's not being used when the initial conditions are set to false.
                     planning = self.generate_planning_with_llm(
                         inputs_path.joinpath(profile.name + ".json"), storyline
                     )
+
                     # Save planning
-                    self.save_planning(planning, outputs_path)
+                    output_filename = "".join(
+                        [word[0] for word in profile.name.split("_")]
+                    )
+                    self.save_planning(
+                        planning,
+                        outputs_path.joinpath(output_filename + "_planning.json"),
+                    )
                     break
                 except (json.decoder.JSONDecodeError, TypeError) as e:
                     print(f"Error decoding JSON or TypeError: {e}. Retrying...")
