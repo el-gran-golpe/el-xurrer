@@ -1,39 +1,47 @@
+import logging
 import os
+import shutil
 from datetime import datetime, timezone
 from time import sleep
+from seleniumbase import SB
 
 from main_components.base_main import BaseMain
+from main_components.constants import Platform
+from main_components.profile import Profile
+
+
+logger = logging.getLogger(__name__)
 
 
 class PostingScheduler(BaseMain):
     """Universal posting scheduler for uploading content across different platforms."""
 
     def __init__(
-        self, publication_base_folder, platform_name, api_module_path, api_class_name
+        self, template_profiles, platform_name, api_module_path, api_class_name
     ):
         """
         Initialize the posting scheduler.
 
         Args:
-            publication_base_folder: Path to the folder containing publications
             platform_name: Name of the platform (meta, fanvue, etc.)
             api_module_path: Path to the API module
             api_class_name: Name of the API class
         """
         super().__init__(platform_name)
-        self.publication_base_folder = publication_base_folder
+        # self.publication_base_folder = publication_base_folder
+        self.template_profiles = template_profiles
         self.api_module_path = api_module_path
         self.api_class_name = api_class_name
 
         # Determine the profiles base path based on platform
-        self.profiles_base_path = os.path.join(
-            ".", "resources", f"{platform_name}_profiles"
-        )
+        # self.profiles_base_path = os.path.join(
+        #     ".", "resources", f"{platform_name}_profiles"
+        # )
 
     def _get_api_instance(self):
         """Dynamically import and create an instance of the specified API class."""
         # For Fanvue, we don't create the instance here since it requires a driver
-        create_instance = self.platform_name != "fanvue"
+        create_instance = self.platform_name != Platform.FANVUE
         return self.load_dynamic_class(
             self.api_module_path, self.api_class_name, create_instance=create_instance
         )
@@ -121,10 +129,10 @@ class PostingScheduler(BaseMain):
 
         return True
 
-    def _process_meta_publications(self, profile_name, api_instance):
+    def _process_meta_publications(self, profile: Profile, api_instance):
         """Process and upload Meta publications for the given profile."""
         publications_folder = os.path.join(
-            self.profiles_base_path, profile_name, "outputs", "publications"
+            profile.platform_info[Platform.META].outputs_path, "publications"
         )
 
         # Iterate over weeks and days
@@ -132,13 +140,13 @@ class PostingScheduler(BaseMain):
             week_folder = os.path.join(publications_folder, week)
             if not os.path.isdir(week_folder):
                 continue
-            print(f"\nProcessing week: {week}")
+            logger.info(f"Processing week: {week}")
 
             for day in sorted(os.listdir(week_folder)):
                 day_folder = os.path.join(week_folder, day)
                 if not os.path.isdir(day_folder):
                     continue
-                print(f"\nProcessing day folder: {day}")
+                logger.info(f"Processing day folder: {day}")
 
                 # Read the publication files
                 caption, upload_time_str, image_files = self._read_publication_files(
@@ -147,12 +155,8 @@ class PostingScheduler(BaseMain):
                 if not caption or not upload_time_str or not image_files:
                     continue
 
-                # Wait for the scheduled time (not applicable anymore to Meta)
-                # if not self._wait_for_scheduled_time(upload_time_str, day_folder):
-                #    continue
-
                 # Upload to Meta using GraphAPI
-                print(f"Uploading publication from {day_folder} to Meta...")
+                logger.info(f"Uploading publication from {day_folder} to Meta...")
                 try:
                     # Instead, now I input the upload_time_str to the Graph API so that Meta is the one responsible to upload the publication
                     response_instagram = api_instance.upload_instagram_publication(
@@ -163,13 +167,13 @@ class PostingScheduler(BaseMain):
                     )
 
                     if response_instagram and response_facebook:
-                        print(
+                        logger.info(
                             f"Publication uploaded successfully to Instagram: {response_instagram} at specific time: {upload_time_str}"
                         )
-                        print(
+                        logger.info(
                             f"Publication uploaded successfully to Facebook: {response_facebook} at specific time: {upload_time_str}"
                         )
-                        print(
+                        logger.info(
                             "I proceed to delete the just uploaded publication(s) to avoid double uploding mistakes:"
                         )
                         for image_file in image_files:
@@ -189,14 +193,11 @@ class PostingScheduler(BaseMain):
                 except Exception as e:
                     print(f"Error uploading publication: {e}")
 
-    def _process_fanvue_publications(self, profile_name, fanvue_class):
+    def _process_fanvue_publications(self, profile, fanvue_class):
         """Process and upload Fanvue publications for the given profile."""
         publications_folder = os.path.join(
-            self.profiles_base_path, profile_name, "outputs", "publications"
+            profile.platform_info[Platform.FANVUE].outputs_path, "publications"
         )
-
-        # Import SeleniumBase for Fanvue
-        from seleniumbase import SB
 
         # Use SeleniumBase context manager to handle browser lifecycle
         with SB(uc=True, test=True, locale_code="en") as driver:
@@ -205,11 +206,11 @@ class PostingScheduler(BaseMain):
 
             # Login to Fanvue
             try:
-                print(f"Logging in to Fanvue as {profile_name}...")
-                publisher.login(profile_name)
-                print("Login successful")
+                logger.info(f"Logging in to Fanvue as {profile}...")
+                publisher.login(profile)
+                logger.info("Login successful")
             except Exception as e:
-                print(f"Failed to login to Fanvue: {e}")
+                logger.error(f"Failed to login to Fanvue: {e}")
                 return
 
             # Process publications by week and day
@@ -217,13 +218,13 @@ class PostingScheduler(BaseMain):
                 week_folder = os.path.join(publications_folder, week)
                 if not os.path.isdir(week_folder):
                     continue
-                print(f"\nProcessing week: {week}")
+                logger.info(f"\nProcessing week: {week}")
 
                 for day in sorted(os.listdir(week_folder)):
                     day_folder = os.path.join(week_folder, day)
                     if not os.path.isdir(day_folder):
                         continue
-                    print(f"\nProcessing day folder: {day}")
+                    logger.info(f"\nProcessing day folder: {day}")
 
                     # Read the publication files
                     caption, upload_time_str, image_files = (
@@ -239,110 +240,68 @@ class PostingScheduler(BaseMain):
                     # For Fanvue, upload each image as a separate post
                     for image_file in image_files:
                         try:
-                            print(f"Uploading {image_file} to Fanvue...")
+                            logger.info(f"Uploading {image_file} to Fanvue...")
                             publisher.post_publication(image_file, caption)
-                            print(f"Successfully uploaded {image_file} to Fanvue")
+                            logger.info(f"Successfully uploaded {image_file} to Fanvue")
                             # Wait a bit between posts to avoid rate limiting
                             sleep(5)
                         except Exception as e:
-                            print(f"Error uploading {image_file} to Fanvue: {e}")
+                            logger.error(f"Error uploading {image_file} to Fanvue: {e}")
 
-    def _clean_up_publications_folder(self, profile_name):
+    def _clean_up_publications_folder(self, profile):
         """Delete the publications folder for a profile after successful upload."""
-        import shutil
-
-        # Assert that profile_name is not empty
-        assert profile_name, "Profile name cannot be empty"
 
         publications_folder = os.path.join(
-            self.profiles_base_path, profile_name, "outputs", "publications"
-        )
-
-        # Assert that the profiles base path exists
-        assert os.path.exists(self.profiles_base_path), (
-            f"Profiles base path does not exist: {self.profiles_base_path}"
-        )
-
-        # Assert that the profile folder exists
-        profile_folder = os.path.join(self.profiles_base_path, profile_name)
-        assert os.path.exists(profile_folder), (
-            f"Profile folder does not exist: {profile_folder}"
+            profile.platform_info[self.platform_name].outputs_path, "publications"
         )
 
         if os.path.exists(publications_folder):
             try:
-                print(
-                    f"\nCleaning up: Removing publications folder for {profile_name}..."
-                )
-                shutil.rmtree(publications_folder)
-
-                # Assert that the folder was actually deleted
-                assert not os.path.exists(publications_folder), (
-                    f"Failed to delete publications folder: {publications_folder}"
+                logger.info(
+                    f"\nCleaning up: Removing publications folder for {profile}..."
                 )
 
-                print(f"Successfully removed {publications_folder}")
+                for item in os.listdir(publications_folder):
+                    item_path = os.path.join(publications_folder, item)
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                    elif os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
 
-                # Create an empty publications directory to maintain structure
-                os.makedirs(publications_folder, exist_ok=True)
-
-                # Assert the directory was created
-                assert os.path.exists(publications_folder), (
-                    f"Failed to recreate publications folder: {publications_folder}"
-                )
+                logger.info(f"Successfully removed contents of {publications_folder}")
 
                 readme_path = os.path.join(publications_folder, "README.txt")
                 with open(readme_path, "w") as f:
                     f.write(
-                        f"Publications for {profile_name} were successfully uploaded and this folder was cleaned up on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
+                        f"Publications for {profile} were successfully uploaded and this folder was cleaned up on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
                     )
-
-                # Assert README file exists
-                assert os.path.exists(readme_path), (
-                    f"Failed to create README file: {readme_path}"
-                )
             except Exception as e:
-                print(f"Error while removing publications folder: {e}")
+                logger.error(f"Error while removing publications folder: {e}")
         else:
-            print(
-                f"Publications folder not found for {profile_name}: {publications_folder}"
+            logger.warning(
+                f"Publications folder not found for {profile}: {publications_folder}"
             )
 
     def upload(self):
         """Main method to upload publications."""
-        assert os.path.isdir(self.profiles_base_path), (
-            f"Profiles base path not found: {self.profiles_base_path}"
-        )
-
-        # 1) Find available profiles with publications
-        available_profiles = self.find_available_profiles()
-
-        if not available_profiles:
-            print(f"No profiles found with publications for {self.platform_name}.")
-            return
-
-        # 2) Let user select a profile to upload
-        selected_profiles = self.prompt_user_selection(available_profiles)
-        if not selected_profiles:
-            return
 
         # 3) Get the API instance or class
         api_instance_or_class = self._get_api_instance()
 
         # 4) Process each selected profile based on platform
-        for profile_name in selected_profiles:
-            if self.platform_name == "meta":
-                self._process_meta_publications(profile_name, api_instance_or_class)
+        for profile in self.template_profiles:
+            if self.platform_name == Platform.META:
+                self._process_meta_publications(profile, api_instance_or_class)
 
                 # TODO: after successfully completing this step, it would be nice to read the lv_planning.json file,
-                # then summarize the content and append it to the initial_conditions.md file so that the storyline can progress
-                # without repeating the same information over and over again
+                #  then summarize the content and append it to the initial_conditions.md file so that the storyline can progress
+                #  without repeating the same information over and over again
 
                 # Delete the publications folder after successful execution of _process_meta_publications to keep the environment clean
-                self._clean_up_publications_folder(profile_name)
-            elif self.platform_name == "fanvue":
-                self._process_fanvue_publications(profile_name, api_instance_or_class)
+                self._clean_up_publications_folder(profile)
+            elif self.platform_name == Platform.FANVUE:
+                self._process_fanvue_publications(profile, api_instance_or_class)
                 # Same as above, delete the publications folder after successful execution of the fanvue publications uloading
-                self._clean_up_publications_folder(profile_name)
+                self._clean_up_publications_folder(profile)
             else:
-                print(f"Unsupported platform: {self.platform_name}")
+                logger.error(f"Unsupported platform: {self.platform_name}")

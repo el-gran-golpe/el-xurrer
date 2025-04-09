@@ -126,10 +126,33 @@ def generate_publications(
 
 
 @app.command()
-def upload():
+def schedule_posts(
+    profiles_index: list[ProfileIdentifier] = typer.Option(
+        [], "-p", "--profile-indexes", help="Index of the profile to use"
+    ),
+    profile_names: Optional[str] = typer.Option(
+        None, "-n", "--profile-names", help="Comma-separated list of profile names"
+    ),
+):
+    if len(profiles_index) > 0:
+        profiles = [
+            profile_manager.get_profile_by_index(index) for index in profiles_index
+        ]
+
+    else:
+        assert profile_names is not None, (
+            "Profile names cannot be None if index is not provided."
+        )
+
+        profile_names_splitted = profile_names.split(",")
+        profiles = [
+            profile_manager.get_profile_by_name(name.strip())
+            for name in profile_names_splitted
+        ]
+
     scheduler = PostingScheduler(
-        publication_base_folder=META_PROFILES_BASE_PATH,
-        platform_name="meta",
+        template_profiles=profiles,
+        platform_name=Platform.META,
         api_module_path="bot_services.meta_api.graph_api",
         api_class_name="GraphAPI",
     )
