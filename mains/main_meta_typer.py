@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional
+import logging
 
 import typer
 
@@ -17,6 +18,7 @@ from main_components.publications_generator import PublicationsGenerator
 # Updated paths for new structure
 META_PROFILES_BASE_PATH = os.path.join(".", "resources", Platform.META.value)
 
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 profile_manager = ProfileManager(Path.cwd().joinpath(Path("resources")))
@@ -157,6 +159,39 @@ def schedule_posts(
         api_class_name="GraphAPI",
     )
     scheduler.upload()
+
+
+@app.command(
+    help="Execute the complete Meta content pipeline: planning, generating publications, and scheduling posts in sequence."
+)
+def execute_pipeline(
+    profiles_index: list[ProfileIdentifier] = typer.Option(
+        [], "-p", "--profile-indexes", help="Index of the profile to use"
+    ),
+    profile_names: Optional[str] = typer.Option(
+        None, "-n", "--profile-names", help="Comma-separated list of profile names"
+    ),
+    overwrite_outputs: bool = typer.Option(
+        False,
+        "-o",
+        "--overwrite-outputs",
+        help="Overwrite existing outputs for planning",
+    ),
+):
+    """Run the complete content pipeline: plan, generate publications, and schedule posts in sequence."""
+    # First run planning
+    logger.info("Step 1: Planning content...")
+    plan(profiles_index, profile_names, overwrite_outputs)
+
+    # Then generate publications
+    logger.info("Step 2: Generating publications...")
+    generate_publications(profiles_index, profile_names)
+
+    # Finally schedule posts
+    logger.info("Step 3: Scheduling posts...")
+    schedule_posts(profiles_index, profile_names)
+
+    logger.info("All steps completed successfully!")
 
 
 if __name__ == "__main__":
