@@ -5,4 +5,8 @@ QUOTA_EXCEEDED_ERRORS = (
 ALTERNATIVE_FLUX_DEV_SPACE = (
     "FilipeR/FLUX.1-dev-UI"  #'multimodalart/FLUX.1-dev-live-previews'
 )
-ORIGINAL_FLUX_DEV_SPACE = "black-forest-labs/FLUX.1-dev"
+# ORIGINAL_FLUX_DEV_SPACE = "black-forest-labs/FLUX.1-dev"
+
+FLUX_DEV_SPACES = [
+    "yanze/PuLID-FLUX",
+]
