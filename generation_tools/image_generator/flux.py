@@ -20,17 +20,24 @@ from gradio_client.exceptions import AppError
 
 from proxy_spinner import ProxySpinner
 
-from generation_tools.image_generator.flux.constants import (
+from generation_tools.image_generator.constants import (
     SPACE_IS_DOWN_ERRORS,
-    ALTERNATIVE_FLUX_DEV_SPACE,
     QUOTA_EXCEEDED_ERRORS,
-    ORIGINAL_FLUX_DEV_SPACE,
 )
 from utils.exceptions import WaitAndRetryError
 
+ALTERNATIVE_FLUX_DEV_SPACE = (
+    "FilipeR/FLUX.1-dev-UI"  #'multimodalart/FLUX.1-dev-live-previews'
+)
+ORIGINAL_FLUX_DEV_SPACE = "black-forest-labs/FLUX.1-dev"
 
 # Switch the spaces to work with the alternative space first
-# ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = ORIGINAL_FLUX_DEV_SPACE, ALTERNATIVE_FLUX_DEV_SPACE
+ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = (
+    ORIGINAL_FLUX_DEV_SPACE,
+    ALTERNATIVE_FLUX_DEV_SPACE,
+)
+
+
 class Flux:
     def __init__(
         self,
@@ -60,7 +67,6 @@ class Flux:
         return self._client
 
     def get_new_client(self, retries: int = 3):
-        self.__client_predictions = 0
         suggested_wait_time = None
         # Create a custom session with the proxy
         for retry in range(retries):

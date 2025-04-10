@@ -39,56 +39,6 @@ class PlanningManager(BaseMain):
         self.llm_method_name = llm_method_name
         self.use_initial_conditions = use_initial_conditions
 
-    def find_available_plannings(self):
-        """Find all available planning templates inside the resources folder."""
-
-        def search_pattern(profile_dir, profile_path):
-            inputs_path = os.path.join(profile_path, "inputs")
-            if os.path.isdir(inputs_path):
-                for file_name in os.listdir(inputs_path):
-                    if file_name.endswith(".json"):
-                        template_path = os.path.join(inputs_path, file_name)
-                        return (profile_dir, template_path)
-            return None
-
-        return self.find_available_items(
-            base_path=self.planning_template_folder,
-            search_pattern=search_pattern,
-            item_type="planning templates",
-        )
-
-    def prompt_user_selection(self, available_plannings):
-        """Prompt the user to select templates."""
-        not_found_message = f"No planning templates found for {self.platform_name}."
-
-        return super().prompt_user_selection(
-            available_items=available_plannings,
-            item_type="templates",
-            allow_multiple=True,
-            not_found_message=not_found_message,
-        )
-
-    def check_existing_files(self, selected_templates):
-        """Check which templates already have output files."""
-
-        def output_path_generator(template_item):
-            profile_name, template_path = template_item
-            profile_initials = "".join([word[0] for word in profile_name.split("_")])
-            planning_filename = f"{profile_initials}_planning.json"
-
-            output_path = os.path.join(
-                self.planning_template_folder, profile_name, "outputs"
-            )
-            self.create_directory(output_path)
-
-            return os.path.join(output_path, planning_filename)
-
-        return super().check_existing_files(selected_templates, output_path_generator)
-
-    def prompt_overwrite(self, existing_files):
-        """Ask user if they want to overwrite existing files."""
-        return super().prompt_overwrite(existing_files, path_index=2)
-
     def get_initial_conditions_path(
         self, inputs_path
     ) -> Union[str, LiteralString, bytes]:

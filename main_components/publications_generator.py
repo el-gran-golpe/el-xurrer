@@ -4,9 +4,10 @@ from slugify import slugify
 from tqdm import tqdm
 
 from main_components.base_main import BaseMain
+from main_components.constants import Platform
 from utils.exceptions import WaitAndRetryError
 from time import sleep
-from generation_tools.image_generator.flux.flux import Flux
+from generation_tools.image_generator.flux import Flux
 
 
 class PublicationsGenerator(BaseMain):
@@ -44,40 +45,6 @@ class PublicationsGenerator(BaseMain):
             self.image_generator = Flux(load_on_demand=True)
         return self.image_generator
 
-    def find_available_profiles(self):
-        """Find all available profiles with planning files."""
-
-        def search_pattern(profile_name, profile_path):
-            outputs_path = os.path.join(profile_path, "outputs")
-            if os.path.isdir(outputs_path):
-                for file_name in os.listdir(outputs_path):
-                    if file_name.endswith("_planning.json"):
-                        planning_path = os.path.join(outputs_path, file_name)
-                        return (profile_name, planning_path)
-            return None
-
-        return self.find_available_items(
-            base_path=self.profiles_base_path,
-            search_pattern=search_pattern,
-            item_type="profiles with planning files",
-        )
-
-    def prompt_user_selection(self, available_profiles):
-        """Prompt the user to select profiles."""
-        not_found_message = f"No planning files found for {self.platform_name}, please generate a planning first"
-
-        def display_function(item):
-            # Display only the profile name from the tuple
-            return item[0] if isinstance(item, tuple) and len(item) > 0 else str(item)
-
-        return super().prompt_user_selection(
-            available_items=available_profiles,
-            item_type="profiles",
-            allow_multiple=True,
-            display_function=display_function,
-            not_found_message=not_found_message,
-        )
-
     def create_publication_directories(
         self, profile_name, json_data_planning, output_folder
     ):
@@ -107,16 +74,20 @@ class PublicationsGenerator(BaseMain):
 
         return output_folder
 
+    # TODO: put comment separator
+
     def generate_images(self, publication_content, output_folder):
         """Generate images for publications based on platform."""
-        if self.platform_name == "meta":
+        if self.platform_name == Platform.META:
             self._generate_meta_images(publication_content, output_folder)
-        elif self.platform_name == "fanvue":
+        elif self.platform_name == Platform.FANVUE:
             self._generate_fanvue_images(publication_content, output_folder)
         else:
             raise ValueError(f"Unsupported platform: {self.platform_name}")
 
-    def _generate_meta_images(self, publication_content, output_folder):
+    def _generate_meta_images(
+        self, publication_content: list[dict], output_folder: str
+    ):
         """Generate images for Meta platforms (Instagram/Facebook)."""
         for item in publication_content:
             post_slug = item["post_slug"]
@@ -220,7 +191,10 @@ class PublicationsGenerator(BaseMain):
                     for retrial in range(25):
                         try:
                             # Directly call our integrated image generation method
-                            self.generate_images(publication_content, day_folder)
+                            self.generate_images(
+                                publication_content=publication_content,
+                                output_folder=day_folder,
+                            )
                             break
                         except WaitAndRetryError as e:
                             sleep_time = e.suggested_wait_time
