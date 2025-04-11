@@ -59,8 +59,8 @@ class ProfileManager:
                         f"Inputs path does not exist: {inputs_path}"
                     )
                 else:
-                    # TODO: here the main_meta_typer.py fails because the folder fanvue
-                    # does not have a an initial_conditions.md file. Does this make sense? Same with .json
+                    # Decision: If any profile is incomplete, it will fail even if we are running code that is not
+                    # directly related with that platform
                     initial_conditions_path = inputs_path / "initial_conditions.md"
                     if not initial_conditions_path.exists():
                         raise FileNotFoundError(
