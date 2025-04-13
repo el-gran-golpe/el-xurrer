@@ -1,7 +1,6 @@
 from pathlib import Path
-
+import re
 from pydantic import BaseModel
-
 from main_components.constants import Platform
 
 
@@ -32,7 +31,10 @@ class ProfileManager:
         self.__profiles_by_index: list[Profile] = []
 
     def load_profiles(self):
-        """Load profiles from the base path."""
+        """This method will go to the folder called resources and check that the profiles
+        actually exist. For a profile (persona) to be valid, it must contain an initial
+        conditions file and a .json file named after the folder, that contains the
+        instructions for the LLM. The folder must be named in snake_case."""
         if not self.resource_path.is_dir():
             raise FileNotFoundError(
                 f"Resource path does not exist: {self.resource_path}"
@@ -43,7 +45,12 @@ class ProfileManager:
                 continue
 
             profile_name = profile_dir.name
-            # TODO: Check profile name is in snake case
+            # Check profile name is in snake case
+            profile_pattern = re.compile(r"^[a-z][a-z0-9]*_[a-z][a-z0-9]*$")
+            if not profile_pattern.match(profile_name):
+                raise ValueError(
+                    f"Profile name '{profile_name}' is not in the format 'word_word' (e.g., 'laura_vigne')"
+                )
 
             platforms_info = {}
             for platform_dir in profile_dir.iterdir():
