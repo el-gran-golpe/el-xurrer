@@ -1,25 +1,27 @@
+import os
+import re
 import shutil
 from concurrent.futures import CancelledError
 from typing import Optional
-
-from gradio_client import Client
-import os
-import re
-from httpx import ReadTimeout, ConnectError, ReadError
-from huggingface_hub.utils import RepositoryNotFoundError
 from contextlib import nullcontext
-from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
+from gradio_client import Client
+from gradio_client.exceptions import AppError
+from huggingface_hub.utils import RepositoryNotFoundError
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    ProxyError,
+    ConnectTimeout,
+)
 from loguru import logger
 from httpx import (
+    ReadTimeout,
+    ReadError,
     ConnectTimeout as httpxConnectTimeout,
     ProxyError as httpxProxyError,
     ConnectError as httpxConnectError,
     RemoteProtocolError as httpxRemoteProtocolError,
 )
-from gradio_client.exceptions import AppError
-
 from proxy_spinner import ProxySpinner
-
 from generation_tools.image_generator.constants import (
     SPACE_IS_DOWN_ERRORS,
     QUOTA_EXCEEDED_ERRORS,
@@ -65,7 +67,7 @@ class PulidFlux:
             except (
                 ReadTimeout,
                 ProxyError,
-                ConnectionError,
+                RequestsConnectionError,
                 ConnectTimeout,
                 httpxConnectTimeout,
                 CancelledError,
@@ -128,8 +130,7 @@ class PulidFlux:
                     break
             except (
                 AppError,
-                ConnectionError,
-                ConnectError,
+                RequestsConnectionError,
                 ConnectTimeout,
                 httpxConnectTimeout,
                 ReadTimeout,
@@ -158,7 +159,8 @@ class PulidFlux:
                         )
                     else:
                         logger.warning(
-                            f"Quota exceeded error message does not contain waiting time: {error_message}"
+                            "Quota exceeded error message does not contain waiting time: "
+                            f"{error_message}"
                         )
                 else:
                     logger.error(
@@ -168,19 +170,23 @@ class PulidFlux:
                 if i == retries - 1:
                     if recommended_waiting_time_seconds is not None:
                         raise WaitAndRetryError(
-                            message=f"Failed to generate image after {retries} retries. Wait for {recommended_waiting_time_str}",
+                            message=(
+                                f"Failed to generate image after {retries} retries. "
+                                f"Wait for {recommended_waiting_time_str}"
+                            ),
                             suggested_wait_time=recommended_waiting_time_seconds
                             or 60 * 60,
-                        )
+                        ) from e
                     else:
                         raise WaitAndRetryError(
                             message="Failed to generate image with unknown errors",
                             suggested_wait_time=60 * 60,
-                        )
+                        ) from e
 
                 # If the proxy is activated, renew the proxy
                 elif isinstance(self.proxy, ProxySpinner):
-                    # THOUGHTS: Maybe we have to put a loop to try to get a new client with a working proxy
+                    # THOUGHTS: Maybe we have to put a loop to try to get
+                    # a new client with a working proxy
                     while self.proxy.renew_proxy():
                         try:
                             self._client = self.get_new_client()
@@ -198,7 +204,10 @@ class PulidFlux:
 
 if __name__ == "__main__":
     pulid_flux = PulidFlux()
-    prompt = "A sexy blonde girl with blue eyes in Lyon showing a sex position and showing her pussy superrealistic"
-    output_path = "./output.jpg"
-    pulid_flux.generate_image(prompt, output_path, width=1080, height=1080)
-    print(f"Image saved to {output_path}")
+    TEST_PROMPT = (
+        "A sexy blonde girl with blue eyes in Lyon showing a sex position and "
+        "showing her pussy superrealistic"
+    )
+    TEST_OUTPUT_PATH = "./output.jpg"
+    pulid_flux.generate_image(TEST_PROMPT, TEST_OUTPUT_PATH, width=1080, height=1080)
+    print(f"Image saved to {TEST_OUTPUT_PATH}")
