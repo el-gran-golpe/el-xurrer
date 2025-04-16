@@ -1,30 +1,31 @@
+import os
+import re
 import shutil
 from concurrent.futures import CancelledError
 from typing import Optional
-
-from gradio_client import Client
-import os
-import re
-from httpx import ReadTimeout, ConnectError, ReadError
-from huggingface_hub.utils import RepositoryNotFoundError
-from loguru import logger
 from contextlib import nullcontext
-from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
+from gradio_client import Client
+from gradio_client.exceptions import AppError
+from huggingface_hub.utils import RepositoryNotFoundError
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    ProxyError,
+    ConnectTimeout,
+)
+from loguru import logger
 from httpx import (
+    ReadTimeout,
+    ReadError,
     ConnectTimeout as httpxConnectTimeout,
     ProxyError as httpxProxyError,
     ConnectError as httpxConnectError,
     RemoteProtocolError as httpxRemoteProtocolError,
 )
-from gradio_client.exceptions import AppError
-
 from proxy_spinner import ProxySpinner
-
 from generation_tools.image_generator.constants import (
     SPACE_IS_DOWN_ERRORS,
     QUOTA_EXCEEDED_ERRORS,
 )
-from generation_tools.image_generator.flux import ALTERNATIVE_FLUX_DEV_SPACE
 from utils.exceptions import WaitAndRetryError
 
 
@@ -54,7 +55,8 @@ class PulidFlux:
             self._client = self.get_new_client(retries=1)
         return self._client
 
-    def get_new_client(self, retries: int = 3):
+    def get_new_client(self, retries: int = 3) -> Client:
+        logger.info("Creating new gradio client")
         suggested_wait_time = None
         # Create a custom session with the proxy
         for retry in range(retries):
@@ -65,7 +67,7 @@ class PulidFlux:
             except (
                 ReadTimeout,
                 ProxyError,
-                ConnectionError,
+                RequestsConnectionError,
                 ConnectTimeout,
                 httpxConnectTimeout,
                 CancelledError,
@@ -76,19 +78,12 @@ class PulidFlux:
                 httpxRemoteProtocolError,
             ) as e:
                 reason = e.args[0] if hasattr(e, "args") and len(e.args) > 0 else None
-                if (
-                    reason in SPACE_IS_DOWN_ERRORS
-                    or isinstance(e, RepositoryNotFoundError)
-                ) and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
-                    logger.error(
-                        f"Error creating client: {e}. Space is down. Retry {retry + 1}/3"
-                    )
-                    self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
-                    client = self.get_new_client(retries=1)
-                    break
+                if reason in SPACE_IS_DOWN_ERRORS or isinstance(
+                    e, RepositoryNotFoundError
+                ):
+                    logger.error(f"Space is down: {e}. Retry {retry + 1}/3")
                 else:
                     logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
-                    self.proxy.renew_proxy()
         else:
             raise WaitAndRetryError(
                 message=f"Failed to create client after {retries} retries",
@@ -98,17 +93,15 @@ class PulidFlux:
 
     def generate_image(
         self,
-        prompt,
+        prompt: str,
         output_path: str,
         seed: Optional[int] = None,
-        width=512,
-        height=512,
-        guidance_scale=3.5,
-        num_inference_steps=25,
+        width: int = 512,
+        height: int = 512,
+        guidance_scale: float = 3.5,
+        num_inference_steps: int = 25,
         retries: int = 3,
     ):
-        assert isinstance(prompt, str), "Prompt must be a string"
-        assert seed is None or isinstance(seed, int), "Seed must be an integer or None"
         assert 0 < width <= 2048, "Width must be between 0 and 2048"
         assert 0 < height <= 2048, "Height must be between 0 and 2048"
         assert 0 < guidance_scale <= 10, "Guidance scale must be between 0 and 10"
@@ -119,26 +112,25 @@ class PulidFlux:
 
         recommended_waiting_time_seconds, recommended_waiting_time_str = None, None
 
-        randomize_seed = seed is None
+        randomize_seed: str = "-1" if seed is None else str(seed)
 
         for i in range(retries):
             try:
                 with self.proxy:
-                    image_path, seed = self.client.predict(
+                    image_path, seed, _ = self.client.predict(
                         prompt=prompt,
-                        seed=seed,
-                        randomize_seed=randomize_seed,
+                        id_image="",
+                        seed=randomize_seed,
                         width=width,
                         height=height,
-                        guidance_scale=guidance_scale,
-                        num_inference_steps=num_inference_steps,
+                        guidance=guidance_scale,
+                        num_steps=num_inference_steps,
                         api_name=self._api_name,
                     )
                     break
             except (
                 AppError,
-                ConnectionError,
-                ConnectError,
+                RequestsConnectionError,
                 ConnectTimeout,
                 httpxConnectTimeout,
                 ReadTimeout,
@@ -167,7 +159,8 @@ class PulidFlux:
                         )
                     else:
                         logger.warning(
-                            f"Quota exceeded error message does not contain waiting time: {error_message}"
+                            "Quota exceeded error message does not contain waiting time: "
+                            f"{error_message}"
                         )
                 else:
                     logger.error(
@@ -177,20 +170,29 @@ class PulidFlux:
                 if i == retries - 1:
                     if recommended_waiting_time_seconds is not None:
                         raise WaitAndRetryError(
-                            message=f"Failed to generate image after {retries} retries. Wait for {recommended_waiting_time_str}",
+                            message=(
+                                f"Failed to generate image after {retries} retries. "
+                                f"Wait for {recommended_waiting_time_str}"
+                            ),
                             suggested_wait_time=recommended_waiting_time_seconds
                             or 60 * 60,
-                        )
+                        ) from e
                     else:
                         raise WaitAndRetryError(
                             message="Failed to generate image with unknown errors",
                             suggested_wait_time=60 * 60,
-                        )
+                        ) from e
 
                 # If the proxy is activated, renew the proxy
                 elif isinstance(self.proxy, ProxySpinner):
-                    self.proxy.renew_proxy()
-                    self._client = self.get_new_client(retries=1)
+                    # THOUGHTS: Maybe we have to put a loop to try to get
+                    # a new client with a working proxy
+                    while self.proxy.renew_proxy():
+                        try:
+                            self._client = self.get_new_client()
+                            break
+                        except Exception as e:
+                            continue
 
         shutil.copy(image_path, output_path)
 
@@ -202,7 +204,10 @@ class PulidFlux:
 
 if __name__ == "__main__":
     pulid_flux = PulidFlux()
-    prompt = "A sexy blonde girl with blue eyes in Lyon showing a sex position and showing her pussy superrealistic"
-    output_path = "./output.jpg"
-    pulid_flux.generate_image(prompt, output_path, width=1080, height=1080)
-    print(f"Image saved to {output_path}")
+    TEST_PROMPT = (
+        "A sexy blonde girl with blue eyes in Lyon showing a sex position and "
+        "showing her pussy superrealistic"
+    )
+    TEST_OUTPUT_PATH = "./output.jpg"
+    pulid_flux.generate_image(TEST_PROMPT, TEST_OUTPUT_PATH, width=1080, height=1080)
+    print(f"Image saved to {TEST_OUTPUT_PATH}")
