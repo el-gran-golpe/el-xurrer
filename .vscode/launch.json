@@ -1,0 +1,55 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "pulid_flux",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/generation_tools/image_generator/pulid_flux.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/../proxyspinner"
+            }
+        },
+        {
+            "name": "flux",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/generation_tools/image_generator/flux.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/../proxyspinner"
+            }
+        },
+        {
+            "name": "main_meta_typer help",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/mains/main_meta_typer.py",
+            "args": ["--help"],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/../proxyspinner"
+            }
+        },
+        {
+            "name": "main_meta_typer all laura vigne",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/mains/main_meta_typer.py",
+            "args": ["execute-pipeline", "-n", "laura_vigne",],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/../proxyspinner"
+            }
+        }
+    ]
+}
