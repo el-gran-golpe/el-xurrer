@@ -26,16 +26,7 @@ from generation_tools.image_generator.constants import (
 )
 from utils.exceptions import WaitAndRetryError
 
-ALTERNATIVE_FLUX_DEV_SPACE = (
-    "FilipeR/FLUX.1-dev-UI"  #'multimodalart/FLUX.1-dev-live-previews'
-)
 ORIGINAL_FLUX_DEV_SPACE = "black-forest-labs/FLUX.1-dev"
-
-# Switch the spaces to work with the alternative space first
-ALTERNATIVE_FLUX_DEV_SPACE, ORIGINAL_FLUX_DEV_SPACE = (
-    ORIGINAL_FLUX_DEV_SPACE,
-    ALTERNATIVE_FLUX_DEV_SPACE,
-)
 
 
 class Flux:
@@ -88,14 +79,12 @@ class Flux:
                 httpxRemoteProtocolError,
             ) as e:
                 reason = e.args[0] if hasattr(e, "args") and len(e.args) > 0 else None
-                if (
-                    reason in SPACE_IS_DOWN_ERRORS
-                    or isinstance(e, RepositoryNotFoundError)
-                ) and self._src_model != ALTERNATIVE_FLUX_DEV_SPACE:
+                if reason in SPACE_IS_DOWN_ERRORS or isinstance(
+                    e, RepositoryNotFoundError
+                ):
                     logger.error(
                         f"Error creating client: {e}. Space is down. Retry {retry + 1}/3"
                     )
-                    self._src_model = ALTERNATIVE_FLUX_DEV_SPACE
                     client = self.get_new_client(retries=1)
                     break
                 else:
