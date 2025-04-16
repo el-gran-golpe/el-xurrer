@@ -97,7 +97,7 @@ class PublicationsGenerator(BaseMain):
                 image_path = os.path.join(output_folder, f"{post_slug}_{idx}.png")
 
                 if not os.path.isfile(image_path):
-                    print(
+                    logger.info(
                         f"Generating image for ID {post_slug}_{idx} with description '{image_description}'"
                     )
 
@@ -110,7 +110,6 @@ class PublicationsGenerator(BaseMain):
                         output_path=image_path,
                         width=1080,
                         height=1080,
-                        retries=2,
                     )
                     assert os.path.isfile(image_path), (
                         f"Image file {image_path} was not generated"

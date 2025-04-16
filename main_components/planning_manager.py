@@ -1,6 +1,7 @@
 import os
 import json
-from typing import LiteralString, Union
+from typing import Union
+from typing_extensions import LiteralString
 
 from main_components.base_main import BaseMain
 from main_components.constants import Platform

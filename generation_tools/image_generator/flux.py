@@ -1,35 +1,49 @@
-import shutil
-from concurrent.futures import CancelledError
-from typing import Optional
-
-from gradio_client import Client
 import os
 import re
-from httpx import ReadTimeout, ConnectError, ReadError
-from huggingface_hub.utils import RepositoryNotFoundError
-from loguru import logger
+import shutil
+from concurrent.futures import CancelledError
 from contextlib import nullcontext
-from requests.exceptions import ConnectionError, ProxyError, ConnectTimeout
+from typing import Optional, Tuple
+
+from gradio_client import Client
+from gradio_client.exceptions import AppError
 from httpx import (
     ConnectTimeout as httpxConnectTimeout,
     ProxyError as httpxProxyError,
-    ConnectError as httpxConnectError,
+    ReadError,
+    ReadTimeout,
     RemoteProtocolError as httpxRemoteProtocolError,
 )
-from gradio_client.exceptions import AppError
-
-from proxy_spinner import ProxySpinner
+from huggingface_hub.utils import RepositoryNotFoundError
+from loguru import logger
+from requests.exceptions import ConnectionError, ConnectTimeout, ProxyError
 
 from generation_tools.image_generator.constants import (
     SPACE_IS_DOWN_ERRORS,
     QUOTA_EXCEEDED_ERRORS,
 )
+from proxy_spinner import ProxySpinner
 from utils.exceptions import WaitAndRetryError
 
 ORIGINAL_FLUX_DEV_SPACE = "black-forest-labs/FLUX.1-dev"
 
+# Group common exceptions for cleaner error handling
+CONNECTION_EXCEPTIONS = (
+    ReadTimeout,
+    ProxyError,
+    ConnectionError,
+    ConnectTimeout,
+    httpxConnectTimeout,
+    CancelledError,
+    ReadError,
+    httpxProxyError,
+    httpxRemoteProtocolError,
+)
+
 
 class Flux:
+    """Client for the FLUX image generation API with proxy handling and retry logic."""
+
     def __init__(
         self,
         src_model: str = ORIGINAL_FLUX_DEV_SPACE,
@@ -37,79 +51,76 @@ class Flux:
         api_name: str = "/infer",
         load_on_demand: bool = False,
     ):
+        """Initialize Flux client."""
         self._src_model = src_model
         self._api_name = api_name
 
-        if use_proxy:
-            self.proxy = ProxySpinner(proxy=None)
-        else:
-            self.proxy = nullcontext()
-            self.proxy.__setattr__("renew_proxy", lambda: None)
+        # Setup proxy context
+        self.proxy = ProxySpinner(proxy=None) if use_proxy else nullcontext()
+        if not use_proxy:
+            self.proxy.__setattr__("renew_proxy", lambda **kwargs: None)
 
-        if load_on_demand:
-            self._client = None
-        else:
-            self._client = self.get_new_client(retries=1)
+        # Initialize client (lazily if requested)
+        self._client = None if load_on_demand else self.get_new_client(retries=1)
 
     @property
     def client(self):
+        """Lazy-loaded client getter."""
         if self._client is None:
             self._client = self.get_new_client(retries=1)
         return self._client
 
     def get_new_client(self, retries: int = 3):
-        suggested_wait_time = None
-        # Create a custom session with the proxy
+        """Create a new client with retry logic."""
         for retry in range(retries):
             try:
                 with self.proxy:
-                    client = Client(src=self._src_model)
-                break
-            except (
-                ReadTimeout,
-                ProxyError,
-                ConnectionError,
-                ConnectTimeout,
-                httpxConnectTimeout,
-                CancelledError,
-                ReadError,
-                httpxConnectError,
-                httpxProxyError,
-                RepositoryNotFoundError,
-                httpxRemoteProtocolError,
-            ) as e:
-                reason = e.args[0] if hasattr(e, "args") and len(e.args) > 0 else None
-                if reason in SPACE_IS_DOWN_ERRORS or isinstance(
+                    return Client(src=self._src_model)
+            except CONNECTION_EXCEPTIONS as e:
+                error_msg = str(e.args[0] if hasattr(e, "args") and e.args else e)
+
+                # Handle special case: space is down
+                if error_msg in SPACE_IS_DOWN_ERRORS or isinstance(
                     e, RepositoryNotFoundError
                 ):
                     logger.error(
-                        f"Error creating client: {e}. Space is down. Retry {retry + 1}/3"
+                        f"Error creating client: {e}. Space is down. Retry {retry + 1}/{retries}"
                     )
-                    client = self.get_new_client(retries=1)
-                    break
-                else:
-                    logger.error(f"Error creating client: {e}. Retry {retry + 1}/3")
-                    self.proxy.renew_proxy()
-        else:
-            raise WaitAndRetryError(
-                message=f"Failed to create client after {retries} retries",
-                suggested_wait_time=suggested_wait_time or 60 * 60,
-            )
-        return client
+                    return self.get_new_client(retries=1)
+
+                logger.error(f"Error creating client: {e}. Retry {retry + 1}/{retries}")
+                self.proxy.renew_proxy()
+
+        # All retries failed
+        raise WaitAndRetryError(
+            message=f"Failed to create client after {retries} retries",
+            suggested_wait_time=60 * 60,  # Default 1 hour wait
+        )
+
+    def _extract_wait_time(self, error_msg: str) -> Tuple[Optional[int], Optional[str]]:
+        """Extract waiting time from quota exceeded error message."""
+        match = re.search(r"\d+:\d+:\d+", error_msg)
+        if not match:
+            return None, None
+
+        time_str = match.group()
+        hours, minutes, seconds = map(int, time_str.split(":"))
+        total_seconds = hours * 3600 + minutes * 60 + seconds
+        return total_seconds, time_str
 
     def generate_image(
         self,
-        prompt,
+        prompt: str,
         output_path: str,
         seed: Optional[int] = None,
-        width=512,
-        height=512,
-        guidance_scale=3.5,
-        num_inference_steps=25,
+        width: int = 512,
+        height: int = 512,
+        guidance_scale: float = 3.5,
+        num_inference_steps: int = 25,
         retries: int = 3,
-    ):
-        assert isinstance(prompt, str), "Prompt must be a string"
-        assert seed is None or isinstance(seed, int), "Seed must be an integer or None"
+    ) -> bool:
+        """Generate an image using FLUX."""
+        # Validate parameters
         assert 0 < width <= 2048, "Width must be between 0 and 2048"
         assert 0 < height <= 2048, "Height must be between 0 and 2048"
         assert 0 < guidance_scale <= 10, "Guidance scale must be between 0 and 10"
@@ -118,11 +129,10 @@ class Flux:
         )
         assert 0 < retries <= 10, "Number of retries must be between 0 and 10"
 
-        recommended_waiting_time_seconds, recommended_waiting_time_str = None, None
-
+        wait_time_seconds, wait_time_str = None, None
         randomize_seed = seed is None
 
-        for i in range(retries):
+        for attempt in range(retries):
             try:
                 with self.proxy:
                     image_path, seed = self.client.predict(
@@ -135,75 +145,45 @@ class Flux:
                         num_inference_steps=num_inference_steps,
                         api_name=self._api_name,
                     )
-                    break
-            except (
-                AppError,
-                ConnectionError,
-                ConnectError,
-                ConnectTimeout,
-                httpxConnectTimeout,
-                ReadTimeout,
-                httpxProxyError,
-                httpxConnectError,
-                CancelledError,
-                ReadError,
-                httpxRemoteProtocolError,
-            ) as e:
-                error_message = (
-                    e.args[0] if hasattr(e, "args") and len(e.args) > 0 else str(e)
-                )
-                # If the error is quota exceeded, get the waiting time and trigger a exception
-                if any(
-                    error_message.startswith(error) for error in QUOTA_EXCEEDED_ERRORS
-                ):
-                    logger.error(f"Quota exceeded: {e}. Retry {i + 1}/{retries}")
-                    # Get the waiting time like 1:35:06 at the end of the message
-                    waiting_time_re = re.search(r"\d+:\d+:\d+", error_message)
-                    if waiting_time_re:
-                        waiting_time = waiting_time_re.group()
-                        hours, minutes, seconds = map(int, waiting_time.split(":"))
-                        recommended_waiting_time_str = waiting_time
-                        recommended_waiting_time_seconds = (
-                            hours * 60 * 60 + minutes * 60 + seconds
-                        )
-                    else:
-                        logger.warning(
-                            f"Quota exceeded error message does not contain waiting time: {error_message}"
-                        )
+                    # Success - copy output and clean up
+                    shutil.copy(image_path, output_path)
+                    os.remove(image_path)
+                    return True
+
+            except (AppError, *CONNECTION_EXCEPTIONS) as e:
+                error_msg = str(e.args[0] if hasattr(e, "args") and e.args else e)
+
+                # Check if quota exceeded
+                if any(error_msg.startswith(err) for err in QUOTA_EXCEEDED_ERRORS):
+                    logger.error(f"Quota exceeded: {e}. Retry {attempt + 1}/{retries}")
+                    wait_time_seconds, wait_time_str = self._extract_wait_time(
+                        error_msg
+                    )
                 else:
                     logger.error(
-                        f"Error generating image: {e}. Retry {i + 1}/{retries}"
+                        f"Error generating image: {e}. Retry {attempt + 1}/{retries}"
                     )
 
-                if i == retries - 1:
-                    if recommended_waiting_time_seconds is not None:
-                        raise WaitAndRetryError(
-                            message=f"Failed to generate image after {retries} retries. Wait for {recommended_waiting_time_str}",
-                            suggested_wait_time=recommended_waiting_time_seconds
-                            or 60 * 60,
-                        )
-                    else:
-                        raise WaitAndRetryError(
-                            message="Failed to generate image with unknown errors",
-                            suggested_wait_time=60 * 60,
-                        )
+                # Handle last retry failure
+                if attempt == retries - 1:
+                    message = f"Failed to generate image after {retries} retries"
+                    if wait_time_str:
+                        message += f". Wait for {wait_time_str}"
+                    raise WaitAndRetryError(
+                        message=message,
+                        suggested_wait_time=wait_time_seconds or 60 * 60,
+                    )
 
-                # If the proxy is activated, renew the proxy
-                elif isinstance(self.proxy, ProxySpinner):
-                    self.proxy.renew_proxy()
+                # For non-final retries, renew proxy and client
+                if isinstance(self.proxy, ProxySpinner):
+                    self.proxy.renew_proxy(verbose=True)
                     self._client = self.get_new_client(retries=1)
-
-        shutil.copy(image_path, output_path)
-
-        # Remove the image from the original temporary folder
-        os.remove(image_path)
-
         return True
 
 
 if __name__ == "__main__":
-    flux = Flux()
-    prompt = "A sexy blonde girl with blue eyes in Lyon showing a sex position and showing her pussy superrealistic"
+    flux = Flux(use_proxy=True)
+    prompt = "A sexy blonde girl with blue eyes showing a sex position and showing her pussy superrealistic"
     output_path = "./output.jpg"
     flux.generate_image(prompt, output_path, width=1080, height=1080)
     print(f"Image saved to {output_path}")
