@@ -3,6 +3,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 
+from loguru import logger
 from main_components.base_main import BaseMain
 from main_components.constants import Platform
 from utils.exceptions import WaitAndRetryError
@@ -104,29 +105,17 @@ class PublicationsGenerator(BaseMain):
                     image_generator = self._get_image_generator()
 
                     # Generate the image
-                    for retrial in range(3):  # Retry up to 3 times
-                        try:
-                            image_generator.generate_image(
-                                prompt=image_description,
-                                output_path=image_path,
-                                width=1080,
-                                height=1080,
-                                retries=2,
-                            )
-                            break
-                        except Exception as e:
-                            if retrial == 2:  # Last attempt failed
-                                print(f"Failed to generate image after 3 attempts: {e}")
-                                raise
-                            print(
-                                f"Error generating image (attempt {retrial + 1}/3): {e}"
-                            )
-                            sleep(5)
-
+                    image_generator.generate_image(
+                        prompt=image_description,
+                        output_path=image_path,
+                        width=1080,
+                        height=1080,
+                        retries=2,
+                    )
                     assert os.path.isfile(image_path), (
                         f"Image file {image_path} was not generated"
                     )
-                    print(f"\033[32mImage generated and saved at {image_path}\033[0m")
+                    logger.success(f"Image generated and saved at {image_path}")
 
     def _generate_fanvue_images(self, publication_content, output_folder):
         """Generate images for Fanvue platform."""
