@@ -34,3 +34,5 @@ instagram_profiles/laura_vigne/
 
 .qodo
 *.code-workspace
+.vscode/extensions.json
+.vscode/settings.json

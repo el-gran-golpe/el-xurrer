@@ -29,6 +29,8 @@ cloudscraper
 requests
 typer
 pydantic
+httpx[socks]
+python-socks[asyncio]
 
 
 
