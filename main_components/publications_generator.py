@@ -4,11 +4,12 @@ from slugify import slugify
 from tqdm import tqdm
 
 from loguru import logger
+
+from generation_tools.image_generator.comfy_local import ComfyLocal
 from main_components.base_main import BaseMain
 from main_components.constants import Platform
 from utils.exceptions import WaitAndRetryError
 from time import sleep
-from generation_tools.image_generator.flux import Flux
 
 
 class PublicationsGenerator(BaseMain):
@@ -43,7 +44,7 @@ class PublicationsGenerator(BaseMain):
     def _get_image_generator(self):
         """Get or initialize the image generator."""
         if self.image_generator is None:
-            self.image_generator = Flux(load_on_demand=True)
+            self.image_generator = ComfyLocal()
         return self.image_generator
 
     def create_publication_directories(
