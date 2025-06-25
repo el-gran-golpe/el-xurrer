@@ -41,6 +41,10 @@ class PublicationsGenerator(BaseMain):
         # Initialize image generator (lazy loading)
         self.image_generator = None
 
+    # --------------------------------------------------------------------------
+    # Directory and File Creation
+    # --------------------------------------------------------------------------
+
     def _get_image_generator(self):
         """Get or initialize the image generator."""
         if self.image_generator is None:
@@ -76,7 +80,9 @@ class PublicationsGenerator(BaseMain):
 
         return output_folder
 
-    # TODO: put comment separator
+    # --------------------------------------------------------------------------
+    # Image Generation
+    # --------------------------------------------------------------------------
 
     def generate_images(self, publication_content, output_folder):
         """Generate images for publications based on platform."""
@@ -127,8 +133,7 @@ class PublicationsGenerator(BaseMain):
         self, profile_name, planning_file_path, output_folder
     ):
         """Generate publications for a specific profile based on planning data."""
-        # Print profile name with colors
-        print(f"\033[1;36mProcessing profile: \033[1;33m{profile_name}\033[0m")
+        logger.info(f"<cyan>Processing profile: <yellow>{profile_name}</yellow></cyan>")
 
         # Load the planning data
         with open(planning_file_path, "r", encoding="utf-8") as file:
@@ -197,6 +202,10 @@ class PublicationsGenerator(BaseMain):
                                 desc=f"Waiting {hours}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}",
                             ):
                                 sleep(sleep_time / 100)
+
+    # --------------------------------------------------------------------------
+    # The main generation method used by the CLI
+    # --------------------------------------------------------------------------
 
     def generate(self):
         """Main method to generate publications."""
