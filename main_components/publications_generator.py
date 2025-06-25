@@ -19,27 +19,17 @@ class PublicationsGenerator(BaseMain):
         self,
         platform_name,
         template_profiles,
+        image_generator_tool,
         llm_module_path=None,
         llm_class_name=None,
         llm_method_name=None,
     ):
-        """
-        Initialize the publications generator.
-
-        Args:
-            platform_name: Name of the platform (meta, fanvue, etc.)
-            llm_module_path: (Optional) Path to the LLM module
-            llm_class_name: (Optional) Name of the LLM class
-            llm_method_name: (Optional) Name of the generation method
-        """
         super().__init__(platform_name)
         self.template_profiles = template_profiles
         self.llm_module_path = llm_module_path
+        self.image_generator_tool = image_generator_tool
         self.llm_class_name = llm_class_name
         self.llm_method_name = llm_method_name
-
-        # Initialize image generator (lazy loading)
-        self.image_generator = None
 
     # --------------------------------------------------------------------------
     # Directory and File Creation
@@ -51,7 +41,7 @@ class PublicationsGenerator(BaseMain):
             self.image_generator = ComfyLocal()
         return self.image_generator
 
-    def create_publication_directories(
+    def _create_publication_directories(
         self, profile_name, json_data_planning, output_folder
     ):
         """Create directory structure for publications."""
@@ -84,7 +74,7 @@ class PublicationsGenerator(BaseMain):
     # Image Generation
     # --------------------------------------------------------------------------
 
-    def generate_images(self, publication_content, output_folder):
+    def _generate_images(self, publication_content, output_folder):
         """Generate images for publications based on platform."""
         if self.platform_name == Platform.META:
             self._generate_meta_images(publication_content, output_folder)
@@ -108,7 +98,7 @@ class PublicationsGenerator(BaseMain):
                         f"Generating image for ID {post_slug}_{idx} with description '{image_description}'"
                     )
 
-                    # Get or initialize the image generator
+                    # Get or initialize the image generator!!!
                     image_generator = self._get_image_generator()
 
                     # Generate the image
@@ -140,7 +130,7 @@ class PublicationsGenerator(BaseMain):
             json_data_planning = json.load(file)
 
         # Create directory structure
-        self.create_publication_directories(
+        self._create_publication_directories(
             profile_name, json_data_planning, output_folder
         )
 
@@ -182,10 +172,11 @@ class PublicationsGenerator(BaseMain):
                         )
 
                     # Generate images with retry mechanism
+                    # TODO: I think we can get rid of this retry mechanism
                     for retrial in range(25):
                         try:
                             # Directly call our integrated image generation method
-                            self.generate_images(
+                            self._generate_images(
                                 publication_content=publication_content,
                                 output_folder=day_folder,
                             )

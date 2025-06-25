@@ -22,7 +22,6 @@ app = typer.Typer()
 profile_manager = ProfileManager(
     pathlib.Path(__file__).resolve().parent.parent / "resources"
 )
-
 ProfileIdentifier = int
 
 
@@ -126,9 +125,11 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
+    # THOUGHTS: Should pass this ComfyLocal as a parameter in the CLI?
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
+        image_generator_tool="ComfyLocal",
     )
     generator.generate()
 
