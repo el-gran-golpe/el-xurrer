@@ -6,7 +6,7 @@ sentencepiece
 pillow==9.5.0
 tqdm
 openai-whisper
-wave
+#wave
 pytorch-lightning
 pedalboard
 pesq

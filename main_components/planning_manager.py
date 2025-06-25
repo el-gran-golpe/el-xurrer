@@ -1,6 +1,7 @@
 import os
 import json
-from typing import Union
+from pathlib import Path
+from typing import Union, Any
 from typing_extensions import LiteralString
 
 from main_components.base_main import BaseMain
@@ -13,7 +14,6 @@ class PlanningManager(BaseMain):
 
     def __init__(
         self,
-        # planning_template_folder: str,
         template_profiles: list[Profile],
         platform_name: Platform,
         llm_module_path: str,
@@ -25,7 +25,6 @@ class PlanningManager(BaseMain):
         Initialize the planning manager.
 
         Args:
-            planning_template_folder: Path to the folder containing planning templates
             platform_name: Name of the platform (instagram, fanvue, etc.)
             llm_module_path: Path to the LLM module (e.g., "llm.instagram.instagram_llm")
             llm_class_name: Name of the LLM class (e.g., "InstagramLLM")
@@ -33,7 +32,6 @@ class PlanningManager(BaseMain):
             use_initial_conditions: Whether to use initial_conditions.md files (default: True)
         """
         super().__init__(platform_name)
-        # self.planning_template_folder = planning_template_folder
         self.template_profiles = template_profiles
         self.llm_module_path = llm_module_path
         self.llm_class_name = llm_class_name
@@ -69,11 +67,15 @@ class PlanningManager(BaseMain):
         """Dynamically import and create an instance of the specified LLM class."""
         return self.load_dynamic_class(self.llm_module_path, self.llm_class_name)
 
-    def generate_planning_with_llm(self, template_path, previous_storyline):
-        """Generate planning content using the configured LLM."""
+    def generate_planning_with_llm(
+        self, template_path: "Path", previous_storyline: str
+    ) -> dict[str, Any]:
+        """Generate planning content using the configured/particular LLM class."""
+        # Here it is literally calling a class itself (fanvue_llm or meta_llm)
         llm = self._get_llm_instance()
+        # And here is running a method of that class (generate_fanvue_planning or generate_meta_planning)
         llm_method = getattr(llm, self.llm_method_name)
-
+        # We return the result of the LLM method call
         return llm_method(
             prompt_template_path=template_path, previous_storyline=previous_storyline
         )
@@ -112,7 +114,6 @@ class PlanningManager(BaseMain):
                     planning = self.generate_planning_with_llm(
                         inputs_path.joinpath(profile.name + ".json"), storyline
                     )
-
                     # Save planning
                     output_filename = "".join(
                         [word[0] for word in profile.name.split("_")]

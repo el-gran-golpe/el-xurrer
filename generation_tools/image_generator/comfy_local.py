@@ -144,7 +144,7 @@ class ComfyLocal:
     def __init__(
         self,
         server: str = "127.0.0.1:8188",
-        workflow_path: str = "test_workflow.json",
+        workflow_path: str = r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\generation_tools\image_generator\test_workflow.json",
         use_proxy: bool = False,
         api_name: str = "",  # Not used, for compatibility with Flux
         load_on_demand: bool = False,  # Not used, for compatibility with Flux
@@ -254,9 +254,9 @@ if __name__ == "__main__":
     # Test the functional interface
     generate_image(
         server="127.0.0.1:8188",
-        workflow_path="test_workflow.json",  # your JSON
-        prompt_text="portrait of a neon cyber cat",
-        seed=42,
+        workflow_path="c:/Users/Usuario/source/repos/Shared with Haru/el-xurrer/generation_tools/image_generator/test_workflow.json",  # your JSON
+        prompt_text="Laura Vigne is a captivating 22-year-old AI influencer with fair, luminous skin, striking blue almond-shaped eyes, high cheekbones, a delicate nose, and full pink lips. Her soft, wavy blonde hair frames her refined features, giving her a timeless and approachable charm. A close-up shot of Siena’s hands coding furiously on a neon-backlit keyboard. Bright green lines of code blur on the monitor in the foreground, a jumble of text that hints at something overwhelming but vital. The soft clinking of keys contrasts sharply with the palpable tension surrounding her.",
+        seed=443,
         out_file="demo.png",
     )
 
