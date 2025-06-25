@@ -38,6 +38,10 @@ def list_profiles():
         logger.info(f"{i}: {profile.name}")
 
 
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+
+
 @app.command()
 def plan(
     profiles_index: list[ProfileIdentifier] = typer.Option(
@@ -94,6 +98,10 @@ def plan(
     planner.plan()
 
 
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+
+
 @app.command()
 def generate_publications(
     profiles_index: list[ProfileIdentifier] = typer.Option(
@@ -123,6 +131,10 @@ def generate_publications(
         platform_name=Platform.FANVUE,
     )
     generator.generate()
+
+
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 
 @app.command()
@@ -157,6 +169,10 @@ def schedule_posts(
         api_class_name="GraphAPI",
     )
     scheduler.upload()
+
+
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 
 @app.command(
