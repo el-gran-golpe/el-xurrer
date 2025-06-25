@@ -120,7 +120,7 @@ def generate_publications(
 
     generator = PublicationsGenerator(
         template_profiles=profiles,
-        platform_name=Platform.META,
+        platform_name=Platform.FANVUE,
     )
     generator.generate()
 
@@ -196,7 +196,8 @@ if __name__ == "__main__":
     profile_manager.load_profiles()
 
     # To debug, call the function directly with your desired parameters
-    plan(profile_names="laura_vigne", profiles_index=[], overwrite_outputs=False)
+    # plan(profile_names="laura_vigne", profiles_index=[], overwrite_outputs=False)
+    generate_publications(profile_names="laura_vigne", profiles_index=[])
 
     # To run the full command-line app, comment out the direct call above
     # and uncomment the line below.
