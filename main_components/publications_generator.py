@@ -112,6 +112,8 @@ class ImageGeneratorService:
 # -- Main Publications Generator ----------------------------------------------
 
 
+# TODO: I think this class is not using the BaseMain class properly, like
+# it's not using the `create_directory` method for example, nor any other methods
 class PublicationsGenerator(BaseMain):
     """Generates publications (directories, captions, images) from planning data."""
 
