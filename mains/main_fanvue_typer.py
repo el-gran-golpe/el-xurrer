@@ -13,6 +13,7 @@ from main_components.planning_manager import PlanningManager
 from main_components.profile import ProfileManager
 from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
+from generation_tools.image_generator.comfy_local import ComfyLocal
 
 # Configure Loguru
 logger.remove()
@@ -129,7 +130,7 @@ def generate_publications(
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
-        image_generator_tool="ComfyLocal",
+        image_generator_tool=ComfyLocal,  # I pass the class directly, not an instance
     )
     generator.generate()
 

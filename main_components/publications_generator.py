@@ -5,7 +5,6 @@ from tqdm import tqdm
 
 from loguru import logger
 
-from generation_tools.image_generator.comfy_local import ComfyLocal
 from main_components.base_main import BaseMain
 from main_components.constants import Platform
 from utils.exceptions import WaitAndRetryError
@@ -19,7 +18,7 @@ class PublicationsGenerator(BaseMain):
         self,
         platform_name,
         template_profiles,
-        image_generator_tool,
+        image_generator_tool,  # TODO: should we add typing here?
         llm_module_path=None,
         llm_class_name=None,
         llm_method_name=None,
@@ -30,16 +29,17 @@ class PublicationsGenerator(BaseMain):
         self.image_generator_tool = image_generator_tool
         self.llm_class_name = llm_class_name
         self.llm_method_name = llm_method_name
+        self.image_generator = None  # Will be initialized in _get_image_generator
 
     # --------------------------------------------------------------------------
     # Directory and File Creation
     # --------------------------------------------------------------------------
 
-    def _get_image_generator(self):
-        """Get or initialize the image generator."""
-        if self.image_generator is None:
-            self.image_generator = ComfyLocal()
-        return self.image_generator
+    # def _get_image_generator(self):
+    #     """Get or initialize the image generator."""
+    #     if self.image_generator is None:
+    #         self.image_generator = self.image_generator_tool()
+    #     return self.image_generator
 
     def _create_publication_directories(
         self, profile_name, json_data_planning, output_folder
@@ -74,6 +74,7 @@ class PublicationsGenerator(BaseMain):
     # Image Generation
     # --------------------------------------------------------------------------
 
+    # TODO: I think _generate_meta_images and _generate_fanvue_images can be merged
     def _generate_images(self, publication_content, output_folder):
         """Generate images for publications based on platform."""
         if self.platform_name == Platform.META:
@@ -99,7 +100,8 @@ class PublicationsGenerator(BaseMain):
                     )
 
                     # Get or initialize the image generator!!!
-                    image_generator = self._get_image_generator()
+                    image_generator = self.image_generator_tool()
+                    # image_generator = self._get_image_generator()
 
                     # Generate the image
                     image_generator.generate_image(
