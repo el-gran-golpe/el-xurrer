@@ -1,222 +1,189 @@
-import os
+from pathlib import Path
 import json
 from slugify import slugify
 from tqdm import tqdm
-
 from loguru import logger
+from typing import List, Dict, Callable, Optional, Any
+from dataclasses import dataclass
 
 from main_components.base_main import BaseMain
 from main_components.constants import Platform
-from utils.exceptions import WaitAndRetryError
-from time import sleep
+
+# -- Data Models --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ImageSpec:
+    description: str
+    index: int
+
+
+@dataclass(frozen=True)
+class PublicationContent:
+    title: str
+    slug: str
+    caption: str
+    hashtags: List[str]
+    upload_time: str
+    images: List[ImageSpec]
+
+
+# -- Directory Management -----------------------------------------------------
+
+
+class DirectoryManager:
+    """Handles creation of publication directory structure and files."""
+
+    def __init__(self, base_path: Path):
+        self.base_path = base_path
+
+    def create_structure(self, planning: Dict[str, List[Dict[str, Any]]]) -> None:
+        self.base_path.mkdir(parents=True, exist_ok=True)
+        for week_key, days in planning.items():
+            week_folder = self.base_path / week_key
+            week_folder.mkdir(exist_ok=True)
+
+            for day_data in days:
+                day_folder = week_folder / f"day_{day_data['day']}"
+                day_folder.mkdir(exist_ok=True)
+
+                # Combine caption and hashtags into single text
+                captions = []
+                for post in day_data.get("posts", []):
+                    caption_text = post.get("caption", "").strip()
+                    hashtags = post.get("hashtags", [])
+                    if hashtags:
+                        caption_text = f"{caption_text}\n{' '.join(hashtags)}"
+                    captions.append(caption_text)
+                (day_folder / "captions.txt").write_text(
+                    "\n\n".join(captions), encoding="utf-8"
+                )
+
+                upload_times = "\n".join(
+                    post.get("upload_time", "") for post in day_data.get("posts", [])
+                )
+                (day_folder / "upload_times.txt").write_text(
+                    upload_times, encoding="utf-8"
+                )
+
+
+# -- Image Generation Service ------------------------------------------------
+
+
+class ImageGeneratorService:
+    """Generates images for publications using a provided factory."""
+
+    def __init__(self, factory: Callable[[], Any]):
+        self._factory = factory
+        self._instance: Optional[Any] = None
+
+    def _get_generator(self) -> Any:
+        if self._instance is None:
+            self._instance = self._factory()
+        return self._instance
+
+    def generate_images(
+        self,
+        publications: List[PublicationContent],
+        output_dir: Path,
+    ) -> None:
+        generator = self._get_generator()
+        for pub in publications:
+            for spec in pub.images:
+                image_path = output_dir / f"{pub.slug}_{spec.index}.png"
+                if image_path.exists():
+                    logger.debug(f"Skipping existing image: {image_path}")
+                    continue
+                logger.info(f"Generating image '{image_path.name}' for '{pub.slug}'")
+                # Call the image generation class with prompt and save the result to disk
+                # Returns a boolean indicating success/failure - does not return the image itself
+                success: bool = generator.generate_image(
+                    prompt=spec.description,
+                    output_path=str(image_path),
+                    width=1080,
+                    height=1080,
+                )
+                # Note: The actual image file is created on disk at output_path if success is True
+                if not success or not image_path.exists():
+                    raise RuntimeError(f"Image generation failed for '{image_path}'")
+                logger.success(f"Image saved: {image_path}")
+
+
+# -- Main Publications Generator ----------------------------------------------
 
 
 class PublicationsGenerator(BaseMain):
-    """Universal publications generator for creating content across different platforms."""
+    """Generates publications (directories, captions, images) from planning data."""
 
     def __init__(
         self,
-        platform_name,
-        template_profiles,
-        image_generator_tool,  # TODO: should we add typing here?
-        llm_module_path=None,
-        llm_class_name=None,
-        llm_method_name=None,
+        platform_name: Platform,
+        template_profiles: List[Any],
+        image_generator_tool: Optional[Callable[[], Any]] = None,
     ):
         super().__init__(platform_name)
         self.template_profiles = template_profiles
-        self.llm_module_path = llm_module_path
-        self.image_generator_tool = image_generator_tool
-        self.llm_class_name = llm_class_name
-        self.llm_method_name = llm_method_name
-        self.image_generator = None  # Will be initialized in _get_image_generator
-
-    # --------------------------------------------------------------------------
-    # Directory and File Creation
-    # --------------------------------------------------------------------------
-
-    # def _get_image_generator(self):
-    #     """Get or initialize the image generator."""
-    #     if self.image_generator is None:
-    #         self.image_generator = self.image_generator_tool()
-    #     return self.image_generator
-
-    def _create_publication_directories(
-        self, profile_name, json_data_planning, output_folder
-    ):
-        """Create directory structure for publications."""
-        self.create_directory(output_folder)
-
-        # Create folders for each week and day
-        for week_key, week_data in json_data_planning.items():
-            week_folder = os.path.join(output_folder, week_key)
-            self.create_directory(week_folder)
-
-            for day_data in week_data:
-                day_folder = os.path.join(week_folder, f"day_{day_data['day']}")
-                self.create_directory(day_folder)
-
-                # Create captions.txt file
-                captions = "\n\n".join([pub["caption"] for pub in day_data["posts"]])
-                captions_file_path = os.path.join(day_folder, "captions.txt")
-                self.write_to_file(captions, captions_file_path)
-
-                # Create upload_times.txt file
-                upload_times = "\n".join(
-                    [pub["upload_time"] for pub in day_data["posts"]]
-                )
-                upload_times_file_path = os.path.join(day_folder, "upload_times.txt")
-                self.write_to_file(upload_times, upload_times_file_path)
-
-        return output_folder
-
-    # --------------------------------------------------------------------------
-    # Image Generation
-    # --------------------------------------------------------------------------
-
-    # TODO: I think _generate_meta_images and _generate_fanvue_images can be merged
-    def _generate_images(self, publication_content, output_folder):
-        """Generate images for publications based on platform."""
-        if self.platform_name == Platform.META:
-            self._generate_meta_images(publication_content, output_folder)
-        elif self.platform_name == Platform.FANVUE:
-            self._generate_fanvue_images(publication_content, output_folder)
-        else:
-            raise ValueError(f"Unsupported platform: {self.platform_name}")
-
-    def _generate_meta_images(
-        self, publication_content: list[dict], output_folder: str
-    ):
-        """Generate images for Meta platforms (Instagram/Facebook)."""
-        for item in publication_content:
-            post_slug = item["post_slug"]
-            for idx, image in enumerate(item["images"]):
-                image_description = image["image_description"]
-                image_path = os.path.join(output_folder, f"{post_slug}_{idx}.png")
-
-                if not os.path.isfile(image_path):
-                    logger.info(
-                        f"Generating image for ID {post_slug}_{idx} with description '{image_description}'"
-                    )
-
-                    # Get or initialize the image generator!!!
-                    image_generator = self.image_generator_tool()
-                    # image_generator = self._get_image_generator()
-
-                    # Generate the image
-                    image_generator.generate_image(
-                        prompt=image_description,
-                        output_path=image_path,
-                        width=1080,
-                        height=1080,
-                    )
-                    assert os.path.isfile(image_path), (
-                        f"Image file {image_path} was not generated"
-                    )
-                    logger.success(f"Image generated and saved at {image_path}")
-
-    def _generate_fanvue_images(self, publication_content, output_folder):
-        """Generate images for Fanvue platform."""
-        # Similar to _generate_meta_images but with Fanvue-specific customizations
-        # For now, we'll use the same implementation as Meta
-        self._generate_meta_images(publication_content, output_folder)
-
-    def generate_publications_from_planning(
-        self, profile_name, planning_file_path, output_folder
-    ):
-        """Generate publications for a specific profile based on planning data."""
-        logger.info(f"<cyan>Processing profile: <yellow>{profile_name}</yellow></cyan>")
-
-        # Load the planning data
-        with open(planning_file_path, "r", encoding="utf-8") as file:
-            json_data_planning = json.load(file)
-
-        # Create directory structure
-        self._create_publication_directories(
-            profile_name, json_data_planning, output_folder
+        self.image_service = (
+            ImageGeneratorService(image_generator_tool)
+            if image_generator_tool
+            else None
         )
 
-        # Generate publications for the planning data
-        for week, days in tqdm(json_data_planning.items(), desc="Processing weeks"):
-            week_folder = os.path.join(output_folder, week)
+    def _load_planning(self, planning_path: Path) -> Dict[str, List[Dict[str, Any]]]:
+        with planning_path.open(encoding="utf-8") as f:
+            return json.load(f)
 
-            for day_data in tqdm(days, desc=f"Processing days in {week}"):
-                day_number = day_data["day"]
-                day_folder = os.path.join(week_folder, f"day_{day_number}")
+    def _parse_day(self, day_data: Dict[str, Any]) -> List[PublicationContent]:
+        publications: List[PublicationContent] = []
+        for post in day_data.get("posts", []):
+            title = post.get("title", "")
+            slug = slugify(title) if title else f"publication_{day_data.get('day')}"
+            images = [
+                ImageSpec(image.get("image_description", ""), idx)
+                for idx, image in enumerate(post.get("images", []))
+            ]
+            publications.append(
+                PublicationContent(
+                    title=title,
+                    slug=slug,
+                    caption=post.get("caption", ""),
+                    hashtags=post.get("hashtags", []),
+                    upload_time=post.get("upload_time", ""),
+                    images=images,
+                )
+            )
+        return publications
 
-                for publication_data in day_data["posts"]:
-                    publication_title = publication_data.get("title", "")
-                    publication_slug = (
-                        slugify(publication_title)
-                        if publication_title
-                        else f"publication_{day_number}"
-                    )
-                    caption = publication_data.get("caption", "")
-                    hashtags = publication_data.get("hashtags", [])
-                    upload_time = publication_data.get("upload_time", "")
+    def generate_publications_from_planning(
+        self, profile_name: str, planning_file: str, output_folder: str
+    ) -> None:
+        logger.info(f"Processing profile: {profile_name}")
 
-                    # Prepare the publication content
-                    publication_content = [
-                        {
-                            "post_title": publication_title,
-                            "post_slug": publication_slug,
-                            "caption": caption,
-                            "hashtags": hashtags,
-                            "upload_time": upload_time,
-                            "images": [],
-                        }
-                    ]
+        planning = self._load_planning(Path(planning_file))
+        base_folder = Path(output_folder)
+        DirectoryManager(base_folder).create_structure(planning)
 
-                    # Add each image's description to the publication content
-                    for image in publication_data.get("images", []):
-                        publication_content[0]["images"].append(
-                            {"image_description": image.get("image_description", "")}
-                        )
+        for week, days in tqdm(planning.items(), desc="Weeks"):
+            week_folder = base_folder / week
+            for day_data in tqdm(days, desc=f"Days in {week}"):
+                day_folder = week_folder / f"day_{day_data['day']}"
+                publications = self._parse_day(day_data)
+                if self.image_service and publications:
+                    self.image_service.generate_images(publications, day_folder)
 
-                    # Generate images with retry mechanism
-                    # TODO: I think we can get rid of this retry mechanism
-                    for retrial in range(25):
-                        try:
-                            # Directly call our integrated image generation method
-                            self._generate_images(
-                                publication_content=publication_content,
-                                output_folder=day_folder,
-                            )
-                            break
-                        except WaitAndRetryError as e:
-                            sleep_time = e.suggested_wait_time
-                            hours, minutes, seconds = (
-                                sleep_time // 3600,
-                                (sleep_time // 60) % 60,
-                                sleep_time % 60,
-                            )
-                            for _ in tqdm(
-                                range(100),
-                                desc=f"Waiting {hours}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}",
-                            ):
-                                sleep(sleep_time / 100)
-
-    # --------------------------------------------------------------------------
-    # The main generation method used by the CLI
-    # --------------------------------------------------------------------------
-
-    def generate(self):
-        """Main method to generate publications."""
-
+    def generate(self) -> None:
         for profile in self.template_profiles:
-            # Define output folder path
-            planning_file_name = "".join(
-                [word[0] for word in profile.name.split("_")]
-            )  # THOUGHTS: This could be added in the Profile itself
-            planning_file_path = os.path.join(
-                profile.platform_info[self.platform_name].outputs_path,
-                planning_file_name + "_planning.json",
+            initials = "".join(part[0] for part in profile.name.split("_"))
+            planning_path = (
+                Path(profile.platform_info[self.platform_name].outputs_path)
+                / f"{initials}_planning.json"
             )
-
-            output_folder = os.path.join(
-                profile.platform_info[self.platform_name].outputs_path, "publications"
+            publications_folder = (
+                Path(profile.platform_info[self.platform_name].outputs_path)
+                / "publications"
             )
-
             self.generate_publications_from_planning(
-                profile.name, planning_file_path, output_folder
+                profile.name,
+                str(planning_path),
+                str(publications_folder),
             )

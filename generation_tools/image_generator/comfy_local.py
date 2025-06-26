@@ -36,14 +36,10 @@ import urllib.request
 import urllib.parse
 import websocket
 import logging
-from contextlib import nullcontext
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
-from loguru import logger
 
-from utils.exceptions import WaitAndRetryError
-
-__all__ = ["generate_image", "ComfyLocal"]
+# __all__ = ["generate_image", "ComfyLocal"]
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +86,7 @@ def generate_image(
     # naive: use first CLIPTextEncode + first KSampler we find
     for node in workflow.values():
         if node.get("class_type") == "CLIPTextEncode":
-            # THOUGHTS: In some models we have to take into account the negative prompt
+            # TODO: In some models we have to take into account the negative prompt
             node["inputs"]["text"] = prompt_text
             break
     for node in workflow.values():
@@ -133,121 +129,6 @@ def generate_image(
     logging.info("Image saved → %s", out_file)
 
 
-# ---------------------------------------------------------------------------
-# Class-based interface that follows the Flux API
-# ---------------------------------------------------------------------------
-
-
-class ComfyLocal:
-    """Client for the ComfyUI local image generation with Flux-compatible interface."""
-
-    def __init__(
-        self,
-        server: str = "127.0.0.1:8188",
-        workflow_path: str = r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\generation_tools\image_generator\test_workflow.json",
-        use_proxy: bool = False,
-        api_name: str = "",  # Not used, for compatibility with Flux
-        load_on_demand: bool = False,  # Not used, for compatibility with Flux
-    ):
-        """Initialize ComfyLocal client."""
-        self._server = server
-        self._workflow_path = workflow_path
-
-        # These are for compatibility with Flux interface but not used
-        self.proxy = nullcontext()
-        if not use_proxy:
-            self.proxy.__setattr__("renew_proxy", lambda **kwargs: None)
-
-    def get_new_client(self, retries: int = 3):
-        """
-        Compatibility method with Flux interface.
-        ComfyLocal doesn't use a client object, so this is a no-op.
-        """
-        return None
-
-    @property
-    def client(self):
-        """
-        Lazy-loaded client getter for compatibility with Flux interface.
-        ComfyLocal doesn't use a client object, so this returns None.
-        """
-        return None
-
-    def _extract_wait_time(self, error_msg: str) -> Tuple[Optional[int], Optional[str]]:
-        """
-        Extract waiting time from error message.
-        This is for compatibility with Flux interface.
-
-        Returns:
-            Tuple of (wait time in seconds, formatted time string)
-        """
-        import re
-
-        match = re.search(r"\d+:\d+:\d+", error_msg)
-        if not match:
-            return None, None
-
-        time_str = match.group()
-        hours, minutes, seconds = map(int, time_str.split(":"))
-        total_seconds = hours * 3600 + minutes * 60 + seconds
-        return total_seconds, time_str
-
-    def generate_image(
-        self,
-        prompt: str,
-        output_path: str,
-        seed: Optional[int] = None,
-        width: int = 512,  # Not used in ComfyLocal, for compatibility with Flux
-        height: int = 512,  # Not used in ComfyLocal, for compatibility with Flux
-        guidance_scale: float = 3.5,  # Not used in ComfyLocal, for compatibility with Flux
-        num_inference_steps: int = 25,  # Not used in ComfyLocal, for compatibility with Flux
-        retries: int = 3,
-    ) -> bool:
-        """Generate an image using ComfyUI local server."""
-        # Validate parameters
-        assert prompt, "Prompt must not be empty"
-        assert output_path, "Output path must not be empty"
-        assert 0 < retries <= 10, "Number of retries must be between 0 and 10"
-
-        # Use seed if provided, otherwise use 0 (ComfyUI will randomize)
-        actual_seed = seed if seed is not None else 0
-
-        for attempt in range(retries):
-            try:
-                with self.proxy:  # For compatibility with Flux interface
-                    # Use the functional implementation
-                    generate_image(
-                        server=self._server,
-                        workflow_path=self._workflow_path,
-                        prompt_text=prompt,
-                        seed=actual_seed,
-                        out_file=output_path,
-                    )
-                    return True
-
-            except Exception as e:
-                # Check for specific error types (for compatibility with Flux interface)
-                wait_time_seconds, wait_time_str = None, None
-
-                # Log the error
-                logger.error(
-                    f"Error generating image: {e}. Retry {attempt + 1}/{retries}"
-                )
-
-                # Handle last retry failure
-                if attempt == retries - 1:
-                    message = f"Failed to generate image after {retries} retries"
-                    if wait_time_str:
-                        message += f". Wait for {wait_time_str}"
-                    raise WaitAndRetryError(
-                        message=message,
-                        suggested_wait_time=wait_time_seconds
-                        or 60 * 60,  # Default 1 hour wait
-                    )
-
-        return True
-
-
 # ------------------ demo when run directly ----------------------------------------
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -261,9 +142,9 @@ if __name__ == "__main__":
     )
 
     # Test the class-based interface
-    comfy = ComfyLocal(server="127.0.0.1:8188", workflow_path="test_workflow.json")
-    comfy.generate_image(
-        prompt="portrait of a neon cyber cat with Flux interface",
-        output_path="demo_class.png",
-        seed=42,
-    )
+    # comfy = ComfyLocal(server="127.0.0.1:8188", workflow_path="test_workflow.json")
+    # comfy.generate_image(
+    #     prompt="portrait of a neon cyber cat with Flux interface",
+    #     output_path="demo_class.png",
+    #     seed=42,
+    # )
