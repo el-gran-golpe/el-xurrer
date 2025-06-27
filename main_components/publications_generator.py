@@ -3,7 +3,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 from loguru import logger
-from typing import List, Dict, Callable, Optional, Any
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
 from main_components.base_main import BaseMain
@@ -71,23 +71,17 @@ class DirectoryManager:
 
 
 class ImageGeneratorService:
-    """Generates images for publications using a provided factory."""
+    """Generates images for publications using a provided generator."""
 
-    def __init__(self, factory: Callable[[], Any]):
-        self._factory = factory
-        self._instance: Optional[Any] = None
-
-    def _get_generator(self) -> Any:
-        if self._instance is None:
-            self._instance = self._factory()
-        return self._instance
+    def __init__(self, generator: Any):
+        # TODO: Add type hint for generator if possible
+        self._generator = generator
 
     def generate_images(
         self,
         publications: List[PublicationContent],
         output_dir: Path,
     ) -> None:
-        generator = self._get_generator()
         for pub in publications:
             for spec in pub.images:
                 image_path = output_dir / f"{pub.slug}_{spec.index}.png"
@@ -95,15 +89,14 @@ class ImageGeneratorService:
                     logger.debug(f"Skipping existing image: {image_path}")
                     continue
                 logger.info(f"Generating image '{image_path.name}' for '{pub.slug}'")
-                # Call the image generation class with prompt and save the result to disk
-                # Returns a boolean indicating success/failure - does not return the image itself
-                success: bool = generator.generate_image(
+
+                success: bool = self._generator.generate_image(
                     prompt=spec.description,
                     output_path=str(image_path),
                     width=1080,
                     height=1080,
                 )
-                # Note: The actual image file is created on disk at output_path if success is True
+
                 if not success or not image_path.exists():
                     raise RuntimeError(f"Image generation failed for '{image_path}'")
                 logger.success(f"Image saved: {image_path}")
@@ -112,8 +105,6 @@ class ImageGeneratorService:
 # -- Main Publications Generator ----------------------------------------------
 
 
-# TODO: I think this class is not using the BaseMain class properly, like
-# it's not using the `create_directory` method for example, nor any other methods
 class PublicationsGenerator(BaseMain):
     """Generates publications (directories, captions, images) from planning data."""
 
@@ -121,7 +112,7 @@ class PublicationsGenerator(BaseMain):
         self,
         platform_name: Platform,
         template_profiles: List[Any],
-        image_generator_tool: Optional[Callable[[], Any]] = None,
+        image_generator_tool: Optional[Any] = None,
     ):
         super().__init__(platform_name)
         self.template_profiles = template_profiles

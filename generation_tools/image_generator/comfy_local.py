@@ -1,150 +1,180 @@
-"""A very small WebSocket helper to send a *workflow JSON* to ComfyUI,
-wait until execution finishes, then save the first resulting image.
-
-Follows official example semantics (queue_prompt + /view).
-
-Usage
------
-from comfylocal_ws_simple import generate_image
-
-generate_image(
-    server="127.0.0.1:8188",
-    workflow_path="workflow.json",   # the JSON you exported
-    prompt_text="a cute cat in space",  # replaces text in first CLIPTextEncode
-    seed=123,
-    out_file="cat.png",
-)
-
-Or use the class-based interface:
-
-from comfy_local import ComfyLocal
-
-comfy = ComfyLocal(server="127.0.0.1:8188", workflow_path="workflow.json")
-comfy.generate_image(
-    prompt="a cute cat in space",
-    output_path="cat.png",
-    seed=123
-)
-"""
-
-from __future__ import annotations
-
 import json
 import uuid
 import pathlib
 import urllib.request
 import urllib.parse
 import websocket
-import logging
-from typing import Any, Dict
+import random
+from typing import Any, Dict, Optional
+from loguru import logger
 
 
-# __all__ = ["generate_image", "ComfyLocal"]
+# -- HTTP Utilities -----------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# tiny HTTP helpers (urllib so we avoid extra deps)
-# ---------------------------------------------------------------------------
-
-
-def _http_post_json(url: str, payload: dict[str, Any]):
-    data = json.dumps(payload).encode()
+def _http_post_json(
+    url: str, payload: Dict[str, Any], timeout: int = 30
+) -> Dict[str, Any]:
+    """Send HTTP POST request with JSON payload."""
+    data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read())
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
-def _http_get_json(url: str):
-    with urllib.request.urlopen(url) as r:
-        return json.loads(r.read())
+def _http_get_json(url: str, timeout: int = 30) -> Dict[str, Any]:
+    """Send HTTP GET request and return JSON response."""
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
-def _http_get_bytes(url: str):
-    with urllib.request.urlopen(url) as r:
-        return r.read()
+def _http_get_bytes(url: str, timeout: int = 60) -> bytes:
+    """Send HTTP GET request and return raw bytes."""
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        return response.read()
 
 
-# ---------------------------------------------------------------------------
-# public convenience
-# ---------------------------------------------------------------------------
+# -- Class-based Interface ----------------------------------------------------
 
 
-def generate_image(
+class ComfyLocal:
+    """Class-based interface for ComfyUI local image generation."""
+
+    def __init__(
+        self, server: str = "127.0.0.1:8188", workflow_path: Optional[str] = None
+    ) -> None:
+        """Initialize ComfyLocal instance."""
+        if not server or not server.strip():
+            raise ValueError("Server address cannot be empty")
+
+        self.server = server.strip()
+        self.workflow_path = workflow_path
+
+    def generate_image(
+        self,
+        prompt: str,
+        output_path: str,
+        width: int = 1080,
+        height: int = 1080,
+        seed: Optional[int] = None,
+    ) -> bool:
+        """Generate image using ComfyUI."""
+        try:
+            if not prompt or not prompt.strip():
+                logger.error("Prompt cannot be empty")
+                return False
+
+            if not output_path or not output_path.strip():
+                logger.error("Output path cannot be empty")
+                return False
+
+            if seed is None:
+                seed = random.randint(0, 2**32 - 1)
+
+            # Create output directory if needed
+            output_file = pathlib.Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"Starting image generation for prompt: '{prompt[:50]}...'")
+
+            # Use the functional interface
+            _generate_image_internal(
+                server=self.server,
+                workflow_path=self.workflow_path,
+                prompt_text=prompt.strip(),
+                seed=seed,
+                out_file=output_path,
+            )
+
+            # Verify file was created
+            if not output_file.exists() or output_file.stat().st_size == 0:
+                logger.error(f"Image generation failed: {output_path}")
+                return False
+
+            logger.success(f"Image generated successfully: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Image generation failed: {e}")
+            return False
+
+
+# -- Functional Interface (your existing code, enhanced) ---------------------
+
+
+def _generate_image_internal(
     server: str,
-    workflow_path: str,
+    workflow_path: Optional[str],
     prompt_text: str,
     seed: int,
     out_file: str,
 ) -> None:
-    """Send *one* generation job and save the first PNG/JPG it produces."""
+    """Generate image using ComfyUI workflow."""
 
-    # 1. load and patch workflow dict ------------------------------------------------
+    if not workflow_path:
+        raise ValueError("Workflow path is required")
+
+    if not pathlib.Path(workflow_path).exists():
+        raise FileNotFoundError(f"Workflow file not found: {workflow_path}")
+
+    # Load and patch workflow
     workflow: Dict[str, Any] = json.loads(pathlib.Path(workflow_path).read_text())
 
-    # naive: use first CLIPTextEncode + first KSampler we find
+    # Patch prompt and seed
     for node in workflow.values():
         if node.get("class_type") == "CLIPTextEncode":
-            # TODO: In some models we have to take into account the negative prompt
             node["inputs"]["text"] = prompt_text
             break
+
     for node in workflow.values():
         if node.get("class_type") == "KSampler":
             node["inputs"]["seed"] = seed
             break
 
-    # 2. open websocket -------------------------------------------------------------
+    # WebSocket connection
     client_id = str(uuid.uuid4())
     ws = websocket.WebSocket()
-    ws.connect(f"ws://{server}/ws?clientId={client_id}")
 
-    # 3. queue prompt via HTTP ------------------------------------------------------
-    prompt_payload = {"prompt": workflow, "client_id": client_id}
-    rsp = _http_post_json(f"http://{server}/prompt", prompt_payload)
-    prompt_id = rsp["prompt_id"]
+    try:
+        ws.connect(f"ws://{server}/ws?clientId={client_id}", timeout=10)
 
-    # 4. wait for execution done ----------------------------------------------------
-    while True:
-        msg_raw = ws.recv()
-        if isinstance(msg_raw, bytes):  # previews we ignore
-            continue
-        msg = json.loads(msg_raw)
-        if msg.get("type") == "executing":
-            data = msg["data"]
-            if data["node"] is None and data["prompt_id"] == prompt_id:
-                break  # generation finished
+        # Queue prompt
+        prompt_payload = {"prompt": workflow, "client_id": client_id}
+        response = _http_post_json(f"http://{server}/prompt", prompt_payload)
+        prompt_id = response["prompt_id"]
 
-    ws.close()
+        logger.info(f"Queued prompt with ID: {prompt_id}")
 
-    # 5. fetch history + download first image ---------------------------------------
-    hist = _http_get_json(f"http://{server}/history/{prompt_id}")[prompt_id]
-    # find first image descriptor
-    img_info = next(iter(hist["outputs"].values()))["images"][0]
-    img_bytes = _http_get_bytes(
-        f"http://{server}/view?{urllib.parse.urlencode(img_info)}"
-    )
+        # Wait for completion
+        while True:
+            msg_raw = ws.recv()
+            if isinstance(msg_raw, bytes):
+                continue
 
-    pathlib.Path(out_file).write_bytes(img_bytes)
-    logging.info("Image saved → %s", out_file)
+            msg = json.loads(msg_raw)
+            if msg.get("type") == "executing":
+                data = msg["data"]
+                if data["node"] is None and data["prompt_id"] == prompt_id:
+                    break
 
+        # Get result
+        history = _http_get_json(f"http://{server}/history/{prompt_id}")
+        img_info = next(iter(history[prompt_id]["outputs"].values()))["images"][0]
+        img_bytes = _http_get_bytes(
+            f"http://{server}/view?{urllib.parse.urlencode(img_info)}"
+        )
 
-# ------------------ demo when run directly ----------------------------------------
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    # Test the functional interface
-    generate_image(
-        server="127.0.0.1:8188",
-        workflow_path="c:/Users/Usuario/source/repos/Shared with Haru/el-xurrer/generation_tools/image_generator/test_workflow.json",  # your JSON
-        prompt_text="Laura Vigne is a captivating 22-year-old AI influencer with fair, luminous skin, striking blue almond-shaped eyes, high cheekbones, a delicate nose, and full pink lips. Her soft, wavy blonde hair frames her refined features, giving her a timeless and approachable charm. A close-up shot of Siena’s hands coding furiously on a neon-backlit keyboard. Bright green lines of code blur on the monitor in the foreground, a jumble of text that hints at something overwhelming but vital. The soft clinking of keys contrasts sharply with the palpable tension surrounding her.",
-        seed=443,
-        out_file="demo.png",
-    )
+        # Save image
+        output_path = pathlib.Path(out_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(img_bytes)
 
-    # Test the class-based interface
-    # comfy = ComfyLocal(server="127.0.0.1:8188", workflow_path="test_workflow.json")
-    # comfy.generate_image(
-    #     prompt="portrait of a neon cyber cat with Flux interface",
-    #     output_path="demo_class.png",
-    #     seed=42,
-    # )
+        logger.info(f"Image saved → {out_file} ({len(img_bytes)} bytes)")
+
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass

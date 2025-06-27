@@ -126,12 +126,23 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
-    # THOUGHTS: Should pass this ComfyLocal as a parameter in the CLI?
+    # Current (good for future flexibility)
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
-        image_generator_tool=ComfyLocal,  # I pass the class directly, not an instance
+        image_generator_tool=ComfyLocal(
+            server="127.0.0.1:8188",
+            workflow_path="path/to/your/workflow.json",  # Update this path
+        ),
     )
+
+    # Future: Switch to Google Drive fetcher
+    # generator = PublicationsGenerator(
+    #     template_profiles=profiles,
+    #     platform_name=Platform.FANVUE,
+    #     image_generator_tool=GoogleDriveImageFetcher,  # Just change this line
+    # )
+
     generator.generate()
 
 
