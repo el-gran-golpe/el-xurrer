@@ -12,6 +12,7 @@ from main_components.constants import Platform
 # -- Data Models --------------------------------------------------------------
 
 
+# TODO: Here maybe Moi knows how to use Pydantic models instead of dataclasses (ask him)
 @dataclass(frozen=True)
 class ImageSpec:
     description: str

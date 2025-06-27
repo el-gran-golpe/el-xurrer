@@ -129,7 +129,7 @@ def generate_publications(
         platform_name=Platform.FANVUE,
         image_generator_tool=ComfyLocal(
             workflow_path=pathlib.Path(
-                r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\test_workflow.json"
+                r"/resources/laura_vigne/laura_vigne_comfyworkflow.json"
             ),
         ),
     )
@@ -219,8 +219,9 @@ def execute_pipeline(
 
 
 if __name__ == "__main__":
-    # read profiles
     profile_manager.load_profiles()
+
+    # TODO: I don't like using profile indexes, I prefer profile names. but meh, let's leave it for now.
 
     # To debug, call the function directly with your desired parameters
     # plan(profile_names="laura_vigne", profiles_index=[], overwrite_outputs=False)

@@ -34,7 +34,11 @@ class ProfileManager:
         """This method will go to the folder called resources and check that the profiles
         actually exist. For a profile (persona) to be valid, it must contain an initial
         conditions file and a .json file named after the folder, that contains the
-        instructions for the LLM. The folder must be named in snake_case."""
+        instructions for the LLM. The folder must be named in snake_case.
+
+        Also, this is run once at the beginning and checks each and every profile folder even
+        if we are not using it, so that we can ensure that all personas are valid.
+        """
         if not self.resource_path.is_dir():
             raise FileNotFoundError(
                 f"Resource path does not exist: {self.resource_path}"
@@ -50,6 +54,18 @@ class ProfileManager:
             if not profile_pattern.match(profile_name):
                 raise ValueError(
                     f"Profile name '{profile_name}' is not in the format 'word_word' (e.g., 'laura_vigne')"
+                )
+
+            # Check for ComfyUI workflow file
+            workflow_filename = f"{profile_name}_comfyworkflow.json"
+            workflow_path = profile_dir / workflow_filename
+            if not workflow_path.exists():
+                raise FileNotFoundError(
+                    f"ComfyUI workflow file does not exist: {workflow_path}"
+                )
+            if not workflow_path.is_file():
+                raise ValueError(
+                    f"ComfyUI workflow path is not a file: {workflow_path}"
                 )
 
             platforms_info = {}
