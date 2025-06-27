@@ -31,6 +31,7 @@ typer
 pydantic
 httpx[socks]
 python-socks[asyncio]
+websocket-client
 
 
 

@@ -15,9 +15,6 @@ from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 from generation_tools.image_generator.comfy_local import ComfyLocal
 
-# Configure Loguru
-logger.remove()
-logger.add(sys.stderr, format="{time} {level} {message}", level="INFO")
 
 app = typer.Typer()
 profile_manager = ProfileManager(
@@ -126,13 +123,14 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
-    # Current (good for future flexibility)
+    # TODO: Add in the profile a check that this workflow.json exists
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
         image_generator_tool=ComfyLocal(
-            server="127.0.0.1:8188",
-            workflow_path="path/to/your/workflow.json",  # Update this path
+            workflow_path=pathlib.Path(
+                r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\test_workflow.json"
+            ),
         ),
     )
 

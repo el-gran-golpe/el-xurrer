@@ -1,180 +1,135 @@
 import json
 import uuid
-import pathlib
-import urllib.request
-import urllib.parse
-import websocket
-import random
+from pathlib import Path
 from typing import Any, Dict, Optional
+
+import requests
 from loguru import logger
+from websocket import WebSocket
 
 
-# -- HTTP Utilities -----------------------------------------------------------
+class HTTPClient:
+    """Simple HTTP client for JSON and binary requests."""
 
+    def __init__(self, timeout: int = 30) -> None:
+        self.session = requests.Session()
+        self.timeout = timeout
 
-def _http_post_json(
-    url: str, payload: Dict[str, Any], timeout: int = 30
-) -> Dict[str, Any]:
-    """Send HTTP POST request with JSON payload."""
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    def post_json(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        response = self.session.post(url, json=payload, timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()
 
+    def get_json(self, url: str) -> Dict[str, Any]:
+        response = self.session.get(url, timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()
 
-def _http_get_json(url: str, timeout: int = 30) -> Dict[str, Any]:
-    """Send HTTP GET request and return JSON response."""
-    with urllib.request.urlopen(url, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def _http_get_bytes(url: str, timeout: int = 60) -> bytes:
-    """Send HTTP GET request and return raw bytes."""
-    with urllib.request.urlopen(url, timeout=timeout) as response:
-        return response.read()
-
-
-# -- Class-based Interface ----------------------------------------------------
+    def get_bytes(self, url: str) -> bytes:
+        response = self.session.get(url, timeout=self.timeout)
+        response.raise_for_status()
+        return response.content
 
 
 class ComfyLocal:
-    """Class-based interface for ComfyUI local image generation."""
+    """Client for interacting with a local ComfyUI server to generate images."""
 
     def __init__(
-        self, server: str = "127.0.0.1:8188", workflow_path: Optional[str] = None
-    ) -> None:
-        """Initialize ComfyLocal instance."""
-        if not server or not server.strip():
-            raise ValueError("Server address cannot be empty")
+        self,
+        workflow_path: Path,
+        server_host: str = "127.0.0.1",
+        server_port: int = 8188,
+        http_timeout: int = 30,
+    ):
+        self.server = f"{server_host}:{server_port}"
+        self.workflow_path = Path(workflow_path)
+        if not self.workflow_path.is_file():
+            raise FileNotFoundError(f"Workflow not found: {self.workflow_path}")
 
-        self.server = server.strip()
-        self.workflow_path = workflow_path
+        self.client = HTTPClient(timeout=http_timeout)
+        logger.debug(
+            f"Initialized ComfyLocal with server={self.server} and workflow={self.workflow_path}"
+        )
 
     def generate_image(
         self,
         prompt: str,
-        output_path: str,
-        width: int = 1080,
-        height: int = 1080,
+        output_path: Path,
+        width: int = 512,
+        height: int = 768,
         seed: Optional[int] = None,
     ) -> bool:
-        """Generate image using ComfyUI."""
+        """Generate an image based on the provided prompt and save it to output_path."""
+        prompt = prompt.strip()
+        if not prompt:
+            raise ValueError("Prompt cannot be empty")
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        seed = seed or uuid.uuid4().int & ((1 << 32) - 1)
+
+        logger.info(f"Generating image: prompt='{prompt[:50]}...', seed={seed}")
+        prompt_id = self._enqueue_prompt(prompt, seed)
+        ws_client = self._wait_for_completion(prompt_id)
         try:
-            if not prompt or not prompt.strip():
-                logger.error("Prompt cannot be empty")
-                return False
-
-            if not output_path or not output_path.strip():
-                logger.error("Output path cannot be empty")
-                return False
-
-            if seed is None:
-                seed = random.randint(0, 2**32 - 1)
-
-            # Create output directory if needed
-            output_file = pathlib.Path(output_path)
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-
-            logger.info(f"Starting image generation for prompt: '{prompt[:50]}...'")
-
-            # Use the functional interface
-            _generate_image_internal(
-                server=self.server,
-                workflow_path=self.workflow_path,
-                prompt_text=prompt.strip(),
-                seed=seed,
-                out_file=output_path,
-            )
-
-            # Verify file was created
-            if not output_file.exists() or output_file.stat().st_size == 0:
-                logger.error(f"Image generation failed: {output_path}")
-                return False
-
-            logger.success(f"Image generated successfully: {output_path}")
+            img_bytes = self._fetch_result(prompt_id)
+            output_path.write_bytes(img_bytes)
             return True
+        finally:
+            ws_client.close()
 
-        except Exception as e:
-            logger.error(f"Image generation failed: {e}")
-            return False
+    def _enqueue_prompt(self, prompt: str, seed: int) -> str:
+        workflow = json.loads(self.workflow_path.read_text())
 
+        # Patch workflow nodes
+        for node in workflow.values():
+            if node.get("class_type") == "CLIPTextEncode":
+                node["inputs"]["text"] = prompt
+            if node.get("class_type") == "KSampler":
+                node["inputs"]["seed"] = seed
 
-# -- Functional Interface (your existing code, enhanced) ---------------------
+        client_id = str(uuid.uuid4())
+        payload = {"prompt": workflow, "client_id": client_id}
+        url = f"http://{self.server}/prompt"
+        response = self.client.post_json(url, payload)
+        prompt_id = response.get("prompt_id")
+        if not prompt_id:
+            raise RuntimeError("Failed to enqueue prompt; no prompt_id returned.")
 
+        logger.info(f"Enqueued prompt ID={prompt_id}")
+        # Store client_id for websocket
+        self._client_id = client_id
+        return prompt_id
 
-def _generate_image_internal(
-    server: str,
-    workflow_path: Optional[str],
-    prompt_text: str,
-    seed: int,
-    out_file: str,
-) -> None:
-    """Generate image using ComfyUI workflow."""
+    def _wait_for_completion(self, prompt_id: str) -> WebSocket:
+        ws = WebSocket()
+        ws.connect(f"ws://{self.server}/ws?clientId={self._client_id}", timeout=10)
+        logger.debug("WebSocket connection opened.")
 
-    if not workflow_path:
-        raise ValueError("Workflow path is required")
-
-    if not pathlib.Path(workflow_path).exists():
-        raise FileNotFoundError(f"Workflow file not found: {workflow_path}")
-
-    # Load and patch workflow
-    workflow: Dict[str, Any] = json.loads(pathlib.Path(workflow_path).read_text())
-
-    # Patch prompt and seed
-    for node in workflow.values():
-        if node.get("class_type") == "CLIPTextEncode":
-            node["inputs"]["text"] = prompt_text
-            break
-
-    for node in workflow.values():
-        if node.get("class_type") == "KSampler":
-            node["inputs"]["seed"] = seed
-            break
-
-    # WebSocket connection
-    client_id = str(uuid.uuid4())
-    ws = websocket.WebSocket()
-
-    try:
-        ws.connect(f"ws://{server}/ws?clientId={client_id}", timeout=10)
-
-        # Queue prompt
-        prompt_payload = {"prompt": workflow, "client_id": client_id}
-        response = _http_post_json(f"http://{server}/prompt", prompt_payload)
-        prompt_id = response["prompt_id"]
-
-        logger.info(f"Queued prompt with ID: {prompt_id}")
-
-        # Wait for completion
         while True:
-            msg_raw = ws.recv()
-            if isinstance(msg_raw, bytes):
+            msg = ws.recv()
+            if not isinstance(msg, str):
                 continue
 
-            msg = json.loads(msg_raw)
-            if msg.get("type") == "executing":
-                data = msg["data"]
-                if data["node"] is None and data["prompt_id"] == prompt_id:
+            data = json.loads(msg)
+            if data.get("type") == "executing":
+                info = data.get("data", {})
+                if info.get("node") is None and info.get("prompt_id") == prompt_id:
+                    logger.debug("Execution complete on server.")
                     break
+        return ws
 
-        # Get result
-        history = _http_get_json(f"http://{server}/history/{prompt_id}")
-        img_info = next(iter(history[prompt_id]["outputs"].values()))["images"][0]
-        img_bytes = _http_get_bytes(
-            f"http://{server}/view?{urllib.parse.urlencode(img_info)}"
-        )
+    def _fetch_result(self, prompt_id: str) -> bytes:
+        # Retrieve history
+        history_url = f"http://{self.server}/history/{prompt_id}"
+        history = self.client.get_json(history_url)
 
-        # Save image
-        output_path = pathlib.Path(out_file)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(img_bytes)
+        outputs = history.get(prompt_id, {}).get("outputs", {})
+        if not outputs:
+            raise RuntimeError("No outputs found in history.")
 
-        logger.info(f"Image saved → {out_file} ({len(img_bytes)} bytes)")
+        img_info = next(iter(outputs.values()))["images"][0]
+        params = {k: v for k, v in img_info.items()}
 
-    finally:
-        try:
-            ws.close()
-        except Exception:
-            pass
+        view_url = f"http://{self.server}/view?{requests.compat.urlencode(params)}"
+        return self.client.get_bytes(view_url)

@@ -3,7 +3,7 @@ import json
 from slugify import slugify
 from tqdm import tqdm
 from loguru import logger
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any
 from dataclasses import dataclass
 
 from main_components.base_main import BaseMain
@@ -92,14 +92,14 @@ class ImageGeneratorService:
 
                 success: bool = self._generator.generate_image(
                     prompt=spec.description,
-                    output_path=str(image_path),
+                    output_path=image_path,
                     width=1080,
                     height=1080,
                 )
 
                 if not success or not image_path.exists():
                     raise RuntimeError(f"Image generation failed for '{image_path}'")
-                logger.success(f"Image saved: {image_path}")
+                logger.success(f"Image saved at: {image_path}")
 
 
 # -- Main Publications Generator ----------------------------------------------
@@ -112,15 +112,11 @@ class PublicationsGenerator(BaseMain):
         self,
         platform_name: Platform,
         template_profiles: List[Any],
-        image_generator_tool: Optional[Any] = None,
+        image_generator_tool: Any,
     ):
         super().__init__(platform_name)
         self.template_profiles = template_profiles
-        self.image_service = (
-            ImageGeneratorService(image_generator_tool)
-            if image_generator_tool
-            else None
-        )
+        self.image_service = ImageGeneratorService(image_generator_tool)
 
     def _load_planning(self, planning_path: Path) -> Dict[str, List[Dict[str, Any]]]:
         with planning_path.open(encoding="utf-8") as f:
@@ -175,6 +171,7 @@ class PublicationsGenerator(BaseMain):
                 Path(profile.platform_info[self.platform_name].outputs_path)
                 / "publications"
             )
+            # TODO: I think these could be passed as Path objects directly
             self.generate_publications_from_planning(
                 profile.name,
                 str(planning_path),
