@@ -145,16 +145,17 @@ class PublicationsGenerator(BaseMain):
         return publications
 
     def generate_publications_from_planning(
-        self, profile_name: str, planning_file: str, output_folder: str
+        self, profile_name: str, planning_file: Path, output_folder: Path
     ) -> None:
         logger.info(f"Processing profile: {profile_name}")
 
-        planning = self._load_planning(Path(planning_file))
-        base_folder = Path(output_folder)
-        DirectoryManager(base_folder).create_structure(planning)
+        planning = self._load_planning(planning_file)
+
+        publications_base_dir = output_folder
+        DirectoryManager(publications_base_dir).create_structure(planning)
 
         for week, days in tqdm(planning.items(), desc="Weeks"):
-            week_folder = base_folder / week
+            week_folder = publications_base_dir / week
             for day_data in tqdm(days, desc=f"Days in {week}"):
                 day_folder = week_folder / f"day_{day_data['day']}"
                 publications = self._parse_day(day_data)
@@ -172,9 +173,8 @@ class PublicationsGenerator(BaseMain):
                 Path(profile.platform_info[self.platform_name].outputs_path)
                 / "publications"
             )
-            # TODO: I think these could be passed as Path objects directly
             self.generate_publications_from_planning(
                 profile.name,
-                str(planning_path),
-                str(publications_folder),
+                planning_path,
+                publications_folder,
             )
