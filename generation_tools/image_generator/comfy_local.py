@@ -42,10 +42,7 @@ class ComfyLocal:
         http_timeout: int = 30,
     ):
         self.server = f"{server_host}:{server_port}"
-        self.workflow_path = Path(workflow_path)
-        if not self.workflow_path.is_file():
-            raise FileNotFoundError(f"Workflow not found: {self.workflow_path}")
-
+        self.workflow_path = workflow_path
         self.client = HTTPClient(timeout=http_timeout)
         logger.debug(
             f"Initialized ComfyLocal with server={self.server} and workflow={self.workflow_path}"
@@ -64,7 +61,6 @@ class ComfyLocal:
         if not prompt:
             raise ValueError("Prompt cannot be empty")
 
-        output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         seed = seed or uuid.uuid4().int & ((1 << 32) - 1)
 

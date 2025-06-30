@@ -112,7 +112,6 @@ def generate_publications(
         profiles = [
             profile_manager.get_profile_by_index(index) for index in profiles_index
         ]
-
     else:
         assert profile_names is not None, (
             "Profile names cannot be None if index is not provided."
@@ -123,14 +122,29 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
+    # Create ComfyLocal instance
+    comfy_client = ComfyLocal(
+        workflow_path=pathlib.Path(
+            r"/resources/laura_vigne/laura_vigne_comfyworkflow.json"
+        ),
+    )
+
+    # Verify ComfyUI server connection before proceeding
+    try:
+        logger.info("Checking ComfyUI server connection...")
+        comfy_client.client.get_json(f"http://{comfy_client.server}/system_stats")
+        logger.info("ComfyUI server connection verified successfully")
+    except Exception as e:
+        logger.error(
+            f"Failed to connect to ComfyUI server at {comfy_client.server}: {e}"
+        )
+        logger.error("Please ensure ComfyUI is running before generating publications")
+        raise typer.Exit(1)
+
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
-        image_generator_tool=ComfyLocal(
-            workflow_path=pathlib.Path(
-                r"/resources/laura_vigne/laura_vigne_comfyworkflow.json"
-            ),
-        ),
+        image_generator_tool=comfy_client,
     )
 
     # Future: Switch to Google Drive fetcher
