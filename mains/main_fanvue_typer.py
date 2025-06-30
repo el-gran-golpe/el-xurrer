@@ -123,7 +123,6 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
-    # TODO: Add in the profile a check that this workflow.json exists
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
