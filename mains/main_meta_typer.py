@@ -118,6 +118,7 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
+    # TODO: fix this
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.META,

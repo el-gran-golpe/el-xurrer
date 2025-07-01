@@ -190,7 +190,7 @@ def schedule_posts(
 
     scheduler = PostingScheduler(
         template_profiles=profiles,
-        platform_name=Platform.META,
+        platform_name=Platform.FANVUE,
         api_module_path="automation.meta_api.graph_api",
         api_class_name="GraphAPI",
     )
