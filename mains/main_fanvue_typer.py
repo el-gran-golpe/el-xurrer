@@ -122,11 +122,13 @@ def generate_publications(
             for name in profile_names_splitted
         ]
 
+    # TODO: When executing the full pipeline, we should make this dynamic
     # Create ComfyLocal instance
     comfy_client = ComfyLocal(
-        workflow_path=pathlib.Path(
-            r"/resources/laura_vigne/laura_vigne_comfyworkflow.json"
-        ),
+        workflow_path=pathlib.Path(__file__).resolve().parent.parent
+        / "resources"
+        / "laura_vigne"
+        / "laura_vigne_comfyworkflow.json",
     )
 
     # Verify ComfyUI server connection before proceeding
