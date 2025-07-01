@@ -121,6 +121,7 @@ def generate_publications(
     generator = PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.META,
+        image_generator_tool="generation_tools.image_generator.comfy_local.ComfyLocal",
     )
     generator.generate()
 
@@ -153,7 +154,7 @@ def schedule_posts(
     scheduler = PostingScheduler(
         template_profiles=profiles,
         platform_name=Platform.META,
-        api_module_path="bot_services.meta_api.graph_api",
+        api_module_path="automation.meta_api.graph_api",
         api_class_name="GraphAPI",
     )
     scheduler.upload()

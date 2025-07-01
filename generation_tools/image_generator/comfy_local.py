@@ -80,6 +80,7 @@ class ComfyLocal:
         # Patch workflow nodes
         for node in workflow.values():
             if node.get("class_type") == "CLIPTextEncode":
+                # Here I pass my prompt to the image generation workflow
                 node["inputs"]["text"] = prompt
             if node.get("class_type") == "KSampler":
                 node["inputs"]["seed"] = seed
