@@ -106,6 +106,33 @@ class ImageGeneratorService:
 # -- Main Publications Generator ----------------------------------------------
 
 
+def _load_planning(planning_path: Path) -> Dict[str, List[Dict[str, Any]]]:
+    with planning_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _parse_day(day_data: Dict[str, Any]) -> List[PublicationContent]:
+    publications: List[PublicationContent] = []
+    for post in day_data.get("posts", []):
+        title = post.get("title", "")
+        slug = slugify(title) if title else f"publication_{day_data.get('day')}"
+        images = [
+            ImageSpec(image.get("image_description", ""), idx)
+            for idx, image in enumerate(post.get("images", []))
+        ]
+        publications.append(
+            PublicationContent(
+                title=title,
+                slug=slug,
+                caption=post.get("caption", ""),
+                hashtags=post.get("hashtags", []),
+                upload_time=post.get("upload_time", ""),
+                images=images,
+            )
+        )
+    return publications
+
+
 class PublicationsGenerator(BaseMain):
     """Generates publications (directories, captions, images) from planning data."""
 
@@ -119,37 +146,12 @@ class PublicationsGenerator(BaseMain):
         self.template_profiles = template_profiles
         self.image_service = ImageGeneratorService(image_generator_tool)
 
-    def _load_planning(self, planning_path: Path) -> Dict[str, List[Dict[str, Any]]]:
-        with planning_path.open(encoding="utf-8") as f:
-            return json.load(f)
-
-    def _parse_day(self, day_data: Dict[str, Any]) -> List[PublicationContent]:
-        publications: List[PublicationContent] = []
-        for post in day_data.get("posts", []):
-            title = post.get("title", "")
-            slug = slugify(title) if title else f"publication_{day_data.get('day')}"
-            images = [
-                ImageSpec(image.get("image_description", ""), idx)
-                for idx, image in enumerate(post.get("images", []))
-            ]
-            publications.append(
-                PublicationContent(
-                    title=title,
-                    slug=slug,
-                    caption=post.get("caption", ""),
-                    hashtags=post.get("hashtags", []),
-                    upload_time=post.get("upload_time", ""),
-                    images=images,
-                )
-            )
-        return publications
-
     def generate_publications_from_planning(
         self, profile_name: str, planning_file: Path, output_folder: Path
     ) -> None:
         logger.info(f"Processing profile: {profile_name}")
 
-        planning = self._load_planning(planning_file)
+        planning = _load_planning(planning_file)
 
         publications_base_dir = output_folder
         DirectoryManager(publications_base_dir).create_structure(planning)
@@ -158,7 +160,7 @@ class PublicationsGenerator(BaseMain):
             week_folder = publications_base_dir / week
             for day_data in tqdm(days, desc=f"Days in {week}"):
                 day_folder = week_folder / f"day_{day_data['day']}"
-                publications = self._parse_day(day_data)
+                publications = _parse_day(day_data)
                 if self.image_service and publications:
                     self.image_service.generate_images(publications, day_folder)
 
