@@ -146,7 +146,8 @@ class PostingScheduler(BaseMain):
         logger.info(
             f"Uploading {pub.day_folder.name} via Selenium on {self.platform_name}"
         )
-        with SB(uc=True, test=True, locale_code="en") as driver:
+        # with SB(uc=True, test=True, locale_code="en") as driver:
+        with SB(uc=True, locale_code="en") as driver:
             publisher = publisher_cls(driver)
             try:
                 publisher.login(profile.name)

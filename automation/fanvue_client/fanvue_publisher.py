@@ -43,19 +43,23 @@ class FanvuePublisher:
         self.driver.click("button[type='submit']")
 
     def post_publication(self, file_path: str, caption: str):
-        self.driver.click("a.MuiButton-root.MuiButton-contained.MuiButton-fullWidth")
-        self.driver.click("button.MuiButton-outlinedPrimary.MuiButton-colorPrimary")
+        # Click "New Post" button
+        self.driver.click("a[aria-label='New Post']")
+
+        # Click "Upload from device" button
+        self.driver.click("button[aria-label='Upload from device']")
+
         # Upload the corresponding images for the post
         keyboard = Controller()
-        # time.sleep(1)
         keyboard.type(file_path)
         time.sleep(3)
         keyboard.press(Key.enter)
         keyboard.release(Key.enter)
         time.sleep(1)
+
         # Write the caption in the box
         self.driver.type("textarea[placeholder='Write a caption...']", caption)
-        self.driver.click("button[data-sentry-element='FilledButton']")
+        self.driver.click("//button[normalize-space(.//span)='Create post']")
 
 
 def get_caption_from_file(file_path: str) -> str:
