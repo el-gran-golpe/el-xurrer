@@ -31,6 +31,7 @@ class Profile(BaseModel):
         return self.name
 
 
+# TODO: we might be able to use Pydantic models instead of doing manual validations
 class ProfileManager:
     """Manager for loading and retrieving Profile objects."""
 
