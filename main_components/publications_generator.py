@@ -142,6 +142,7 @@ class PublicationsGenerator(BaseMain):
         template_profiles: List[Any],
         image_generator_tool: Any,
     ):
+        # TODO: I have to check if Platform is a valid type for platform_name
         super().__init__(platform_name)
         self.template_profiles = template_profiles
         self.image_service = ImageGeneratorService(image_generator_tool)

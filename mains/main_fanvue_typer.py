@@ -15,6 +15,8 @@ from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 from generation_tools.image_generator.comfy_local import ComfyLocal
 
+from automation.fanvue_client.fanvue_publisher import FanvuePublisher
+
 
 app = typer.Typer()
 profile_manager = ProfileManager(
@@ -191,8 +193,7 @@ def schedule_posts(
     scheduler = PostingScheduler(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
-        api_module_path="automation.meta_api.graph_api",
-        api_class_name="GraphAPI",
+        publisher=FanvuePublisher,
     )
     scheduler.upload()
 
