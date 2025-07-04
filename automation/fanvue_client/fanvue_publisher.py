@@ -1,8 +1,8 @@
 import os
 import sys
 import time
+import Path
 from dotenv import load_dotenv
-from seleniumbase import SB
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from pynput.keyboard import Controller, Key
@@ -42,7 +42,7 @@ class FanvuePublisher:
         # Submit the login form
         self.driver.click("button[type='submit']")
 
-    def post_publication(self, file_path: str, caption: str):
+    def post_publication(self, file_path: Path, caption: str):
         # Click "New Post" button
         self.driver.click("a[aria-label='New Post']")
 
@@ -51,7 +51,7 @@ class FanvuePublisher:
 
         # Upload the corresponding images for the post
         keyboard = Controller()
-        keyboard.type(file_path)
+        keyboard.type(str(file_path))
         time.sleep(3)
         keyboard.press(Key.enter)
         keyboard.release(Key.enter)
@@ -60,35 +60,3 @@ class FanvuePublisher:
         # Write the caption in the box
         self.driver.type("textarea[placeholder='Write a caption...']", caption)
         self.driver.click("//button[normalize-space(.//span)='Create post']")
-
-
-def get_caption_from_file(file_path: str) -> str:
-    """
-    Searches for a 'captions.txt' file in the same directory as the given file path,
-    reads its content, and returns it as a string.
-    """
-    if os.path.isdir(file_path):
-        directory = file_path
-    else:
-        directory = os.path.dirname(file_path)
-
-    caption_file_path = os.path.join(directory, "captions.txt")
-
-    if not os.path.isfile(caption_file_path):
-        raise FileNotFoundError(
-            f"No 'captions.txt' file found in directory: {directory}"
-        )
-
-    with open(caption_file_path, "r", encoding="utf-8") as file:
-        caption = file.read().strip()
-
-    return caption
-
-
-if __name__ == "__main__":
-    with SB(uc=True, test=True, locale_code="en") as driver:
-        bot = FanvuePublisher(driver)
-        bot.login("laura vigne")
-        file_path = r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_1\a-new-threat-emerges_0.png"
-        caption = get_caption_from_file(file_path)
-        bot.post_publication(file_path, caption)

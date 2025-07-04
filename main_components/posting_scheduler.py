@@ -21,9 +21,9 @@ class Publication(BaseModel):
     """
 
     day_folder: Path
-    caption: str
+    caption_text: str
     upload_time: datetime
-    images: List[Path]
+    image_paths: List[Path]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -90,7 +90,7 @@ class PostingScheduler(BaseMain):
                         .strip()
                     )
 
-                    raw_time: datetime = datetime.fromisoformat(
+                    upload_time: datetime = datetime.fromisoformat(
                         (day_folder / "upload_times.txt")
                         .read_text(encoding="utf-8")
                         .strip()
@@ -101,10 +101,10 @@ class PostingScheduler(BaseMain):
 
                     # Let Pydantic handle all validation
                     pub = Publication(
-                        day_folder=day_folder,
-                        caption=caption_text,
-                        upload_time=raw_time,
-                        images=image_paths,
+                        day_folder=day_folder,  # TODO: do I really need this day_folder?
+                        caption_text=caption_text,
+                        upload_time=upload_time,
+                        image_paths=image_paths,
                     )
 
                     if self.platform_name == Platform.FANVUE:
@@ -119,7 +119,7 @@ class PostingScheduler(BaseMain):
                         )
 
                     # TODO: uncomment when cleanup is needed (when finished the refactoring)
-                    # self._cleanup(pub_root)
+                    self._cleanup(pub_root)
 
                 except (FileNotFoundError, ValueError, ValidationError) as err:
                     logger.error(
@@ -138,12 +138,12 @@ class PostingScheduler(BaseMain):
 
         try:
             insta_resp = client.upload_instagram_publication(
-                pub.images, pub.caption, pub.upload_time
+                pub.image_paths, pub.caption_text, pub.upload_time
             )
             logger.debug(f"Instagram response: {insta_resp}")
 
             fb_resp = client.upload_facebook_publication(
-                pub.images, pub.caption, pub.upload_time
+                pub.image_paths, pub.caption_text, pub.upload_time
             )
             logger.debug(f"Facebook response: {fb_resp}")
 
@@ -171,13 +171,13 @@ class PostingScheduler(BaseMain):
                 logger.error(f"Login failed for {profile}: {err}")
                 raise
 
-            for image in pub.images:
+            for image_path in pub.image_paths:
                 try:
-                    client.post_publication(str(image), pub.caption)
-                    logger.debug(f"Uploaded {image.name}")
+                    client.post_publication(image_path, pub.caption_text)
+                    logger.debug(f"Uploaded {image_path.name}")
                     sleep(5)  # TODO: remove this sleep in the future
                 except Exception as err:
-                    logger.error(f"Failed to upload {image.name}: {err}")
+                    logger.error(f"Failed to upload {image_path.name}: {err}")
                     raise
 
     def _wait_for_time(self, scheduled: datetime) -> None:
@@ -203,6 +203,6 @@ class PostingScheduler(BaseMain):
         """
         try:
             shutil.rmtree(root)
-            logger.info(f"[{self.platform_name}] Cleaned up publications at {root}")
+            logger.success(f"[{self.platform_name}] Cleaned up publications at {root}")
         except Exception as err:
             logger.error(f"[{self.platform_name}] Cleanup failed for {root}: {err}")
