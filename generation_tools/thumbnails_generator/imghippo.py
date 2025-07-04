@@ -42,11 +42,3 @@ class ImgHippo:
         )
 
         return response_data["data"]["view_url"]
-
-
-# Example usage
-if __name__ == "__main__":
-    img_hippo = ImgHippo()
-    img_path = r"C:\Users\Usuario\Desktop\jesumaestromeme.jpg"
-    image_url = img_hippo.get_url_for_image(img_path)
-    print(f"Uploaded image URL: {image_url}")
