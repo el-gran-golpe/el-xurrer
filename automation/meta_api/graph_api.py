@@ -1,11 +1,10 @@
 import sys
 import os
-from typing import Optional
 
 import dotenv
 import requests
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -75,27 +74,19 @@ class GraphAPI:
             print(f"An error occurred while retrieving the Page Access Token: {e}")
             sys.exit(1)
 
-    def _convert_iso_to_unix(self, iso_str: str) -> int:
-        """
-        Convert an ISO-formatted datetime string (e.g., "2023-10-16T09:00:00Z")
-        to a Unix timestamp (seconds since epoch in UTC).
-        """
-        dt = datetime.strptime(iso_str, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
-        )
-        return int(dt.timestamp())
-
     def upload_instagram_publication(
-        self, img_paths: list, caption: str, upload_time_str: Optional[str] = None
+        self, img_paths: list, caption: str, upload_time: datetime
     ):
+        # TODO: check this upload_time
         """
         Uploads one or multiple images as a scheduled post on Instagram.
 
         Parameters:
             - img_paths (list or str): List of image paths to upload.
             - caption (str): Caption for the post.
-            - upload_time_str (str, optional): ISO formatted upload time (e.g., '2023-10-16T09:00:00Z').
+            - upload_time (datetime): ISO formatted upload time (e.g., '2023-10-16T09:00:00Z').
                                                If not provided, post is published immediately.
+
 
         Returns:
             - dict: The response from the Instagram API if successful, None otherwise.
@@ -182,8 +173,8 @@ class GraphAPI:
                 "access_token": self.page_access_token,
             }
 
-            if upload_time_str:
-                scheduled_timestamp = self._convert_iso_to_unix(upload_time_str)
+            if upload_time:
+                scheduled_timestamp = int(upload_time.timestamp())
                 publish_payload["published"] = "false"  # Do not publish immediately
                 publish_payload["scheduled_publish_time"] = scheduled_timestamp
 
@@ -191,7 +182,7 @@ class GraphAPI:
             publish_response.raise_for_status()
             result = publish_response.json()
 
-            status = "scheduled" if upload_time_str else "published"
+            status = "scheduled" if upload_time else "published"
             print(f"Instagram post {status} successfully:", result)
 
             return {
@@ -207,7 +198,7 @@ class GraphAPI:
             return None
 
     def upload_facebook_publication(
-        self, img_paths: list, caption: str, upload_time_str: Optional[str] = None
+        self, img_paths: list, caption: str, upload_time=datetime
     ):
         # FIXME: upload_time_str is not used, so now facebook publications are post immediately
         """
@@ -265,18 +256,18 @@ class GraphAPI:
             return None
 
 
-if __name__ == "__main__":
-    graph_api = GraphAPI()
+# if __name__ == "__main__":
+# graph_api = GraphAPI()
 
-    # Single image case
-    # img_paths = [r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_2.png"]
-    # caption = "How you all doing? Tell me in the comments! 🌟"
-    # response = graph_api.upload_instagram_publication(img_paths, caption)
+# Single image case
+# img_paths = [r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_2.png"]
+# caption = "How you all doing? Tell me in the comments! 🌟"
+# response = graph_api.upload_instagram_publication(img_paths, caption)
 
-    # Multiple images case
-    img_paths = [
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_0.png",
-        r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_1.png",
-    ]
-    caption = "Let’s talk, my beautiful community! 💖 I want to hear your journeys toward authenticity—let's uplift each other! 😇"
-    response = graph_api.upload_instagram_publication(img_paths, caption)
+# Multiple images case
+# img_paths = [
+#     r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_0.png",
+#     r"C:\Users\Usuario\source\repos\Shared with Haru\el-xurrer\resources\outputs\instagram_profiles\laura_vigne\posts\week_1\day_4\standing-strong_1.png",
+# ]
+# caption = "Let’s talk, my beautiful community! 💖 I want to hear your journeys toward authenticity—let's uplift each other! 😇"
+# response = graph_api.upload_instagram_publication(img_paths, caption)

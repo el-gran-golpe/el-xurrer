@@ -1,11 +1,13 @@
 from datetime import datetime
 from pathlib import Path
 from time import sleep
-from typing import Any, Iterator, List, Optional, Sequence, Type, Union
+from typing import Any, Iterator, List, Sequence, Type, Union, cast
+from automation.fanvue_client.fanvue_publisher import FanvuePublisher
+from automation.meta_api.graph_api import GraphAPI
 import shutil
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
 from seleniumbase import SB
 
 from main_components.base_main import BaseMain
@@ -20,12 +22,26 @@ class Publication(BaseModel):
 
     day_folder: Path
     caption: str
-    # Accept both datetime and raw string inputs for flexibility
-    upload_time: Optional[Union[datetime, str]]
+    upload_time: datetime
     images: List[Path]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    @field_validator("caption", mode="before")
+    def _validate_caption(cls, v: Any) -> str:
+        if not isinstance(v, str):
+            raise ValueError(f"caption must be a string, got {type(v)}")
+        if not v.strip():
+            raise ValueError("caption cannot be empty or whitespace only")
+        return v.strip()
+
+    @field_validator("upload_time", mode="after")
+    def _parse_upload_time(cls, v: Any) -> datetime:
+        if isinstance(v, datetime):
+            return v
+        raise ValueError(f"upload_time must be a datetime object, got {type(v)}")
+
+    # TODO: check if this is needed
     @field_validator("images", mode="before")
     def _sort_images(cls, v: Any) -> List[Path]:
         paths: Sequence[Path] = v if isinstance(v, Sequence) else []
@@ -34,21 +50,14 @@ class Publication(BaseModel):
         except Exception:
             return []
 
-    @field_validator("upload_time", mode="before")
-    def _parse_upload_time(cls, v: Any) -> Optional[datetime]:
-        if isinstance(v, str):
-            try:
-                return datetime.fromisoformat(v)
-            except ValueError:
-                logger.warning(f"Invalid datetime format: {v}")
-                return None
-        if isinstance(v, datetime):
-            return v
-        return None
 
-    @property
-    def is_valid(self) -> bool:
-        return bool(self.caption and self.upload_time and self.images)
+def _iter_day_folders(root: Path) -> Iterator[Path]:
+    """
+    Yield day folders sorted by week then day.
+    """
+    for week in sorted(p for p in root.iterdir() if p.is_dir()):
+        for day in sorted(p for p in week.iterdir() if p.is_dir()):
+            yield day
 
 
 class PostingScheduler(BaseMain):
@@ -56,12 +65,13 @@ class PostingScheduler(BaseMain):
         self,
         template_profiles: List[Profile],
         platform_name: Platform,
-        publisher: Union[Any, Type[Any]],
+        # I pass the class itself and not an instance, since Fanvue needs a driver to be passed to it
+        publisher: Union[Type[GraphAPI], Type[FanvuePublisher]],
     ):
         super().__init__(platform_name)
-        self.platform_name: Platform = platform_name
-        self.template_profiles: List[Profile] = template_profiles
-        self.publisher: Union[Any, Type[Any]] = publisher  # TODO fix this type hint
+        self.platform_name = platform_name
+        self.template_profiles = template_profiles
+        self.publisher = publisher
 
     def upload(self) -> None:
         for profile in self.template_profiles:
@@ -72,73 +82,77 @@ class PostingScheduler(BaseMain):
                 logger.warning(f"No publications folder for {profile}")
                 continue
 
-            for day_folder in self._iter_day_folders(pub_root):
-                caption_text = (
-                    (day_folder / "captions.txt").read_text(encoding="utf-8").strip()
-                    if (day_folder / "captions.txt").exists()
-                    else ""
-                )
-                raw_time = (
-                    (day_folder / "upload_times.txt")
-                    .read_text(encoding="utf-8")
-                    .strip()
-                    if (day_folder / "upload_times.txt").exists()
-                    else None
-                )
-                image_paths = list(day_folder.glob("*.[pj][pn]g"))
+            for day_folder in _iter_day_folders(pub_root):
+                try:
+                    caption_text: str = (
+                        (day_folder / "captions.txt")
+                        .read_text(encoding="utf-8")
+                        .strip()
+                    )
 
-                pub = Publication(
-                    day_folder=day_folder,
-                    caption=caption_text,
-                    upload_time=raw_time,
-                    images=image_paths,
-                )
-                if not pub.is_valid:
-                    logger.warning(f"Skipping incomplete data in {day_folder}")
+                    raw_time: datetime = datetime.fromisoformat(
+                        (day_folder / "upload_times.txt")
+                        .read_text(encoding="utf-8")
+                        .strip()
+                        .replace("Z", "+00:00")
+                    )
+
+                    image_paths = list(day_folder.glob("*.[pj][pn]g"))
+
+                    # Let Pydantic handle all validation
+                    pub = Publication(
+                        day_folder=day_folder,
+                        caption=caption_text,
+                        upload_time=raw_time,
+                        images=image_paths,
+                    )
+
+                    if self.platform_name == Platform.FANVUE:
+                        self._upload_via_selenium(
+                            pub, cast(Type[FanvuePublisher], self.publisher), profile
+                        )
+                    elif self.platform_name == Platform.META:
+                        self._upload_via_api(pub, cast(Type[GraphAPI], self.publisher))
+                    else:
+                        raise NotImplementedError(
+                            f"Unsupported platform: {self.platform_name}"
+                        )
+
+                    # TODO: uncomment when cleanup is needed (when finished the refactoring)
+                    # self._cleanup(pub_root)
+
+                except (FileNotFoundError, ValueError, ValidationError) as err:
+                    logger.error(
+                        f"Failed to create publication for {day_folder}: {err}"
+                    )
                     continue
 
-                if self.platform_name == Platform.FANVUE:
-                    self._upload_via_selenium(pub, self.publisher, profile)
-                elif self.platform_name == Platform.META:
-                    self._upload_via_api(pub, self.publisher)
-                else:
-                    raise NotImplementedError(
-                        f"Unsupported platform: {self.platform_name}"
-                    )
-            # TODO: uncomment when cleanup is needed (when finished the refactoring)
-            # self._cleanup(pub_root)
-
-    def _iter_day_folders(self, root: Path) -> Iterator[Path]:
-        """
-        Yield day folders sorted by week then day.
-        """
-        for week in sorted(p for p in root.iterdir() if p.is_dir()):
-            for day in sorted(p for p in week.iterdir() if p.is_dir()):
-                yield day
-
-    def _upload_via_api(self, pub: Publication, client: Any) -> None:
+    def _upload_via_api(self, pub: Publication, client_class: Type[GraphAPI]) -> None:
         """
         Uses Meta's graph API to upload publications.
         """
+        client = client_class()
         logger.info(f"Uploading {pub.day_folder.name} via API on {self.platform_name}")
-        # TODO: check if the wait time is needed here
-        self._wait_for_time(pub.upload_time)  # type: ignore[arg-type]
+
+        # self._wait_for_time(pub.upload_time)  # --> Meta's Graph API already has a built-in scheduling
+
         try:
             insta_resp = client.upload_instagram_publication(
                 pub.images, pub.caption, pub.upload_time
-            )  # type: ignore[arg-type]
+            )
             logger.debug(f"Instagram response: {insta_resp}")
+
             fb_resp = client.upload_facebook_publication(
                 pub.images, pub.caption, pub.upload_time
-            )  # type: ignore[arg-type]
+            )
             logger.debug(f"Facebook response: {fb_resp}")
+
         except Exception as err:
             logger.error(f"API upload failed for {pub.day_folder}: {err}")
-            # TODO: should we raise in here?
-            raise
+            raise  # TODO: Should we raise in here?
 
     def _upload_via_selenium(
-        self, pub: Publication, publisher_cls: Type[Any], profile: Profile
+        self, pub: Publication, client_class: Type[FanvuePublisher], profile: Profile
     ) -> None:
         """
         Uses a custom SeleniumBase script to upload publications on Fanvue.
@@ -146,41 +160,42 @@ class PostingScheduler(BaseMain):
         logger.info(
             f"Uploading {pub.day_folder.name} via Selenium on {self.platform_name}"
         )
-        # with SB(uc=True, test=True, locale_code="en") as driver:
+
+        self._wait_for_time(pub.upload_time)
+
         with SB(uc=True, locale_code="en") as driver:
-            publisher = publisher_cls(driver)
+            client = client_class(driver)
             try:
-                publisher.login(profile.name)
+                client.login(profile.name)
             except Exception as err:
                 logger.error(f"Login failed for {profile}: {err}")
                 raise
 
             for image in pub.images:
                 try:
-                    publisher.post_publication(str(image), pub.caption)
+                    client.post_publication(str(image), pub.caption)
                     logger.debug(f"Uploaded {image.name}")
-                    # TODO: remove this sleep in the future
-                    sleep(5)
+                    sleep(5)  # TODO: remove this sleep in the future
                 except Exception as err:
                     logger.error(f"Failed to upload {image.name}: {err}")
                     raise
 
-    def _wait_for_time(self, scheduled: Optional[Union[datetime, str]]) -> None:
+    def _wait_for_time(self, scheduled: datetime) -> None:
         """
-        Sleep until scheduled time if in the future.
+        Sleep until scheduled time.
         """
-        if not scheduled:
-            return
-        scheduled_dt = (
-            scheduled
-            if isinstance(scheduled, datetime)
-            else datetime.fromisoformat(scheduled)
-        )  # type: ignore[arg-type]
-        now = datetime.now(scheduled_dt.tzinfo)
-        delay = (scheduled_dt - now).total_seconds()
+        now = datetime.now(scheduled.tzinfo)
+        delay = (scheduled - now).total_seconds()
+
         if delay > 0:
-            logger.info(f"Sleeping for {delay:.0f}s until {scheduled_dt.isoformat()}")
+            logger.info(
+                f"[{self.platform_name}] Sleeping for {delay:.0f}s until {scheduled.isoformat()}"
+            )
             sleep(delay)
+        else:
+            logger.info(
+                f"[{self.platform_name}] Scheduled time has already passed. Continuing without sleep..."
+            )
 
     def _cleanup(self, root: Path) -> None:
         """
@@ -188,6 +203,6 @@ class PostingScheduler(BaseMain):
         """
         try:
             shutil.rmtree(root)
-            logger.info(f"Cleaned up publications at {root}")
+            logger.info(f"[{self.platform_name}] Cleaned up publications at {root}")
         except Exception as err:
-            logger.error(f"Cleanup failed for {root}: {err}")
+            logger.error(f"[{self.platform_name}] Cleanup failed for {root}: {err}")

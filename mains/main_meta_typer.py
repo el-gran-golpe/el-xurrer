@@ -13,8 +13,10 @@ from main_components.profile import ProfileManager
 from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 
+from automation.meta_api.graph_api import GraphAPI
+
 # Updated paths for new structure
-META_PROFILES_BASE_PATH = os.path.join(".", "resources", Platform.META.value)
+# META_PROFILES_BASE_PATH = os.path.join(".", "resources", Platform.META.value)
 
 logger = logging.getLogger(__name__)
 
@@ -155,8 +157,7 @@ def schedule_posts(
     scheduler = PostingScheduler(
         template_profiles=profiles,
         platform_name=Platform.META,
-        api_module_path="automation.meta_api.graph_api",
-        api_class_name="GraphAPI",
+        publisher=GraphAPI,
     )
     scheduler.upload()
 
