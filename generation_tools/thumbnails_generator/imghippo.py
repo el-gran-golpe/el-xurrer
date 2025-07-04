@@ -2,6 +2,7 @@ import os
 from functools import lru_cache
 import dotenv
 import cloudscraper
+from pathlib import Path
 
 API_KEY_FILE = os.path.join(os.path.dirname(__file__), "api_key.env")
 
@@ -17,25 +18,20 @@ class ImgHippo:
         )
 
     @lru_cache(maxsize=128)
-    def get_url_for_image(self, img_path: str) -> str:
-        assert os.path.isfile(img_path), f"Image file {img_path} does not exist"
+    def get_url_for_image(self, img_path: Path) -> str:
+        assert img_path.is_file(), f"Image file {img_path} does not exist"
 
         url = "https://api.imghippo.com/v1/upload"
 
-        with open(img_path, "rb") as img_file:
-            files = {"file": (os.path.basename(img_path), img_file, "image/jpeg")}
-
+        with img_path.open("rb") as img_file:
+            files = {"file": (img_path.name, img_file, "image/jpeg")}
             data = {"api_key": self.api_key}
-
             response = self.scraper.post(url, files=files, data=data)
 
-        # Debug information
         print("Request URL:", response.url)
         print("Status Code:", "\033[92m" + str(response.status_code) + "\033[0m")
-        # print("Response Content:", response.text)
 
         response.raise_for_status()
-
         response_data = response.json()
         assert "data" in response_data and "view_url" in response_data["data"], (
             f"Unexpected response structure: {response_data}"

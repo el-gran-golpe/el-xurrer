@@ -1,5 +1,7 @@
 import sys
 import os
+from pathlib import Path
+from typing import List
 
 import dotenv
 import requests
@@ -75,25 +77,9 @@ class GraphAPI:
             sys.exit(1)
 
     def upload_instagram_publication(
-        self, img_paths: list, caption: str, upload_time: datetime
+        self, img_paths: List[Path], caption: str, upload_time: datetime
     ):
-        # TODO: check this upload_time
-        """
-        Uploads one or multiple images as a scheduled post on Instagram.
-
-        Parameters:
-            - img_paths (list or str): List of image paths to upload.
-            - caption (str): Caption for the post.
-            - upload_time (datetime): ISO formatted upload time (e.g., '2023-10-16T09:00:00Z').
-                                               If not provided, post is published immediately.
-
-
-        Returns:
-            - dict: The response from the Instagram API if successful, None otherwise.
-        """
-        # Ensure img_paths is always a list, even if a single image is provided
-        if isinstance(img_paths, str):
-            img_paths = [img_paths]
+        # TODO: check this upload_time and the img_Paths
 
         if len(caption) > 2200:
             raise ValueError(
@@ -104,8 +90,8 @@ class GraphAPI:
 
         # Step 1: Create media containers for each image
         for img_path in img_paths:
-            assert img_path.lower().endswith((".png", ".jpg", ".jpeg")), (
-                "Each image file must be a .png, .jpg, or .jpeg"
+            assert img_path.suffix.lower() in {".png", ".jpg", ".jpeg"}, (
+                f"Each image file must be a .png, .jpg, or .jpeg, got {img_path.suffix}"
             )
 
             try:
