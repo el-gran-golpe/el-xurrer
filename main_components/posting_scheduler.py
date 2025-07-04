@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from time import sleep
-from typing import Any, Iterator, List, Sequence, Type, Union, cast
+from typing import Any, Iterator, List, Type, Union, cast
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 from automation.meta_api.graph_api import GraphAPI
 import shutil
@@ -41,14 +41,20 @@ class Publication(BaseModel):
             return v
         raise ValueError(f"upload_time must be a datetime object, got {type(v)}")
 
-    # TODO: check if this is needed
-    @field_validator("images", mode="before")
-    def _sort_images(cls, v: Any) -> List[Path]:
-        paths: Sequence[Path] = v if isinstance(v, Sequence) else []
-        try:
-            return sorted(paths)
-        except Exception:
-            return []
+    @field_validator("image_paths", mode="before")
+    def validate_image_paths(cls, v: Any) -> List[Path]:
+        if not isinstance(v, list) or not v:
+            raise ValueError("image_paths must be a non-empty list")
+        valid_exts = {".png", ".jpg", ".jpeg"}
+        paths = []
+        for p in v:
+            path = Path(p)
+            if not path.is_file():
+                raise ValueError(f"{path} is not a file")
+            if path.suffix.lower() not in valid_exts:
+                raise ValueError(f"{path} does not have a valid image extension")
+            paths.append(path)
+        return paths
 
 
 def _iter_day_folders(root: Path) -> Iterator[Path]:
@@ -76,11 +82,10 @@ class PostingScheduler(BaseMain):
     def upload(self) -> None:
         for profile in self.template_profiles:
             outputs = profile.platform_info[self.platform_name].outputs_path
+
             pub_root = Path(outputs) / "publications"
-            # TODO: use pydantic here for validation
             if not pub_root.exists():
-                logger.warning(f"No publications folder for {profile}")
-                continue
+                raise FileNotFoundError(f"No publications folder for {profile}")
 
             for day_folder in _iter_day_folders(pub_root):
                 try:
@@ -97,7 +102,7 @@ class PostingScheduler(BaseMain):
                         .replace("Z", "+00:00")
                     )
 
-                    image_paths = list(day_folder.glob("*.[pj][pn]g"))
+                    image_paths: List[Path] = list(day_folder.glob("*.[pj][pn]g"))
 
                     # Let Pydantic handle all validation
                     pub = Publication(
@@ -119,7 +124,7 @@ class PostingScheduler(BaseMain):
                         )
 
                     # TODO: uncomment when cleanup is needed (when finished the refactoring)
-                    self._cleanup(pub_root)
+                    # self._cleanup(pub_root)
 
                 except (FileNotFoundError, ValueError, ValidationError) as err:
                     logger.error(
