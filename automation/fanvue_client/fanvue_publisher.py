@@ -1,13 +1,30 @@
 import os
-import sys
 import time
-import Path
-from dotenv import load_dotenv
+from pathlib import Path
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field, ValidationError
 from pynput.keyboard import Controller, Key
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "fanvue_keys.env"))
+
+load_dotenv(Path(__file__).parent / "fanvue_keys.env")
+
+
+class FanvueCredentials(BaseModel):
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+    @classmethod
+    def from_env(cls, alias: str) -> "FanvueCredentials":
+        alias_norm = alias.strip().replace(" ", "_").upper()
+        username = os.getenv(f"{alias_norm}_FANVUE_USERNAME")
+        password = os.getenv(f"{alias_norm}_FANVUE_PASSWORD")
+        try:
+            return cls(username=username, password=password)
+        except ValidationError as e:
+            raise EnvironmentError(
+                f"Invalid or missing Fanvue credentials for alias '{alias}': {e}"
+            )
 
 
 class FanvuePublisher:
@@ -21,35 +38,25 @@ class FanvuePublisher:
         self.driver.maximize_window()
 
     def login(self, alias: str):
-        alias = alias.strip()
-        if not alias:
-            raise ValueError("Alias must be a non-empty string")
-        alias_norm = alias.replace(" ", "_").upper()
+        # Validate & load credentials
+        creds = FanvueCredentials.from_env(alias)
 
-        username = os.getenv(f"{alias_norm}_FANVUE_USERNAME")
-        password = os.getenv(f"{alias_norm}_FANVUE_PASSWORD")
-        if not username or not password:
-            raise EnvironmentError(f"Missing credentials for alias '{alias}'")
-
-        # Open the Fanvue login page and activate CDP mode for captcha handling
+        # Open the Fanvue login page and activate CDP mode
         self.driver.activate_cdp_mode("https://www.fanvue.com/signin")
-        self.driver.type("input[name='email']", username)
-        self.driver.type("input[name='password']", password)
-
-        # Use SeleniumBase's built-in captcha click method
+        # Fill in username & password
+        self.driver.type("input[name='email']", creds.username)
+        self.driver.type("input[name='password']", creds.password)
+        # Solve captcha & submit
         self.driver.uc_gui_click_captcha()
-
-        # Submit the login form
         self.driver.click("button[type='submit']")
 
     def post_publication(self, file_path: Path, caption: str):
         # Click "New Post" button
         self.driver.click("a[aria-label='New Post']")
-
         # Click "Upload from device" button
         self.driver.click("button[aria-label='Upload from device']")
 
-        # Upload the corresponding images for the post
+        # Use keyboard to pick the file
         keyboard = Controller()
         keyboard.type(str(file_path))
         time.sleep(3)
@@ -57,6 +64,6 @@ class FanvuePublisher:
         keyboard.release(Key.enter)
         time.sleep(1)
 
-        # Write the caption in the box
+        # Add caption and create post
         self.driver.type("textarea[placeholder='Write a caption...']", caption)
         self.driver.click("//button[normalize-space(.//span)='Create post']")
