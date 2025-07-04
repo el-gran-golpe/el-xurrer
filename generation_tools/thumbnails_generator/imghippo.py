@@ -3,7 +3,7 @@ from pathlib import Path
 
 import cloudscraper
 from loguru import logger
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 API_KEY_FILE = Path(__file__).parent / "api_key.env"
 
