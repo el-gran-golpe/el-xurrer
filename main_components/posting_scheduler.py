@@ -134,8 +134,8 @@ class PostingScheduler(BaseMain):
                             f"Unsupported platform: {self.platform_name}"
                         )
 
-                    # TODO: uncomment when cleanup is needed (when finished the refactoring)
-                    # self._cleanup(pub_root)
+                    # TODO: uncomment self._cleanup(pub_root) when finished the refactoring
+                    self._cleanup(pub_root)
 
                 except (FileNotFoundError, ValueError, ValidationError) as err:
                     logger.error(
