@@ -242,8 +242,8 @@ if __name__ == "__main__":
     # To debug, call the function directly with your desired parameters
     # plan(profile_names="laura_vigne", profiles_index=[], overwrite_outputs=False)
     # generate_publications(profile_names="laura_vigne", profiles_index=[])
-    schedule_posts(profile_names="laura_vigne", profiles_index=[])
+    # schedule_posts(profile_names="laura_vigne", profiles_index=[])
 
-    # To run the full command-line app, comment out the direct call above
-    # and uncomment the line below.
-    # app()
+    execute_pipeline(
+        profiles_index=[], profile_names="laura_vigne", overwrite_outputs=False
+    )
