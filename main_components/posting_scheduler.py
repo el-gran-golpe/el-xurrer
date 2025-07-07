@@ -165,7 +165,7 @@ class PostingScheduler(BaseMain):
 
         except Exception as err:
             logger.error(f"API upload failed for {pub.day_folder}: {err}")
-            raise  # TODO: Should we raise in here?
+            raise
 
     def _upload_via_selenium(
         self, pub: Publication, client_class: Type[FanvuePublisher], profile: Profile
@@ -201,7 +201,6 @@ class PostingScheduler(BaseMain):
                 try:
                     client.post_publication(image_path, pub.caption_text)
                     logger.debug(f"Uploaded {image_path.name}")
-                    # sleep(5)  # TODO: probably remove this sleep in the future
                 except Exception as err:
                     logger.error(f"Failed to upload {image_path.name}: {err}")
                     raise

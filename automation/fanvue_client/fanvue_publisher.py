@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from pynput.keyboard import Controller, Key
-
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 load_dotenv(Path(__file__).parent / "fanvue_keys.env")
 
@@ -29,15 +29,42 @@ class FanvueCredentials(BaseModel):
 
 class FanvuePublisher:
     """
-    Automates Fanvue actions (login, posting text, and uploading images)
+    Automates Fanvue basic actions (login and posting)
     using SeleniumBase.
     """
+
+    HOME_PATH = "/home"
 
     def __init__(self, driver):
         self.driver = driver
         self.driver.maximize_window()
 
-    def login(self, alias: str):
+    def _wait_for_url(
+        self, substring: str, timeout: float = 10.0, interval: float = 0.5
+    ) -> None:
+        """
+        Poll self.driver.get_current_url() every `interval` seconds
+        for up to `timeout` seconds until `substring` appears.
+        Raises TimeoutException otherwise.
+        """
+        retries = int(timeout / interval)
+        for _ in range(retries):
+            try:
+                current = self.driver.get_current_url()
+            except WebDriverException:
+                # Transient error reading URL; retry
+                pass
+            else:
+                if substring in current:
+                    return
+            # stay in SeleniumBase’s session
+            self.driver.sleep(interval)
+
+        # Timed out without seeing the substring
+        last = self.driver.get_current_url()
+        raise TimeoutException(f"Post not published, still at: {last}")
+
+    def login(self, alias: str) -> None:
         # Validate & load credentials
         creds = FanvueCredentials.from_env(alias)
 
@@ -50,7 +77,7 @@ class FanvuePublisher:
         self.driver.uc_gui_click_captcha()
         self.driver.click("button[type='submit']")
 
-    def post_publication(self, file_path: Path, caption: str):
+    def post_publication(self, file_path: Path, caption: str) -> None:
         # Click "New Post" button
         self.driver.click("a[aria-label='New Post']")
         # Click "Upload from device" button
@@ -67,3 +94,6 @@ class FanvuePublisher:
         # Add caption and create post
         self.driver.type("textarea[placeholder='Write a caption...']", caption)
         self.driver.click("//button[normalize-space(.//span)='Create post']")
+
+        # Wait for the post to be published (redirect to /home)
+        self._wait_for_url(self.HOME_PATH, timeout=10.0, interval=0.5)
