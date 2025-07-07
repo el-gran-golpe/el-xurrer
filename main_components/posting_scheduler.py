@@ -98,7 +98,6 @@ class PostingScheduler(BaseMain):
             if not pub_root.exists():
                 raise FileNotFoundError(f"No publications folder for {profile}")
 
-            # TODO: isn't it easier if you just iterate through week folders?
             for day_folder in _iter_day_folders(pub_root):
                 try:
                     caption_text: str = (
@@ -118,7 +117,7 @@ class PostingScheduler(BaseMain):
 
                     # Let Pydantic handle all validation
                     pub = Publication(
-                        day_folder=day_folder,  # TODO: do I really need this day_folder?
+                        day_folder=day_folder,  # This Path variable is used for logging stuff in the terminal
                         caption_text=caption_text,
                         upload_time=upload_time,
                         image_paths=image_paths,
