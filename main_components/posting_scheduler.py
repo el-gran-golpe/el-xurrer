@@ -171,7 +171,17 @@ class PostingScheduler(BaseMain):
         self, pub: Publication, client_class: Type[FanvuePublisher], profile: Profile
     ) -> None:
         """
-        Uses a custom SeleniumBase script to upload publications on Fanvue.
+        IMPORTANT:
+        This method uploads a publication to Fanvue, then closes the browser session.
+        For each publication, a new login is performed. This is NOT optimal if you have
+        many posts in a short period, as repeated logins may trigger Fanvue's security
+        mechanisms and get your account flagged or blocked.
+
+        However, the expected use case is to have only one image per day (or at most a few per day),
+        so each upload is separated by hours or days. In zombie mode, this is safe and intended,
+        as the next publication will be uploaded much later, minimizing the risk of detection.
+
+        If you plan to upload many posts in rapid succession, consider refactoring to reuse the session.
         """
         logger.info(
             f"Uploading {pub.day_folder.name} via Selenium on {self.platform_name}"
@@ -191,7 +201,7 @@ class PostingScheduler(BaseMain):
                 try:
                     client.post_publication(image_path, pub.caption_text)
                     logger.debug(f"Uploaded {image_path.name}")
-                    sleep(5)  # TODO: remove this sleep in the future
+                    # sleep(5)  # TODO: probably remove this sleep in the future
                 except Exception as err:
                     logger.error(f"Failed to upload {image_path.name}: {err}")
                     raise
