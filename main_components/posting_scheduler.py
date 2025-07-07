@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from pathlib import Path
 from time import sleep
@@ -27,7 +28,7 @@ class Publication(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    @field_validator("caption", mode="before")
+    @field_validator("caption_text", mode="before")
     def _validate_caption(cls, v: Any) -> str:
         if not isinstance(v, str):
             raise ValueError(f"caption must be a string, got {type(v)}")
@@ -59,11 +60,20 @@ class Publication(BaseModel):
 
 def _iter_day_folders(root: Path) -> Iterator[Path]:
     """
-    Yield day folders sorted by week then day.
+    Yield day folders sorted by week then day, validating folder names.
     """
-    for week in sorted(p for p in root.iterdir() if p.is_dir()):
-        for day in sorted(p for p in week.iterdir() if p.is_dir()):
-            yield day
+    week_pattern = re.compile(r"^week_\d+$")
+    day_pattern = re.compile(r"^day_\d+$")
+
+    for week_folder in sorted(p for p in root.iterdir() if p.is_dir()):
+        if not week_pattern.match(week_folder.name):
+            raise ValueError(f"Invalid week folder name: {week_folder.name}")
+        for day_folder in sorted(p for p in week_folder.iterdir() if p.is_dir()):
+            if not day_pattern.match(day_folder.name):
+                raise ValueError(
+                    f"Invalid day folder name: {day_folder.name} in {week_folder.name}"
+                )
+            yield day_folder
 
 
 class PostingScheduler(BaseMain):
@@ -84,6 +94,7 @@ class PostingScheduler(BaseMain):
             outputs = profile.platform_info[self.platform_name].outputs_path
 
             pub_root = Path(outputs) / "publications"
+            # TODO: should be this included in the Profile class?
             if not pub_root.exists():
                 raise FileNotFoundError(f"No publications folder for {profile}")
 
