@@ -34,6 +34,9 @@ def pre_command_callback():
 
 
 def get_profiles(profiles_index: List[ProfileID], profile_names: Optional[str]):
+    """
+    Edge case: If both profiles_index and profile_names are provided, only profiles_index is used and profile_names is ignored.
+    """
     profiles = []
     if profiles_index:
         for idx in profiles_index:
