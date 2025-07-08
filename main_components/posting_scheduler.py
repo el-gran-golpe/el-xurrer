@@ -134,14 +134,13 @@ class PostingScheduler(BaseMain):
                             f"Unsupported platform: {self.platform_name}"
                         )
 
-                    # TODO: uncomment self._cleanup(pub_root) when finished the refactoring
-                    self._cleanup(pub_root)
-
                 except (FileNotFoundError, ValueError, ValidationError) as err:
                     logger.error(
                         f"Failed to create publication for {day_folder}: {err}"
                     )
                     continue
+
+            self._cleanup(pub_root)
 
     def _upload_via_api(self, pub: Publication, client_class: Type[GraphAPI]) -> None:
         """
