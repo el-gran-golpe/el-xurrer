@@ -39,31 +39,6 @@ class FanvuePublisher:
         self.driver = driver
         self.driver.maximize_window()
 
-    def _wait_for_url(
-        self, substring: str, timeout: float = 10.0, interval: float = 0.5
-    ) -> None:
-        """
-        Poll self.driver.get_current_url() every `interval` seconds
-        for up to `timeout` seconds until `substring` appears.
-        Raises TimeoutException otherwise.
-        """
-        retries = int(timeout / interval)
-        for _ in range(retries):
-            try:
-                current = self.driver.get_current_url()
-            except WebDriverException:
-                # Transient error reading URL; retry
-                pass
-            else:
-                if substring in current:
-                    return
-            # stay in SeleniumBase’s session
-            self.driver.sleep(interval)
-
-        # Timed out without seeing the substring
-        last = self.driver.get_current_url()
-        raise TimeoutException(f"Post not published, still at: {last}")
-
     def login(self, alias: str) -> None:
         # Validate & load credentials
         creds = FanvueCredentials.from_env(alias)
@@ -97,3 +72,28 @@ class FanvuePublisher:
 
         # Wait for the post to be published (redirect to /home)
         self._wait_for_url(self.HOME_PATH, timeout=10.0, interval=0.5)
+
+    def _wait_for_url(
+        self, substring: str, timeout: float = 10.0, interval: float = 0.5
+    ) -> None:
+        """
+        Poll self.driver.get_current_url() every `interval` seconds
+        for up to `timeout` seconds until `substring` appears.
+        Raises TimeoutException otherwise.
+        """
+        retries = int(timeout / interval)
+        for _ in range(retries):
+            try:
+                current = self.driver.get_current_url()
+            except WebDriverException:
+                # Transient error reading URL; retry
+                pass
+            else:
+                if substring in current:
+                    return
+            # stay in SeleniumBase’s session
+            self.driver.sleep(interval)
+
+        # Timed out without seeing the substring
+        last = self.driver.get_current_url()
+        raise TimeoutException(f"Post not published, still at: {last}")

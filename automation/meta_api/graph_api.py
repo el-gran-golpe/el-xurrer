@@ -10,7 +10,7 @@ from datetime import datetime
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-from generation_tools.thumbnails_generator.imghippo import ImgHippo
+from generation_tools.free_image_url_generator.imghippo import ImgHippo
 
 META_API_KEY = os.path.join(os.path.dirname(__file__), "api_key_instagram.env")
 
