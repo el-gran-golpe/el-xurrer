@@ -9,6 +9,15 @@ from llm.meta_llm import MetaLLM
 from llm.fanvue_llm import FanvueLLM
 
 
+def _save_planning(planning: dict[str, Any], output_path: Path) -> None:
+    try:
+        with open(output_path, "w", encoding="utf-8") as file:
+            json.dump(planning, file, indent=4, ensure_ascii=False)
+        logger.success(f"Planning saved to: {output_path}")
+    except Exception as e:
+        logger.error(f"Error writing to file {output_path}: {e}")
+
+
 class PlanningManager:
     """Universal planning manager for generating content across different platforms."""
 
@@ -44,7 +53,7 @@ class PlanningManager:
                 inputs_path / f"{profile.name}.json", storyline
             )
             output_filename = "".join(word[0] for word in profile.name.split("_"))
-            self._save_planning(
+            _save_planning(
                 planning,
                 outputs_path / f"{output_filename}_planning.json",
             )
@@ -58,11 +67,3 @@ class PlanningManager:
         return llm_method(
             prompt_template_path=template_path, previous_storyline=previous_storyline
         )
-
-    def _save_planning(self, planning: dict[str, Any], output_path: Path) -> None:
-        try:
-            with open(output_path, "w", encoding="utf-8") as file:
-                json.dump(planning, file, indent=4, ensure_ascii=False)
-            logger.success(f"Planning saved to: {output_path}")
-        except Exception as e:
-            logger.error(f"Error writing to file {output_path}: {e}")
