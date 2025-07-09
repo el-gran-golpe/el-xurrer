@@ -32,7 +32,7 @@ from azure.ai.inference.models import (
 )
 from azure.core.credentials import AzureKeyCredential
 
-from llm.constants import (
+from llm.common.constants import (
     MODEL_BY_BACKEND,
     AZURE,
     OPENAI,

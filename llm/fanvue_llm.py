@@ -2,8 +2,8 @@ import os
 import json
 from typing import Union
 
-from llm.base_llm import BaseLLM
-from llm.constants import DEFAULT_PREFERRED_MODELS
+from llm.common.base_llm import BaseLLM
+from llm.common.constants import DEFAULT_PREFERRED_MODELS
 from llm.utils.utils import get_closest_monday
 
 
