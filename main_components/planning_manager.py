@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from typing import Any
 from loguru import logger
-from typing import List
 
 from main_components.common.constants import Platform
 from main_components.common.profile import Profile
@@ -13,14 +12,14 @@ from llm.fanvue_llm import FanvueLLM
 class PlanningManager:
     """Universal planning manager for generating content across different platforms."""
 
-    _llm_map = {
+    _llm_map: dict[Platform, tuple[type, str]] = {
         Platform.META: (MetaLLM, "generate_meta_planning"),
         Platform.FANVUE: (FanvueLLM, "generate_fanvue_planning"),
     }
 
     def __init__(
         self,
-        template_profiles: List[Profile],
+        template_profiles: list[Profile],
         platform_name: Platform,
         use_initial_conditions: bool = True,
     ):
@@ -28,12 +27,12 @@ class PlanningManager:
         self.platform_name = platform_name
         self.use_initial_conditions = use_initial_conditions
 
-    def plan(self):
+    def plan(self) -> None:
         for profile in self.template_profiles:
             inputs_path = profile.platform_info[self.platform_name].inputs_path
             outputs_path = profile.platform_info[self.platform_name].outputs_path
 
-            storyline = (
+            storyline: str = (
                 (inputs_path / "initial_conditions.md")
                 .read_text(encoding="utf-8")
                 .strip()
@@ -50,17 +49,11 @@ class PlanningManager:
                 outputs_path / f"{output_filename}_planning.json",
             )
 
-    def _get_llm_and_method(self):
-        llm_info = self._llm_map.get(self.platform_name)
-        if not llm_info:
-            raise ValueError(f"Unsupported platform: {self.platform_name}")
-        llm_class, method_name = llm_info
-        return llm_class(), method_name
-
     def _generate_planning_with_llm(
         self, template_path: Path, previous_storyline: str
     ) -> dict[str, Any]:
-        llm, method_name = self._get_llm_and_method()
+        llm_class, method_name = self._llm_map[self.platform_name]
+        llm = llm_class()
         llm_method = getattr(llm, method_name)
         return llm_method(
             prompt_template_path=template_path, previous_storyline=previous_storyline
