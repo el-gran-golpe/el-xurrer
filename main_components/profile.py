@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 from typing import Dict, List
+from loguru import logger
 
 from pydantic import BaseModel, field_validator
 from main_components.constants import Platform
@@ -135,9 +136,21 @@ class ProfileManager:
             # Validate inputs directory and required files
             if not inputs.exists() or not inputs.is_dir():
                 raise FileNotFoundError(f"Inputs directory missing: {inputs}")
-            if not (inputs / "initial_conditions.md").is_file():
+
+            initial_conditions_file = inputs / "initial_conditions.md"
+            if not initial_conditions_file.is_file():
                 raise FileNotFoundError(f"Missing initial_conditions.md in: {inputs}")
-            if not (inputs / f"{profile_name}.json").is_file():
+            else:
+                content = initial_conditions_file.read_text(encoding="utf-8").strip()
+                if not content:
+                    logger.warning(f"initial_conditions.md is empty in {inputs}")
+                else:
+                    logger.info(
+                        f"initial_conditions.md found in {inputs} and contains text."
+                    )
+
+            profile_json = inputs / f"{profile_name}.json"
+            if not profile_json.is_file():
                 raise FileNotFoundError(f"Missing profile JSON in: {inputs}")
 
             # Ensure outputs directory exists (create if not)
