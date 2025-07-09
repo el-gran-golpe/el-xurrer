@@ -1,127 +1,75 @@
-import os
 import json
 from pathlib import Path
-from typing import Union, Any
-from typing_extensions import LiteralString
+from typing import Any
+from loguru import logger
+from typing import List
 
-from main_components.base_main import BaseMain
-from main_components.constants import Platform
-from main_components.profile import Profile
+from main_components.common.constants import Platform
+from main_components.common.profile import Profile
+from llm.meta_llm import MetaLLM
+from llm.fanvue_llm import FanvueLLM
 
 
-class PlanningManager(BaseMain):
+class PlanningManager:
     """Universal planning manager for generating content across different platforms."""
+
+    _llm_map = {
+        Platform.META: (MetaLLM, "generate_meta_planning"),
+        Platform.FANVUE: (FanvueLLM, "generate_fanvue_planning"),
+    }
 
     def __init__(
         self,
-        template_profiles: list[Profile],
+        template_profiles: List[Profile],
         platform_name: Platform,
-        llm_module_path: str,
-        llm_class_name: str,
-        llm_method_name: str,
-        use_initial_conditions=True,
+        use_initial_conditions: bool = True,
     ):
-        """
-        Initialize the planning manager.
-
-        Args:
-            platform_name: Name of the platform (instagram, fanvue, etc.)
-            llm_module_path: Path to the LLM module (e.g., "llm.instagram.instagram_llm")
-            llm_class_name: Name of the LLM class (e.g., "InstagramLLM")
-            llm_method_name: Name of the generation method to call (e.g., "generate_instagram_planning")
-            use_initial_conditions: Whether to use initial_conditions.md files (default: True)
-        """
-        super().__init__(platform_name)
         self.template_profiles = template_profiles
-        self.llm_module_path = llm_module_path
-        self.llm_class_name = llm_class_name
-        self.llm_method_name = llm_method_name
+        self.platform_name = platform_name
         self.use_initial_conditions = use_initial_conditions
 
-    def get_initial_conditions_path(
-        self, inputs_path
-    ) -> Union[str, LiteralString, bytes]:
-        """Get the path to initial conditions file."""
-        return os.path.join(
-            # self.planning_template_folder,
-            inputs_path,
-            "initial_conditions.md",  # THOUGHTS: this is hardcoded
-        )
+    def plan(self):
+        for profile in self.template_profiles:
+            inputs_path = profile.platform_info[self.platform_name].inputs_path
+            outputs_path = profile.platform_info[self.platform_name].outputs_path
 
-    def read_initial_conditions(
-        self, file_path: Union[str, LiteralString, bytes]
-    ) -> str:
-        """Read initial conditions from a markdown file."""
-        try:
-            return self.read_file_content(file_path, file_type="text")
-        except (FileNotFoundError, IOError) as e:
-            raise IOError(f"{e}")
+            storyline = (
+                (inputs_path / "initial_conditions.md")
+                .read_text(encoding="utf-8")
+                .strip()
+                if self.use_initial_conditions
+                else ""
+            )
 
-    def read_previous_storyline(
-        self, file_path: Union[str, LiteralString, bytes]
-    ) -> str:
-        """Read previous storyline from a markdown file."""
-        return ""
+            planning = self._generate_planning_with_llm(
+                inputs_path / f"{profile.name}.json", storyline
+            )
+            output_filename = "".join(word[0] for word in profile.name.split("_"))
+            self._save_planning(
+                planning,
+                outputs_path / f"{output_filename}_planning.json",
+            )
 
-    def _get_llm_instance(self):
-        """Dynamically import and create an instance of the specified LLM class."""
-        return self.load_dynamic_class(self.llm_module_path, self.llm_class_name)
+    def _get_llm_and_method(self):
+        llm_info = self._llm_map.get(self.platform_name)
+        if not llm_info:
+            raise ValueError(f"Unsupported platform: {self.platform_name}")
+        llm_class, method_name = llm_info
+        return llm_class(), method_name
 
-    def generate_planning_with_llm(
-        self, template_path: "Path", previous_storyline: str
+    def _generate_planning_with_llm(
+        self, template_path: Path, previous_storyline: str
     ) -> dict[str, Any]:
-        """Generate planning content using the configured/particular LLM class."""
-        # Here it is literally calling a class itself (fanvue_llm or meta_llm)
-        llm = self._get_llm_instance()
-        # And here is running a method of that class (generate_fanvue_planning or generate_meta_planning)
-        llm_method = getattr(llm, self.llm_method_name)
-        # We return the result of the LLM method call
+        llm, method_name = self._get_llm_and_method()
+        llm_method = getattr(llm, method_name)
         return llm_method(
             prompt_template_path=template_path, previous_storyline=previous_storyline
         )
 
-    def save_planning(self, planning, output_path):
-        """Save planning content to file."""
-        success = self.write_to_file(
-            content=planning, file_path=output_path, file_type="json"
-        )
-        if success:
-            print(f"Planning saved to: {output_path}")
-
-    def plan(self):
-        """Main method to generate planning."""
-        for profile in self.template_profiles:
-            inputs_path = profile.platform_info[self.platform_name].inputs_path
-            outputs_path = profile.platform_info[self.platform_name].outputs_path
-            # Read previous storyline if needed
-            initial_conditions_path = self.get_initial_conditions_path(inputs_path)
-            storyline = self.read_initial_conditions(initial_conditions_path)
-            try:
-                # TODO: check if the previous_storyline is correctly implemented, that is,
-                #  it's not being used when the initial conditions are set to false.
-                previous_storyline = self.read_previous_storyline(
-                    initial_conditions_path
-                )
-                storyline.join(previous_storyline)
-            except (AssertionError, IOError) as e:
-                print(
-                    f"\033[91mWarning: {e}. Proceeding with empty previous storyline.\033[0m"
-                )
-
-            # Generate planning
-            while True:
-                try:
-                    planning = self.generate_planning_with_llm(
-                        inputs_path.joinpath(profile.name + ".json"), storyline
-                    )
-                    # Save planning
-                    output_filename = "".join(
-                        [word[0] for word in profile.name.split("_")]
-                    )
-                    self.save_planning(
-                        planning,
-                        outputs_path.joinpath(output_filename + "_planning.json"),
-                    )
-                    break
-                except (json.decoder.JSONDecodeError, TypeError) as e:
-                    print(f"Error decoding JSON or TypeError: {e}. Retrying...")
+    def _save_planning(self, planning: dict[str, Any], output_path: Path) -> None:
+        try:
+            with open(output_path, "w", encoding="utf-8") as file:
+                json.dump(planning, file, indent=4, ensure_ascii=False)
+            logger.success(f"Planning saved to: {output_path}")
+        except Exception as e:
+            logger.error(f"Error writing to file {output_path}: {e}")

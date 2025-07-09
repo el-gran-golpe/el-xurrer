@@ -6,8 +6,7 @@ from loguru import logger
 from typing import List, Dict, Any
 from dataclasses import dataclass
 
-from main_components.base_main import BaseMain
-from main_components.constants import Platform
+from main_components.common.constants import Platform
 
 # -- Data Models --------------------------------------------------------------
 
@@ -133,7 +132,7 @@ def _parse_day(day_data: Dict[str, Any]) -> List[PublicationContent]:
     return publications
 
 
-class PublicationsGenerator(BaseMain):
+class PublicationsGenerator:
     """Generates publications (directories, captions, images) from planning data."""
 
     def __init__(
@@ -142,8 +141,7 @@ class PublicationsGenerator(BaseMain):
         template_profiles: List[Any],
         image_generator_tool: Any,
     ):
-        # TODO: I have to check if Platform is a valid type for platform_name
-        super().__init__(platform_name)
+        self.platform_name = platform_name
         self.template_profiles = template_profiles
         self.image_service = ImageGeneratorService(image_generator_tool)
 

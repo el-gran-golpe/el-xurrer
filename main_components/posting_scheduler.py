@@ -11,9 +11,8 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
 from seleniumbase import SB
 
-from main_components.base_main import BaseMain
-from main_components.constants import Platform
-from main_components.profile import Profile
+from main_components.common.constants import Platform
+from main_components.common.profile import Profile
 
 
 class Publication(BaseModel):
@@ -76,7 +75,7 @@ def _iter_day_folders(root: Path) -> Iterator[Path]:
             yield day_folder
 
 
-class PostingScheduler(BaseMain):
+class PostingScheduler:
     def __init__(
         self,
         template_profiles: List[Profile],
@@ -84,7 +83,7 @@ class PostingScheduler(BaseMain):
         # I pass the class itself and not an instance, since Fanvue needs a driver to be passed to it
         publisher: Union[Type[GraphAPI], Type[FanvuePublisher]],
     ):
-        super().__init__(platform_name)
+        self.platform_name = platform_name
         self.platform_name = platform_name
         self.template_profiles = template_profiles
         self.publisher = publisher

@@ -4,7 +4,7 @@ from typing import Dict, List
 from loguru import logger
 
 from pydantic import BaseModel, field_validator
-from main_components.constants import Platform
+from main_components.common.constants import Platform
 
 
 class PlatformInfo(BaseModel):

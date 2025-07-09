@@ -8,9 +8,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 import typer
 from loguru import logger
 
-from main_components.constants import Platform
+from main_components.common.constants import Platform
 from main_components.planning_manager import PlanningManager
-from main_components.profile import ProfileManager
+from main_components.common.profile import ProfileManager
 from main_components.posting_scheduler import PostingScheduler
 from main_components.publications_generator import PublicationsGenerator
 from generation_tools.image_generator.comfy_local import ComfyLocal
@@ -80,6 +80,11 @@ def plan(
     profiles_index: List[ProfileID] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
     overwrite_outputs: bool = typer.Option(False, "-o", "--overwrite-outputs"),
+    use_initial_conditions: bool = typer.Option(
+        True,
+        "--use-initial-conditions/--no-initial-conditions",
+        help="Use initial_conditions.md file? Defaults to True.",
+    ),
 ):
     profiles = get_profiles(profiles_index, profile_names)
     filtered_profiles = []
@@ -102,11 +107,9 @@ def plan(
     planner = PlanningManager(
         template_profiles=filtered_profiles,
         platform_name=Platform.FANVUE,
-        llm_module_path="llm.fanvue_llm",
-        llm_class_name="FanvueLLM",
-        llm_method_name="generate_fanvue_planning",
-        use_initial_conditions=True,
+        use_initial_conditions=use_initial_conditions,
     )
+
     planner.plan()
     logger.success("Planning completed.")
 
@@ -117,6 +120,7 @@ def generate(
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
     profiles = get_profiles(profiles_index, profile_names)
+    # TODO: this should not be hardcoded!
     comfy_workflow_path = (
         resource_path / "laura_vigne" / "laura_vigne_comfyworkflow.json"
     )
@@ -175,4 +179,10 @@ def execute_pipeline(
 
 
 if __name__ == "__main__":
-    app()
+    profile_manager.load_profiles()
+    plan(
+        profiles_index=[],  # Pass a list, not the Option default
+        profile_names="laura_vigne",
+        overwrite_outputs=True,
+    )
+    # app()
