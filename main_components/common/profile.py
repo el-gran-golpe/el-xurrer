@@ -1,6 +1,6 @@
 import re
+import json
 from pathlib import Path
-from typing import Dict, List
 from loguru import logger
 
 from pydantic import BaseModel, field_validator
@@ -26,7 +26,7 @@ class Profile(BaseModel):
     """Describes a persona, with per-platform I/O paths."""
 
     name: str
-    platform_info: Dict[Platform, PlatformInfo]
+    platform_info: dict[Platform, PlatformInfo]
 
     def __str__(self) -> str:
         return self.name
@@ -41,8 +41,8 @@ class ProfileManager:
 
     def __init__(self, resource_path: Path):
         self.resource_path = resource_path
-        self._profiles_by_name: Dict[str, Profile] = {}
-        self._profiles: List[Profile] = []
+        self._profiles_by_name: dict[str, Profile] = {}
+        self._profiles: list[Profile] = []
 
     def load_profiles(self) -> None:
         """
@@ -109,7 +109,7 @@ class ProfileManager:
 
     def _gather_platforms(
         self, profile_dir: Path, profile_name: str
-    ) -> Dict[Platform, PlatformInfo]:
+    ) -> dict[Platform, PlatformInfo]:
         """
         For each platform subfolder in `profile_dir`, validate and collect I/O paths.
 
@@ -117,7 +117,7 @@ class ProfileManager:
         # If any profile is incomplete, this will fail—even if you later only use
         # a different platform. We validate all up front for consistency.
         """
-        platforms: Dict[Platform, PlatformInfo] = {}
+        platforms: dict[Platform, PlatformInfo] = {}
 
         for platform_dir in sorted(profile_dir.iterdir()):
             if not platform_dir.is_dir():
@@ -133,25 +133,43 @@ class ProfileManager:
             inputs = platform_dir / "inputs"
             outputs = platform_dir / "outputs"
 
-            # Validate inputs directory and required files
+            # --- Validate inputs directory and required files ---
             if not inputs.exists() or not inputs.is_dir():
+                logger.critical(f"Inputs directory missing: {inputs}")
                 raise FileNotFoundError(f"Inputs directory missing: {inputs}")
 
             initial_conditions_file = inputs / "initial_conditions.md"
             if not initial_conditions_file.is_file():
+                logger.critical(f"Missing initial_conditions.md in: {inputs}")
                 raise FileNotFoundError(f"Missing initial_conditions.md in: {inputs}")
             else:
                 content = initial_conditions_file.read_text(encoding="utf-8").strip()
                 if not content:
                     logger.warning(f"initial_conditions.md is empty in {inputs}")
                 else:
-                    logger.info(
+                    logger.success(
                         f"initial_conditions.md found in {inputs} and contains text."
                     )
 
+            # --- Add prompt structure validation here ---
             profile_json = inputs / f"{profile_name}.json"
-            if not profile_json.is_file():
-                raise FileNotFoundError(f"Missing profile JSON in: {inputs}")
+            with profile_json.open("r", encoding="utf-8") as f:
+                try:
+                    data = json.load(f)
+                except Exception as e:
+                    logger.error(f"Invalid JSON in {profile_json}: {e}")
+                    raise ValueError(f"Invalid JSON in {profile_json}: {e}")
+                prompts = data.get("prompts")
+                if not isinstance(prompts, list) or not prompts:
+                    logger.critical(
+                        f"'prompts' must be a non-empty list in {profile_json}"
+                    )
+                    raise ValueError(
+                        f"'prompts' must be a non-empty list in {profile_json}"
+                    )
+                logger.success(
+                    f"Validated 'prompts' in {profile_json} ({len(prompts)} prompts found)"
+                )
 
             # Ensure outputs directory exists (create if not)
             outputs.mkdir(parents=True, exist_ok=True)

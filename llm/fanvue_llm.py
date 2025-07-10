@@ -1,4 +1,3 @@
-import os
 import json
 from typing import Union
 
@@ -16,24 +15,11 @@ class FanvueLLM(BaseLLM):
     def generate_fanvue_planning(
         self, prompt_template_path: str, previous_storyline: str
     ) -> dict:
-        """
-        Generates a planning for Fanvue platform content.
-
-        :param prompt_template_path: Path to the prompt template file.
-        :param previous_storyline: The storyline from the previous season.
-        :return: A dictionary containing the structured posts for uploading.
-        """
-        assert os.path.isfile(prompt_template_path), (
-            f"Planning template not found: {prompt_template_path}"
-        )
-
         with open(prompt_template_path, "r", encoding="utf-8") as file:
             prompt_template = json.load(file)
 
         prompts = prompt_template["prompts"]
         lang = prompt_template["lang"]
-        assert isinstance(prompts, list), "Prompts must be a list"
-        assert len(prompts) > 0, "No prompts found in the prompt template file"
 
         # Calculate the day and replace placeholders in the prompts
         monday_date = get_closest_monday().strftime("%Y-%m-%d")
