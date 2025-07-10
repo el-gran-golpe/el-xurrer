@@ -13,7 +13,9 @@ class FanvueLLM(BaseLLM):
         super().__init__(preferred_models=preferred_models)
 
     def generate_fanvue_planning(
-        self, prompt_template_path: str, previous_storyline: str
+        self,
+        prompt_template_path: str,
+        previous_storyline: str,  # Can be an empty string if no initial conditions
     ) -> dict:
         with open(prompt_template_path, "r", encoding="utf-8") as file:
             prompt_template = json.load(file)
