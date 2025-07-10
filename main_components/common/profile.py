@@ -58,6 +58,7 @@ class ProfileManager:
             - Have an `inputs/initial_conditions.md` file.
             - Have an `inputs/<profile_name>.json` file.
             - Have (or be able to create) an `outputs/` directory.
+            - Proper formatting following the conventions defined for this project.
 
         Raises:
             FileNotFoundError: if resource_path is missing or expected files/dirs are absent.
@@ -170,6 +171,33 @@ class ProfileManager:
                 logger.success(
                     f"Validated 'prompts' in {profile_json} ({len(prompts)} prompts found)"
                 )
+
+            # --- Validate {day} in system_prompt ---
+            for i, prompt in enumerate(prompts):
+                system_prompt = prompt.get("system_prompt")
+                if system_prompt and "{day}" not in system_prompt:
+                    logger.critical(
+                        f"\n\n"
+                        f"Validation Error: The 'system_prompt' for prompt #{i} in '{profile_json}' is missing the '{{day}}' placeholder.\n"
+                        f"Each 'system_prompt' must include '{{day}}' so the system can personalize prompts for the correct week.\n"
+                        f"To fix this:\n"
+                        f"  1. Open the file: {profile_json}\n"
+                        f"  2. Locate prompt #{i} and ensure 'system_prompt' contains '{{day}}'.\n"
+                        f"     Example: 'Welcome! Today is {{day}}.'\n"
+                        f"  3. Save the file and rerun your command.\n"
+                        f"\n"
+                        f"Project structure reminder:\n"
+                        f"  - resources/<profile>/<platform>/inputs/<profile>.json (prompt templates)\n"
+                        f"  - Each 'system_prompt' in this file must have '{{day}}'.\n"
+                        f"\n"
+                        f"Invalid system_prompt: {system_prompt}\n"
+                    )
+                    raise ValueError(
+                        f"Prompt #{i} in {profile_json} is missing '{{day}}' in system_prompt"
+                    )
+            logger.success(
+                f"Validated 'prompts' in {profile_json} ({len(prompts)} prompts found)"
+            )
 
             # Ensure outputs directory exists (create if not)
             outputs.mkdir(parents=True, exist_ok=True)
