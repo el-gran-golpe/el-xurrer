@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 import os
+from pathlib import Path
 import random
 from copy import deepcopy
 import json
@@ -17,7 +16,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
     ChatCompletionAssistantMessageParam,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from tqdm import tqdm
 from loguru import logger
 
@@ -47,12 +46,44 @@ from llm.common.constants import (
     MODELS_INCLUDING_CHAIN_THOUGHT,
 )
 
-ENV_FILE = os.path.join(os.path.dirname(__file__), "api_key.env")
+ENV_FILE = Path(__file__).parent / "api_key.env"
 
 
 class ApiKey(BaseModel):
     api_key: str
     paid: bool = False
+
+
+class LLMApiKeys(BaseModel):
+    github_api_key_haru: str = Field("", min_length=10)
+    github_api_key_moi: str = Field("", min_length=10)
+    openai_api_key: str = Field(..., min_length=10)
+    env_file: Path
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_env_file_and_load(cls, values):
+        env_file = values.get("env_file")
+        if not env_file or not Path(env_file).is_file():
+            raise FileNotFoundError(
+                f"Missing API key file: {env_file}. "
+                "This file should have the following format:\n"
+                "GITHUB_API_KEY_HARU=<your-api-key>\n"
+                "GITHUB_API_KEY_MOI=<your-api-key>\n"
+                "OPENAI_API_KEY=<your-api-key>"
+            )
+        load_dotenv(env_file)
+        # Load from env if not provided
+        for key in ["github_api_key_haru", "github_api_key_moi", "openai_api_key"]:
+            if not values.get(key):
+                values[key] = os.getenv(key.upper(), "")
+        return values
+
+    @model_validator(mode="after")
+    def at_least_one_github_key(self):
+        if not (self.github_api_key_haru or self.github_api_key_moi):
+            raise ValueError("At least one GitHub API key must be provided.")
+        return self
 
 
 ResponseChunk = Union[
@@ -68,38 +99,33 @@ ResponseChunk = Union[
 class BaseLLM:
     def __init__(
         self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
-    ) -> None:
-        assert os.path.isfile(ENV_FILE), (
-            f"Missing API key file: {ENV_FILE}. "
-            f"This file should have the following format:\n"
-            f"GITHUB_API_KEY=<your-api-key>"
-        )
-        # Load the API key from the api_key.env file
-        load_dotenv(ENV_FILE)
+    ):
         if isinstance(preferred_models, str):
             preferred_models = [preferred_models]
 
         self.preferred_models = preferred_models
         self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
 
-        if (
-            os.getenv("GITHUB_API_KEY_HARU") is None
-            and os.getenv("GITHUB_API_KEY_MOI") is None
-        ):
-            raise ValueError("No GitHub API keys found")
+        try:
+            self.api_keys = LLMApiKeys(
+                env_file=ENV_FILE,
+                github_api_key_haru=os.getenv("GITHUB_API_KEY_HARU", ""),
+                github_api_key_moi=os.getenv("GITHUB_API_KEY_MOI", ""),
+                openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            )
+        except (ValidationError, FileNotFoundError) as e:
+            raise ValueError(f"API key validation failed: {e}")
+
         self.github_api_keys: list[ApiKey] = [
             ApiKey(api_key=key, paid=False)
             for key in [
-                os.getenv("GITHUB_API_KEY_HARU"),
-                os.getenv("GITHUB_API_KEY_MOI"),
+                self.api_keys.github_api_key_haru,
+                self.api_keys.github_api_key_moi,
             ]
-            if key is not None
+            if key
         ]
-
-        if os.getenv("OPENAI_API_KEY") is None:
-            raise ValueError("No OpenAI API key found")
         self.openai_api_key: ApiKey = ApiKey(
-            api_key=os.environ["OPENAI_API_KEY"], paid=True
+            api_key=self.api_keys.openai_api_key, paid=True
         )
 
         self.exhausted_models: list[str] = []

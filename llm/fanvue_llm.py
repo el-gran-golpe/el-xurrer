@@ -4,7 +4,7 @@ from typing import Any, Union
 
 from llm.common.base_llm import BaseLLM
 from llm.common.constants import DEFAULT_PREFERRED_MODELS
-from llm.utils.utils import get_closest_monday
+from llm.common.utils import get_closest_monday
 
 
 class FanvueLLM(BaseLLM):
