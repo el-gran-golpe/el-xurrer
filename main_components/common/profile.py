@@ -51,6 +51,7 @@ class ProfileManager:
         defined in Platform. Raises an error if any required platform subfolder is missing.
         """
         if not self.resource_path.is_dir():
+            logger.critical(f"Resource directory not found: {self.resource_path}")
             raise FileNotFoundError(
                 f"Resource directory not found: {self.resource_path}"
             )
@@ -62,7 +63,12 @@ class ProfileManager:
             profile_name = profile_dir.name
 
             # 1. Validate profile name
-            self._validate_profile_name(profile_name)
+            try:
+                self._validate_profile_name(profile_name)
+                logger.debug(f"Validated profile name: {profile_name}")
+            except Exception as e:
+                logger.critical(f"Invalid profile name '{profile_name}': {e}")
+                raise
 
             # 2. Check all required platform subfolders exist
             missing_platforms = []
@@ -71,18 +77,36 @@ class ProfileManager:
                 if not platform_subdir.is_dir():
                     missing_platforms.append(platform.value)
             if missing_platforms:
+                logger.critical(
+                    f"Profile '{profile_name}' is missing required platform subfolders: {missing_platforms}"
+                )
                 raise FileNotFoundError(
                     f"Profile '{profile_name}' is missing required platform subfolders: {missing_platforms}"
                 )
+            logger.debug(
+                f"All required platform subfolders exist for profile '{profile_name}'."
+            )
 
             # 3. Validate workflow file
-            self._validate_workflow_file(profile_dir, profile_name)
+            try:
+                self._validate_workflow_file(profile_dir, profile_name)
+                logger.debug(f"Validated workflow file for profile: {profile_name}")
+            except Exception as e:
+                logger.critical(
+                    f"Workflow file validation failed for '{profile_name}': {e}"
+                )
+                raise
 
             # 4. Continue with the rest
-            platforms = self._gather_platforms(profile_dir, profile_name)
-            profile = Profile(name=profile_name, platform_info=platforms)
-            self._profiles_by_name[profile_name] = profile
-            self._profiles.append(profile)
+            try:
+                platforms = self._gather_platforms(profile_dir, profile_name)
+                profile = Profile(name=profile_name, platform_info=platforms)
+                self._profiles_by_name[profile_name] = profile
+                self._profiles.append(profile)
+                logger.success(f"Profile '{profile_name}' loaded and validated.")
+            except Exception as e:
+                logger.critical(f"Failed to load profile '{profile_name}': {e}")
+                raise
 
     def get_profile_by_name(self, name: str) -> Profile:
         try:
@@ -169,9 +193,6 @@ class ProfileManager:
                     raise ValueError(
                         f"'prompts' must be a non-empty list in {profile_json}"
                     )
-                logger.success(
-                    f"Validated 'prompts' in {profile_json} ({len(prompts)} prompts found)"
-                )
 
             # --- Validate {day} in system_prompt ---
             for i, prompt in enumerate(prompts):
