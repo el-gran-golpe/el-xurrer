@@ -1,5 +1,5 @@
-import os
 from pathlib import Path
+from dotenv import dotenv_values
 import random
 from copy import deepcopy
 import json
@@ -55,34 +55,29 @@ class ApiKey(BaseModel):
 
 
 class LLMApiKeys(BaseModel):
-    github_api_key_haru: str = Field("", min_length=10)
-    github_api_key_moi: str = Field("", min_length=10)
-    openai_api_key: str = Field(..., min_length=10)
+    api_keys: dict[str, str] = Field(default_factory=dict)
     env_file: Path
 
     @model_validator(mode="before")
     @classmethod
-    def check_env_file_and_load(cls, values):
+    def load_all_api_keys(cls, values):
         env_file = values.get("env_file")
         if not env_file or not Path(env_file).is_file():
-            raise FileNotFoundError(
-                f"Missing API key file: {env_file}. "
-                "This file should have the following format:\n"
-                "GITHUB_API_KEY_HARU=<your-api-key>\n"
-                "GITHUB_API_KEY_MOI=<your-api-key>\n"
-                "OPENAI_API_KEY=<your-api-key>"
-            )
+            raise FileNotFoundError(f"Missing API key file: {env_file}.")
+        # Load all key-value pairs from the env file
+        env_vars = dotenv_values(env_file)
+        # Filter out empty values
+        api_keys = {k: v for k, v in env_vars.items() if v}
+        if not api_keys:
+            raise ValueError("No API keys found in the env file.")
+        values["api_keys"] = api_keys
         load_dotenv(env_file)
-        # Load from env if not provided
-        for key in ["github_api_key_haru", "github_api_key_moi", "openai_api_key"]:
-            if not values.get(key):
-                values[key] = os.getenv(key.upper(), "")
         return values
 
     @model_validator(mode="after")
-    def at_least_one_github_key(self):
-        if not (self.github_api_key_haru or self.github_api_key_moi):
-            raise ValueError("At least one GitHub API key must be provided.")
+    def at_least_one_key(self):
+        if not self.api_keys:
+            raise ValueError("At least one API key must be provided.")
         return self
 
 
@@ -100,38 +95,47 @@ class BaseLLM:
     def __init__(
         self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
     ):
-        if isinstance(preferred_models, str):
-            preferred_models = [preferred_models]
-
-        self.preferred_models = preferred_models
+        self.preferred_models = (
+            [preferred_models]
+            if isinstance(preferred_models, str)
+            else preferred_models
+        )
         self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
 
-        try:
-            self.api_keys = LLMApiKeys(
-                env_file=ENV_FILE,
-                github_api_key_haru=os.getenv("GITHUB_API_KEY_HARU", ""),
-                github_api_key_moi=os.getenv("GITHUB_API_KEY_MOI", ""),
-                openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-            )
-        except (ValidationError, FileNotFoundError) as e:
-            raise ValueError(f"API key validation failed: {e}")
-
-        self.github_api_keys: list[ApiKey] = [
-            ApiKey(api_key=key, paid=False)
-            for key in [
-                self.api_keys.github_api_key_haru,
-                self.api_keys.github_api_key_moi,
-            ]
-            if key
-        ]
-        self.openai_api_key: ApiKey = ApiKey(
-            api_key=self.api_keys.openai_api_key, paid=True
-        )
+        self.api_keys = self._load_api_keys()
+        self.github_api_keys = self._extract_github_keys()
+        self.openai_api_key = self._extract_openai_key()
 
         self.exhausted_models: list[str] = []
         self.client: Optional[Union[ChatCompletionsClient, OpenAI]] = None
         self.active_backend: Optional[Union[Literal["openai", "azure"]]] = None
         self.using_paid_api = False
+
+    # --- Helper methods for API keys and clients ---
+    def _load_api_keys(self) -> LLMApiKeys:
+        try:
+            return LLMApiKeys(env_file=ENV_FILE)
+        except (ValidationError, FileNotFoundError) as e:
+            raise ValueError(f"API key validation failed: {e}")
+
+    def _extract_github_keys(self) -> list[ApiKey]:
+        return [
+            ApiKey(api_key=key, paid=False)
+            for name, key in self.api_keys.api_keys.items()
+            if "GITHUB" in name.upper()
+        ]
+
+    def _extract_openai_key(self) -> ApiKey:
+        openai_keys = [
+            key
+            for name, key in self.api_keys.api_keys.items()
+            if "OPENAI" in name.upper()
+        ]
+        if not openai_keys:
+            raise ValueError("No OpenAI API key found in the env file.")
+        return ApiKey(api_key=openai_keys[0], paid=True)
+
+    # --- End of helper methods ---
 
     def get_client(self, model: str, paid_api: bool = False):
         assert model in MODEL_BY_BACKEND, f"Model not found: {model}"
