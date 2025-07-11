@@ -68,11 +68,6 @@ class OneRequestServer:
         # Return self to be used within the with block
         return self
 
-    def wait_for_request(self):
-        # Handle a single request and return the parameters
-        self.httpd.handle_request()
-        return self.httpd.params
-
     def __exit__(self, exc_type, exc_value, traceback):
         # Cleanup actions can be performed here if needed
         pass
