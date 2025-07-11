@@ -16,7 +16,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
     ChatCompletionAssistantMessageParam,
 )
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator, field_validator
 from tqdm import tqdm
 from loguru import logger
 
@@ -79,6 +79,17 @@ class LLMApiKeys(BaseModel):
         if not self.api_keys:
             raise ValueError("At least one API key must be provided.")
         return self
+
+
+class LLMConfig(BaseModel):
+    preferred_models: list[str]
+
+    @field_validator("preferred_models")
+    @classmethod
+    def not_empty(cls, v):
+        if not v:
+            raise ValueError("preferred_models must not be empty")
+        return v
 
 
 ResponseChunk = Union[
@@ -599,9 +610,7 @@ class BaseLLM:
         desc: str = "Generating",
         cache: dict[str, str] = dict(),
     ) -> dict:
-        if len(preferred_models) == 0:
-            assert len(self.preferred_models) > 0, "No preferred models found"
-            preferred_models = self.preferred_models
+        preferred_models = self.preferred_models
 
         # Loop through each prompt and get a response
         for i, prompt_definition in tqdm(
