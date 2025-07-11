@@ -32,7 +32,6 @@ class Profile(BaseModel):
         return self.name
 
 
-# TODO: we might be able to use Pydantic models instead of doing manual validations
 class ProfileManager:
     """Manager for loading and retrieving Profile objects."""
 
@@ -48,37 +47,39 @@ class ProfileManager:
         """
         Scan `resource_path` for valid profile directories and load them.
 
-        This runs once at startup and verifies every profile folder, even those not in use,
-        so that all personas are validated up front.
-
-        A valid profile folder must:
-          - Be named in snake_case (e.g., "laura_vigne").
-          - Contain a ComfyUI workflow file named `<folder>_comfyworkflow.json`.
-          - For each platform subfolder:
-            - Have an `inputs/initial_conditions.md` file.
-            - Have an `inputs/<profile_name>.json` file.
-            - Have (or be able to create) an `outputs/` directory.
-            - Proper formatting following the conventions defined for this project.
-
-        Raises:
-            FileNotFoundError: if resource_path is missing or expected files/dirs are absent.
-            ValueError: if naming conventions or types are incorrect.
+        Checks that every profile directory contains a subfolder for every platform
+        defined in Platform. Raises an error if any required platform subfolder is missing.
         """
         if not self.resource_path.is_dir():
             raise FileNotFoundError(
                 f"Resource directory not found: {self.resource_path}"
             )
 
-        for profile_dir in sorted(self.resource_path.iterdir()):
-            if not profile_dir.is_dir():
-                continue
+        profile_dirs = [d for d in sorted(self.resource_path.iterdir()) if d.is_dir()]
+        logger.info(f"Found {len(profile_dirs)} profile directories.")
 
+        for profile_dir in profile_dirs:
             profile_name = profile_dir.name
+
+            # 1. Validate profile name
             self._validate_profile_name(profile_name)
+
+            # 2. Check all required platform subfolders exist
+            missing_platforms = []
+            for platform in Platform:
+                platform_subdir = profile_dir / platform.value
+                if not platform_subdir.is_dir():
+                    missing_platforms.append(platform.value)
+            if missing_platforms:
+                raise FileNotFoundError(
+                    f"Profile '{profile_name}' is missing required platform subfolders: {missing_platforms}"
+                )
+
+            # 3. Validate workflow file
             self._validate_workflow_file(profile_dir, profile_name)
 
+            # 4. Continue with the rest
             platforms = self._gather_platforms(profile_dir, profile_name)
-
             profile = Profile(name=profile_name, platform_info=platforms)
             self._profiles_by_name[profile_name] = profile
             self._profiles.append(profile)
