@@ -585,42 +585,48 @@ class BaseLLM:
     def _generate_dict_from_prompts(
         self,
         prompts: list[dict],
-        preferred_models: list[str] = [],
         desc: str = "Generating",
         cache: dict[str, str] = dict(),
     ) -> dict:
         preferred_models = self.preferred_models
 
-        # Loop through each prompt and get a response
-        for i, prompt_definition in tqdm(
-            enumerate(prompts), desc=desc, total=len(prompts)
-        ):
-            prompt, cache_key = (
-                prompt_definition["prompt"],
-                prompt_definition["cache_key"],
+        # Loop through each prompt_spec (that is, a ternary of system_promt + prompt + cache_key specified in
+        # the .json) and get a response
+        for i, prompt_spec in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
+            # These 3 variables can never be empty according to profile.py
+            system_prompt, prompt, cache_key = (
+                prompt_spec["system_prompt"],
+                prompt_spec["prompt"],
+                prompt_spec["cache_key"],
             )
-            function_call = prompt_definition.get(
-                "function_call", None
-            )  # FIXME: ask Haru what is the use of that
-            system_prompt = prompt_definition.get("system_prompt", None)
-            structured_json = prompt_definition.get("structured_json", None)
-            as_json = prompt_definition.get("json", False)
-            force_reasoning = prompt_definition.get("force_reasoning", False)
-            large_output = prompt_definition.get("large_output", False)
-            validate = prompt_definition.get("validate", False)
+            # These other variables are optional
+            function_call = prompt_spec.get("function_call", None)  # FIXME: ask Haru
+            structured_json = prompt_spec.get("structured_json", None)
+            as_json = prompt_spec.get("json", False)
+            force_reasoning = prompt_spec.get("force_reasoning", False)
+            large_output = prompt_spec.get("large_output", False)
+            validate = prompt_spec.get("validate", False)
 
-            conversation = []
-            system_prompt = self._replace_prompt_placeholders(
-                prompt=system_prompt,
-                cache=cache,
-                accept_unfilled=function_call is not None,
-            )
-            conversation.append({"role": "system", "content": system_prompt})
-
-            prompt = self._replace_prompt_placeholders(
-                prompt=prompt, cache=cache, accept_unfilled=function_call is not None
-            )
-            conversation.append({"role": "user", "content": prompt})
+            # -- start the conversation --
+            conversation = [
+                {
+                    "role": "system",
+                    "content": self._replace_prompt_placeholders(
+                        prompt=system_prompt,
+                        cache=cache,
+                        accept_unfilled=function_call is not None,
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": self._replace_prompt_placeholders(
+                        prompt=prompt,
+                        cache=cache,
+                        accept_unfilled=function_call is not None,
+                    ),
+                },
+            ]
+            # -- end the conversation --
 
             if function_call is not None:
                 assert isinstance(function_call, str), "Invalid function call"
