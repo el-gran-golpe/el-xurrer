@@ -1,8 +1,6 @@
-# El Xurrer
-
-*A modular, end‑to‑end pipeline for **planning, generating, scheduling,** and **posting** AI‑powered multimedia content to social platforms.*
-
 ![logo](assets/el_xurrer_logo.png) <!-- optional illustration -->
+
+El-xurrer is a modular, end‑to‑end pipeline for planning, generating, scheduling, and posting AI‑powered multimedia content to social platforms.
 
 ---
 
