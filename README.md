@@ -2,7 +2,7 @@
 
 *A modular, end‑to‑end pipeline for **planning, generating, scheduling,** and **posting** AI‑powered multimedia content to social platforms.*
 
-![logo](docs/img/logo.png) <!-- optional illustration -->
+![logo](assets/el_xurrer_logo.png) <!-- optional illustration -->
 
 ---
 
