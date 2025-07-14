@@ -202,27 +202,6 @@ class BaseLLM:
         self.using_paid_api = paid_api
         return self.client
 
-    def _update_conversation_before_model_pass(
-        self,
-        conversation_history: list[dict],
-        new_user_message: str,  # , step: int = None
-    ) -> list[dict]:
-        # FIXME: What is this for?  ask Haru
-        conversation = deepcopy(conversation_history)
-        conversation.append({"role": "user", "content": new_user_message})
-        return conversation
-
-    def _update_conversation_after_model_pass(
-        self,
-        conversation_history: list[dict],
-        output_assistant_message: str,
-        # step: int = None,
-    ) -> list[dict]:
-        # FIXME: What is this for?  ask Haru
-        conversation = deepcopy(conversation_history)
-        conversation.append({"role": "assistant", "content": output_assistant_message})
-        return conversation
-
     def get_model_response(
         self,
         conversation: list[dict],
@@ -631,13 +610,12 @@ class BaseLLM:
             validate = prompt_definition.get("validate", False)
 
             conversation = []
-            if system_prompt is not None:
-                system_prompt = self._replace_prompt_placeholders(
-                    prompt=system_prompt,
-                    cache=cache,
-                    accept_unfilled=function_call is not None,
-                )
-                conversation.append({"role": "system", "content": system_prompt})
+            system_prompt = self._replace_prompt_placeholders(
+                prompt=system_prompt,
+                cache=cache,
+                accept_unfilled=function_call is not None,
+            )
+            conversation.append({"role": "system", "content": system_prompt})
 
             prompt = self._replace_prompt_placeholders(
                 prompt=prompt, cache=cache, accept_unfilled=function_call is not None
