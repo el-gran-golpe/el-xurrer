@@ -566,20 +566,30 @@ class BaseLLM:
         self, prompt: str, cache: dict[str, str], accept_unfilled: bool = False
     ) -> str:
         """
-        Replace the placeholders in the prompt_spec? with the values in the cache
-        :param prompt: The prompt to replace the placeholders
-        :param cache: The cache with the values to replace
-        :return: The prompt with the placeholders replaced
+        Replace all `{placeholder}` patterns in the prompt string with values from the cache.
+
+        - If `accept_unfilled` is False (default), all placeholders must be present in the cache.
+          Raises AssertionError if any are missing.
+        - If `accept_unfilled` is True, only replaces placeholders that exist in the cache;
+          leaves others unchanged.
+
+        Args:
+            prompt: The prompt string with `{placeholder}` patterns.
+            cache: Dictionary mapping placeholder names to their replacement values.
+            accept_unfilled: If True, allows placeholders to remain if not in cache.
+
+        Returns:
+            The prompt string with placeholders replaced as appropriate.
         """
         placeholders = re.findall(r"{(\w+)}", prompt)
         for placeholder in placeholders:
-            if not accept_unfilled:
-                assert placeholder in cache, (
-                    f"Placeholder '{placeholder}' not found in the cache"
+            if placeholder in cache:
+                prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
+            elif not accept_unfilled:
+                raise AssertionError(
+                    f"Placeholder '{{{placeholder}}}' not found in cache for prompt: {prompt}"
                 )
-                prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
-            elif placeholder in cache:
-                prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
+            # else: leave the placeholder as-is if accept_unfilled is True
         return prompt
 
     def _generate_dict_from_prompts(
