@@ -566,7 +566,7 @@ class BaseLLM:
         self, prompt: str, cache: dict[str, str], accept_unfilled: bool = False
     ) -> str:
         """
-        Replace the placeholders in the prompt with the values in the cache
+        Replace the placeholders in the prompt_spec? with the values in the cache
         :param prompt: The prompt to replace the placeholders
         :param cache: The cache with the values to replace
         :return: The prompt with the placeholders replaced
@@ -607,7 +607,7 @@ class BaseLLM:
             large_output = prompt_spec.get("large_output", False)
             validate = prompt_spec.get("validate", False)
 
-            # -- start the conversation --
+            # --- Prepare the conversation ---
             conversation = [
                 {
                     "role": "system",
@@ -626,7 +626,6 @@ class BaseLLM:
                     ),
                 },
             ]
-            # -- end the conversation --
 
             if function_call is not None:
                 assert isinstance(function_call, str), "Invalid function call"
