@@ -616,11 +616,6 @@ class BaseLLM:
         for i, prompt_definition in tqdm(
             enumerate(prompts), desc=desc, total=len(prompts)
         ):
-            # TODO: Place this validation in the profile.py
-            assert all(key in prompt_definition for key in ("prompt", "cache_key")), (
-                "Invalid prompt definition"
-            )
-
             prompt, cache_key = (
                 prompt_definition["prompt"],
                 prompt_definition["cache_key"],

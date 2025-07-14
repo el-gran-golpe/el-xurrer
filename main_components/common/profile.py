@@ -193,6 +193,16 @@ class ProfileManager:
                     raise ValueError(
                         f"'prompts' must be a non-empty list in {profile_json}"
                     )
+                #  --- Validate "prompt", "cache_key" and "system_prompt" exist
+                for i, prompt_def in enumerate(prompts):
+                    required_keys = ("prompt", "cache_key", "system_prompt")
+                    if not all(k in prompt_def for k in required_keys):
+                        logger.critical(
+                            f"Prompt #{i} in {profile_json} is missing required keys {required_keys}."
+                        )
+                        raise ValueError(
+                            f"Prompt #{i} in {profile_json} is missing required keys {required_keys}."
+                        )
 
             # --- Validate {day} in system_prompt ---
             for i, prompt in enumerate(prompts):
