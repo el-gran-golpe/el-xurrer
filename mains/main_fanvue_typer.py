@@ -164,10 +164,9 @@ def schedule(
     do_schedule(profiles)
 
 
-def background_worker(profile: Profile, overwrite_outputs: bool) -> None:
+def background_worker(profile: Profile) -> None:
     """
     Continuous loop: do_plan → do_generate → do_schedule → sleep → update lore.
-    Respects overwrite_outputs flag.
     """
     use_initial_conditions = True
     while True:
@@ -198,6 +197,7 @@ def background_worker(profile: Profile, overwrite_outputs: bool) -> None:
             )
             time.sleep(sleep_seconds)
 
+        # TODO: check this
         # Append summary lore
         summary_lines = [f"## Summary at {datetime.now(timezone.utc).isoformat()}"]
         for day_folder in sorted(pub_dir.iterdir()):
@@ -217,7 +217,6 @@ def background_worker(profile: Profile, overwrite_outputs: bool) -> None:
 def start_pipeline(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-    overwrite_outputs: bool = typer.Option(False, "-o", "--overwrite-outputs"),
 ) -> None:
     """
     Spawn one process per profile, each running an infinite pipeline loop.
@@ -228,7 +227,7 @@ def start_pipeline(
     for profile in profiles:
         worker = Process(
             target=background_worker,
-            args=(profile, overwrite_outputs),
+            args=(profile,),
             daemon=False,
         )
         worker.start()
