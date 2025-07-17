@@ -1,186 +1,242 @@
-import sys
+import time
+from datetime import datetime, timezone
+from multiprocessing import Process
 from pathlib import Path
-from typing import Optional, List
-
-# Add project root to sys.path for module resolution
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+from typing import Optional
 
 import typer
 from loguru import logger
 
 from main_components.common.constants import Platform
+from main_components.common.profile import Profile, ProfileManager
 from main_components.planning_manager import PlanningManager
-from main_components.common.profile import ProfileManager
-from main_components.posting_scheduler import PostingScheduler
+from main_components.posting_scheduler import PostingScheduler, _iter_day_folders
 from main_components.publications_generator import PublicationsGenerator
 from generation_tools.image_generator.comfy_local import ComfyLocal
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 
+# CLI application for the Fanvue pipeline
 app = typer.Typer()
-resource_path = Path(__file__).resolve().parent.parent / "resources"
-profile_manager = ProfileManager(resource_path)
-ProfileID = int
+
+# Paths and profile manager
+ROOT_DIR = Path(__file__).resolve().parent.parent
+RESOURCES_DIR = ROOT_DIR / "resources"
+profile_manager = ProfileManager(RESOURCES_DIR)
 
 
-@app.callback()
-def pre_command_callback():
-    """Always load and validate profiles before any command."""
+def pre_command_callback() -> None:
+    """
+    Load and validate profiles before any CLI command.
+
+    Exits the program if loading fails.
+    """
     try:
         profile_manager.load_profiles()
         logger.success("Profiles loaded and validated successfully.")
-    except Exception as e:
-        logger.critical(f"Failed to load profiles: {e}")
+    except Exception as error:
+        logger.critical(f"Failed to load profiles: {error}")
         raise typer.Exit(1)
 
 
-def get_profiles(profiles_index: List[ProfileID], profile_names: Optional[str]):
+def resolve_profiles(indexes: list[int], names: Optional[str]) -> list[Profile]:
     """
-    Edge case: If both profiles_index and profile_names are provided, only profiles_index is used and profile_names is ignored.
+    Resolve profiles by index list or comma-separated names.
+
+    Edge case: if both indexes and names are provided, indexes take precedence.
+
+    Raises:
+        typer.BadParameter: if neither argument is provided.
     """
-    profiles = []
-    if profiles_index:
-        for idx in profiles_index:
-            try:
-                profiles.append(profile_manager.get_profile_by_index(idx))
-            except Exception as e:
-                logger.error(f"Invalid profile index {idx}: {e}")
-                raise typer.Exit(1)
-    elif profile_names:
-        for name in profile_names.split(","):
-            try:
-                profiles.append(profile_manager.get_profile_by_name(name.strip()))
-            except Exception as e:
-                logger.error(f"Invalid profile name '{name.strip()}': {e}")
-                raise typer.Exit(1)
-    else:
-        logger.warning("No profile index or name provided.")
-        raise typer.BadParameter("Provide at least one profile index or name.")
-    return profiles
+    if indexes:
+        return [profile_manager.get_profile_by_index(i) for i in indexes]
+
+    if names:
+        cleaned = [n.strip() for n in names.split(",")]
+        return [profile_manager.get_profile_by_name(n) for n in cleaned]
+
+    logger.error("No profile indexes or names provided.")
+    raise typer.BadParameter("Provide at least one profile index or name.")
+
+
+@app.callback()
+def load_profiles_callback() -> None:
+    """
+    Ensures profiles are loaded before running any command.
+    """
+    pre_command_callback()
 
 
 @app.command()
-def list_profiles():
-    """List available profiles."""
-    idx = 0
-    found = False
+def list_profiles() -> None:
+    """List available profiles with their indexes and names."""
+    index = 0
     while True:
         try:
-            profile = profile_manager.get_profile_by_index(idx)
-            logger.info(f"{idx}: {profile.name}")
-            found = True
-            idx += 1
-        except IndexError:
-            if not found:
-                logger.warning("No profiles found.")
+            profile = profile_manager.get_profile_by_index(index)
+            typer.echo(f"{index}: {profile.name}")
+            index += 1
+        except Exception:
             break
+
+
+def do_plan(profiles: list[Profile], use_initial_conditions: bool) -> None:
+    """
+    Run the planning phase for given profiles.
+    """
+    PlanningManager(
+        template_profiles=profiles,
+        platform_name=Platform.FANVUE,
+        use_initial_conditions=use_initial_conditions,
+    ).plan()
+    logger.success("Planning completed.")
+
+
+def do_generate(profiles: list[Profile]) -> None:
+    """
+    Run the generation phase for given profiles.
+    """
+    # Verify ComfyUI connection per profile
+    for profile in profiles:
+        workflow_file = (
+            RESOURCES_DIR / profile.name / f"{profile.name}_comfyworkflow.json"
+        )
+        client = ComfyLocal(workflow_path=workflow_file)
+        try:
+            client.client.get_json(f"http://{client.server}/system_stats")
+        except Exception as error:
+            logger.critical(
+                f"Failed to connect to ComfyUI for '{profile.name}': {error}"
+            )
+            raise typer.Exit(1)
+
+    PublicationsGenerator(
+        template_profiles=profiles,
+        platform_name=Platform.FANVUE,
+        image_generator_tool=lambda p: ComfyLocal(
+            workflow_path=RESOURCES_DIR / p.name / f"{p.name}_comfyworkflow.json"
+        ),
+    ).generate()
+    logger.success("Generation completed.")
+
+
+def do_schedule(profiles: list[Profile]) -> None:
+    """
+    Run the scheduling/upload phase for given profiles.
+    """
+    PostingScheduler(
+        template_profiles=profiles,
+        platform_name=Platform.FANVUE,
+        publisher=FanvuePublisher,
+    ).upload()
+    logger.success("Scheduling completed.")
 
 
 @app.command()
 def plan(
-    profiles_index: List[ProfileID] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-    overwrite_outputs: bool = typer.Option(False, "-o", "--overwrite-outputs"),
     use_initial_conditions: bool = typer.Option(
-        True,
-        "--use-initial-conditions/--no-initial-conditions",
-        help="Use initial_conditions.md file? Defaults to True.",
+        True, "--use-initial-conditions/--no-initial-conditions"
     ),
-):
-    profiles = get_profiles(profiles_index, profile_names)
-    filtered_profiles = []
-    if not overwrite_outputs:
-        for profile in profiles:
-            outputs = profile.platform_info[Platform.FANVUE].outputs_path
-            if any(outputs.iterdir()):
-                logger.warning(
-                    f"Profile {profile.name} has existing outputs in {outputs}. Skipping."
-                )
-            else:
-                filtered_profiles.append(profile)
-    else:
-        filtered_profiles = profiles
-
-    if not filtered_profiles:
-        logger.warning("No profiles to plan for.")
-        return
-
-    planner = PlanningManager(
-        template_profiles=filtered_profiles,
-        platform_name=Platform.FANVUE,
-        use_initial_conditions=use_initial_conditions,
-    )
-
-    planner.plan()
-    logger.success("Planning completed.")
+) -> None:
+    """CLI: Run the planning phase."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    do_plan(profiles, use_initial_conditions)
 
 
 @app.command()
 def generate(
-    profiles_index: List[ProfileID] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-):
-    profiles = get_profiles(profiles_index, profile_names)
-    # TODO: this should not be hardcoded!
-    comfy_workflow_path = (
-        resource_path / "laura_vigne" / "laura_vigne_comfyworkflow.json"
-    )
-    comfy_client = ComfyLocal(workflow_path=comfy_workflow_path)
-
-    try:
-        logger.info("Checking ComfyUI server connection...")
-        comfy_client.client.get_json(f"http://{comfy_client.server}/system_stats")
-        logger.success("ComfyUI server connection verified successfully.")
-    except Exception as e:
-        logger.critical(
-            f"Failed to connect to ComfyUI server at {comfy_client.server}: {e}"
-        )
-        logger.error("Please ensure ComfyUI is running before generating publications.")
-        raise typer.Exit(1)
-
-    generator = PublicationsGenerator(
-        template_profiles=profiles,
-        platform_name=Platform.FANVUE,
-        image_generator_tool=comfy_client,
-    )
-    generator.generate()
-    logger.success("Publications generated.")
+) -> None:
+    """CLI: Run the generation phase."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    do_generate(profiles)
 
 
 @app.command()
 def schedule(
-    profiles_index: List[ProfileID] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-):
-    profiles = get_profiles(profiles_index, profile_names)
-    scheduler = PostingScheduler(
-        template_profiles=profiles,
-        platform_name=Platform.FANVUE,
-        publisher=FanvuePublisher,
-    )
-    scheduler.upload()
-    logger.success("Posts scheduled.")
+) -> None:
+    """CLI: Run the scheduling phase."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    do_schedule(profiles)
 
 
-@app.command(help="Execute the full Fanvue pipeline in autonomous mode.")
-def execute_pipeline(
-    profiles_index: List[ProfileID] = typer.Option([], "-p", "--profile-indexes"),
+def background_worker(profile: Profile, overwrite_outputs: bool) -> None:
+    """
+    Continuous loop: do_plan → do_generate → do_schedule → sleep → update lore.
+    Respects overwrite_outputs flag.
+    """
+    use_initial_conditions = True
+    while True:
+        logger.info(f"[{profile.name}] Cycle start.")
+        do_plan([profile], use_initial_conditions)
+        do_generate([profile])
+        do_schedule([profile])
+        logger.success(f"[{profile.name}] Cycle complete.")
+
+        pub_dir = (
+            Path(profile.platform_info[Platform.FANVUE].outputs_path) / "publications"
+        )
+        upload_times: list[datetime] = []
+        for day_folder in _iter_day_folders(pub_dir):
+            ts = (day_folder / "upload_times.txt").read_text().strip()
+            upload_times.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+
+        if not upload_times:
+            logger.error(f"[{profile.name}] No upload_times; stopping.")
+            return
+
+        next_run = max(upload_times)
+        now = datetime.now(next_run.tzinfo)
+        sleep_seconds = (next_run - now).total_seconds()
+        if sleep_seconds > 0:
+            logger.info(
+                f"[{profile.name}] Waiting {int(sleep_seconds)}s until {next_run}"
+            )
+            time.sleep(sleep_seconds)
+
+        # Append summary lore
+        summary_lines = [f"## Summary at {datetime.now(timezone.utc).isoformat()}"]
+        for day_folder in sorted(pub_dir.iterdir()):
+            date = (day_folder / "upload_times.txt").read_text().strip()
+            caption = (day_folder / "captions.txt").read_text().strip()
+            summary_lines.append(f"- **{date}**: {caption}")
+
+        lore_file = RESOURCES_DIR / profile.name / "initial_conditions.md"
+        lore_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(lore_file, "a", encoding="utf-8") as lf:
+            lf.write("\n" + "\n".join(summary_lines) + "\n")
+
+        use_initial_conditions = True
+
+
+@app.command(help="Run the full Fanvue pipeline continuously for selected profiles.")
+def start_pipeline(
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
     overwrite_outputs: bool = typer.Option(False, "-o", "--overwrite-outputs"),
-):
-    logger.info("Step 1: Planning content...")
-    plan(profiles_index, profile_names, overwrite_outputs)
-    logger.info("Step 2: Generating publications...")
-    generate(profiles_index, profile_names)
-    logger.info("Step 3: Scheduling posts...")
-    schedule(profiles_index, profile_names)
-    logger.success("All steps completed successfully!")
+) -> None:
+    """
+    Spawn one process per profile, each running an infinite pipeline loop.
+    """
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    workers: list[Process] = []
+
+    for profile in profiles:
+        worker = Process(
+            target=background_worker,
+            args=(profile, overwrite_outputs),
+            daemon=False,
+        )
+        worker.start()
+        workers.append(worker)
+
+    for worker in workers:
+        worker.join()
 
 
 if __name__ == "__main__":
-    profile_manager.load_profiles()
-    plan(
-        profiles_index=[],  # Pass a list, not the Option default
-        profile_names="laura_vigne",
-        overwrite_outputs=True,
-    )
-    # app()
+    app()
