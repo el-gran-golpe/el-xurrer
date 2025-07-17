@@ -80,6 +80,7 @@ def plan(
         help="Use initial_conditions.md file? Defaults to True.",
     ),
 ):
+    # TODO: I accidentally removed the --overwrite-outputs for fanvue. Please add it back.
     profiles = get_profiles(profiles_index, profile_names)
     filtered_profiles = []
     if not overwrite_outputs:
