@@ -168,7 +168,7 @@ def background_worker(profile: Profile) -> None:
     """
     Continuous loop: do_plan → do_generate → do_schedule → sleep → update lore.
     """
-    use_initial_conditions = True
+    use_initial_conditions = True  # Let's always use this in the pipeline
     while True:
         logger.info(f"[{profile.name}] Cycle start.")
         do_plan([profile], use_initial_conditions)
