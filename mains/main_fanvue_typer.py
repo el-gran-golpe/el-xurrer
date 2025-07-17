@@ -161,9 +161,7 @@ def schedule(
     logger.success("Posts scheduled.")
 
 
-@app.command(
-    help="Execute the full Fanvue pipeline (independent of Meta): planning + generating publications + scheduling posts."
-)
+@app.command(help="Execute the full Fanvue pipeline in autonomous mode.")
 def execute_pipeline(
     profiles_index: List[ProfileID] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
