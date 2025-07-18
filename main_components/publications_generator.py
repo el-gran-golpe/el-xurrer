@@ -83,7 +83,7 @@ class ImageGeneratorService:
 
     def generate_images(
         self,
-        publications: List[PublicationContent],
+        publications: list[PublicationContent],
         output_dir: Path,
         profile_name: str,
     ) -> None:
