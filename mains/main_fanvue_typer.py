@@ -221,6 +221,12 @@ def start_pipeline(
     """
     Spawn one process per profile, each running an infinite pipeline loop.
     """
+    logger.warning(
+        "\n"
+        + "=" * 60
+        + "\n⚠️  IMPORTANT: Make sure ComfyUI is running in the background! ⚠️\n"
+        + "=" * 60
+    )
     profiles = resolve_profiles(profile_indexes, profile_names)
     workers: list[Process] = []
 
