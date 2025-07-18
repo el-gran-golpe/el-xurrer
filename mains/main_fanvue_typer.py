@@ -92,15 +92,14 @@ def do_plan(profiles: list[Profile], use_initial_conditions: bool) -> None:
 
 
 def do_generate(profiles: list[Profile]) -> None:
-    """
-    Run the generation phase for given profiles.
-    """
-    # Verify ComfyUI connection per profile
+    workflow_files = {
+        profile.name: RESOURCES_DIR
+        / profile.name
+        / f"{profile.name}_comfyworkflow.json"
+        for profile in profiles
+    }
     for profile in profiles:
-        workflow_file = (
-            RESOURCES_DIR / profile.name / f"{profile.name}_comfyworkflow.json"
-        )
-        client = ComfyLocal(workflow_path=workflow_file)
+        client = ComfyLocal(workflow_path=workflow_files[profile.name])
         try:
             client.client.get_json(f"http://{client.server}/system_stats")
         except Exception as error:
@@ -112,9 +111,8 @@ def do_generate(profiles: list[Profile]) -> None:
     PublicationsGenerator(
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
-        image_generator_tool=lambda p: ComfyLocal(
-            workflow_path=RESOURCES_DIR / p.name / f"{p.name}_comfyworkflow.json"
-        ),
+        image_generator_tool=ComfyLocal,
+        workflow_files=workflow_files,  # Pass mapping for multi-threaded generation
     ).generate()
     logger.success("Generation completed.")
 

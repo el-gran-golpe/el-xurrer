@@ -1,12 +1,16 @@
 from pathlib import Path
 import json
+
 from slugify import slugify
 from tqdm import tqdm
 from loguru import logger
-from typing import List, Dict, Any
+from typing import List, Any
 from dataclasses import dataclass
 
+from generation_tools.image_generator.comfy_local import ComfyLocal
 from main_components.common.constants import Platform
+from main_components.common.profile import Profile
+
 
 # -- Data Models --------------------------------------------------------------
 
@@ -23,9 +27,9 @@ class PublicationContent:
     title: str
     slug: str
     caption: str
-    hashtags: List[str]
+    hashtags: list[str]
     upload_time: str
-    images: List[ImageSpec]
+    images: list[ImageSpec]
 
 
 # -- Directory Management -----------------------------------------------------
@@ -37,7 +41,7 @@ class DirectoryManager:
     def __init__(self, base_path: Path):
         self.base_path = base_path
 
-    def create_structure(self, planning: Dict[str, List[Dict[str, Any]]]) -> None:
+    def create_structure(self, planning: dict[str, list[dict[str, Any]]]) -> None:
         self.base_path.mkdir(parents=True, exist_ok=True)
         for week_key, days in planning.items():
             week_folder = self.base_path / week_key
@@ -71,17 +75,20 @@ class DirectoryManager:
 
 
 class ImageGeneratorService:
-    """Generates images for publications using a provided generator."""
-
-    def __init__(self, generator: Any):
-        # TODO: Add type hint for generator if possible
-        self._generator = generator
+    def __init__(
+        self, generator_cls: type[ComfyLocal], workflow_files: dict[str, Path]
+    ):
+        self._generator_cls = generator_cls
+        self._workflow_files = workflow_files
 
     def generate_images(
         self,
         publications: List[PublicationContent],
         output_dir: Path,
+        profile_name: str,
     ) -> None:
+        workflow_file = self._workflow_files[profile_name]
+        generator = self._generator_cls(workflow_path=workflow_file)
         for pub in publications:
             for spec in pub.images:
                 image_path = output_dir / f"{pub.slug}_{spec.index}.png"
@@ -89,14 +96,12 @@ class ImageGeneratorService:
                     logger.debug(f"Skipping existing image: {image_path}")
                     continue
                 logger.info(f"Generating image '{image_path.name}' for '{pub.slug}'")
-
-                success: bool = self._generator.generate_image(
+                success: bool = generator.generate_image(
                     prompt=spec.description,
                     output_path=image_path,
                     width=1080,
                     height=1080,
                 )
-
                 if not success or not image_path.exists():
                     raise RuntimeError(f"Image generation failed for '{image_path}'")
                 logger.success(f"Image saved at: {image_path}")
@@ -105,12 +110,12 @@ class ImageGeneratorService:
 # -- Main Publications Generator ----------------------------------------------
 
 
-def _load_planning(planning_path: Path) -> Dict[str, List[Dict[str, Any]]]:
+def _load_planning(planning_path: Path) -> dict[str, list[dict[str, Any]]]:
     with planning_path.open(encoding="utf-8") as f:
         return json.load(f)
 
 
-def _parse_day(day_data: Dict[str, Any]) -> List[PublicationContent]:
+def _parse_day(day_data: dict[str, Any]) -> list[PublicationContent]:
     publications: List[PublicationContent] = []
     for post in day_data.get("posts", []):
         title = post.get("title", "")
@@ -137,13 +142,14 @@ class PublicationsGenerator:
 
     def __init__(
         self,
+        template_profiles: List[Profile],
         platform_name: Platform,
-        template_profiles: List[Any],
-        image_generator_tool: Any,
+        image_generator_tool: Any,  # TODO: Should be a class like ComfyLocal
+        workflow_files: dict[str, Path],
     ):
         self.platform_name = platform_name
         self.template_profiles = template_profiles
-        self.image_service = ImageGeneratorService(image_generator_tool)
+        self.image_service = ImageGeneratorService(image_generator_tool, workflow_files)
 
     def generate_publications_from_planning(
         self, profile_name: str, planning_file: Path, output_folder: Path
@@ -161,7 +167,9 @@ class PublicationsGenerator:
                 day_folder = week_folder / f"day_{day_data['day']}"
                 publications = _parse_day(day_data)
                 if self.image_service and publications:
-                    self.image_service.generate_images(publications, day_folder)
+                    self.image_service.generate_images(
+                        publications, day_folder, profile_name
+                    )
 
     def generate(self) -> None:
         for profile in self.template_profiles:
