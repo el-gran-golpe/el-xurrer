@@ -112,7 +112,7 @@ def do_generate(profiles: list[Profile]) -> None:
         template_profiles=profiles,
         platform_name=Platform.FANVUE,
         image_generator_tool=ComfyLocal,
-        workflow_files=workflow_files,  # Pass mapping for multi-threaded generation
+        workflow_files=workflow_files,  # Pass mapping for multithreaded generation
     ).generate()
     logger.success("Generation completed.")
 
