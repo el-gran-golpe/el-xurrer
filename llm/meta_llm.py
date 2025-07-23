@@ -48,5 +48,5 @@ class MetaLLM(BaseLLM):
         return self._generate_dict_from_prompts(
             prompts=prompts,
             # preferred_models=self.preferred_models,
-            desc="Generating Meta platform planning",
+            tqdm_description="Generating Meta platform planning",
         )

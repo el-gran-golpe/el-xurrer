@@ -92,6 +92,12 @@ class LLMConfig(BaseModel):
         return v
 
 
+class PromptSpecification(BaseModel):
+    system_prompt: str
+    prompt: str
+    cache_key: str
+
+
 ResponseChunk = Union[
     (
         StreamingChatCompletionsUpdate,
@@ -125,6 +131,7 @@ class BaseLLM:
         self.using_paid_api = False
 
     # --- Helper methods for API keys and clients ---
+    # TODO:  we might be able to remove this self.apikeys
     def _load_api_keys(self) -> LLMApiKeys:
         try:
             return LLMApiKeys(env_file=ENV_FILE)
@@ -151,23 +158,20 @@ class BaseLLM:
     # --- End of helper methods ---
 
     # --- Methods for generating responses from prompts ---
+    # TODO: pass the actual prompt_spec instead of a dict
     def _generate_dict_from_prompts(
         self,
-        prompts: list[dict],
-        desc: str = "Generating",
-        cache: dict[str, str] = dict(),
+        prompts: list[PromptSpecification],
+        tqdm_description: str = "Generating",
+        cache: dict[str, str] = dict(),  # TODO: understand this cache better
     ) -> dict:
         preferred_models = self.preferred_models
 
         # Loop through each prompt_spec (that is, a ternary of system_promt + prompt + cache_key specified in
         # the .json) and get a response
-        for i, prompt_spec in tqdm(enumerate(prompts), desc=desc, total=len(prompts)):
-            # These 3 variables can never be empty according to profile.py
-            system_prompt, prompt, cache_key = (
-                prompt_spec["system_prompt"],
-                prompt_spec["prompt"],
-                prompt_spec["cache_key"],
-            )
+        for i, prompt_spec in tqdm(
+            enumerate(prompts), desc=tqdm_description, total=len(prompts)
+        ):
             # These other variables are optional
             # function_call = prompt_spec.get("function_call", None)  # FIXME: ask Haru
             # structured_json = prompt_spec.get("structured_json", None)
@@ -181,7 +185,7 @@ class BaseLLM:
                 {
                     "role": "system",
                     "content": self._replace_prompt_placeholders(
-                        prompt=system_prompt,
+                        prompt=prompt_spec.system_prompt,
                         cache=cache,
                         # accept_unfilled=function_call is not None,
                         accept_unfilled=False,
@@ -190,7 +194,7 @@ class BaseLLM:
                 {
                     "role": "user",
                     "content": self._replace_prompt_placeholders(
-                        prompt=prompt,
+                        prompt=prompt_spec.prompt,
                         cache=cache,
                         # accept_unfilled=function_call is not None,
                         accept_unfilled=False,
@@ -230,9 +234,11 @@ class BaseLLM:
                 for cant_assist in CANNOT_ASSIST_PHRASES
             ):
                 if len(preferred_models) == 0:
-                    raise RuntimeError(f"No models can assist with prompt: {prompt}")
+                    raise RuntimeError(
+                        f"No models can assist with prompt: {prompt_spec.prompt}"
+                    )
                 logger.warning(
-                    f"Assistant cannot assist with prompt: {prompt}. Retrying with a different model"
+                    f"Assistant cannot assist with prompt: {prompt_spec.prompt}. Retrying with a different model"
                 )
                 # TODO: it does not make sense to retry with a different model if the
                 # _get_model_response does not accept a preferred_models argument
@@ -245,7 +251,7 @@ class BaseLLM:
                     force_reasoning=force_reasoning,
                 )
             # Add the assistant's response to the cache
-            cache[cache_key] = assistant_reply
+            cache[prompt_spec.cache_key] = assistant_reply
 
         if isinstance(assistant_reply, dict):
             return assistant_reply
@@ -473,16 +479,14 @@ class BaseLLM:
         raw_response: Union[Iterable[ResponseChunk], ResponseChunk]
 
         try:
+            # TODO: here its calling the api, update it with the new client
+            # TODO: make a method to call Azure and another for OpenAI
             if self.active_backend == AZURE:
-                if not isinstance(self.client, ChatCompletionsClient):
-                    raise ValueError(f"Client is not Azure: {self.client} - {model}")
-                raw_response = self.client.complete(
-                    messages=self.conversation_to_azure_format(
-                        conversation=conversation
-                    ),
-                    model=model,
-                    stream=stream_response,
-                    **additional_params,
+                raw_response = self.call_azure(
+                    additional_params,
+                    conversation,
+                    model,
+                    stream_response,
                 )
             elif self.active_backend == OPENAI:
                 if not isinstance(self.client, OpenAI):
@@ -584,6 +588,17 @@ class BaseLLM:
                 raise NotImplementedError(f"Error: {error_code} - {error_message}")
 
         return stream
+
+    def call_azure(self, additional_params, conversation, model, stream_response):
+        if not isinstance(self.client, ChatCompletionsClient):
+            raise ValueError(f"Client is not Azure: {self.client} - {model}")
+        raw_response = self.client.complete(
+            messages=self.conversation_to_azure_format(conversation=conversation),
+            model=model,
+            stream=stream_response,
+            **additional_params,
+        )
+        return raw_response
 
     def conversation_to_azure_format(
         self, conversation: list[dict]

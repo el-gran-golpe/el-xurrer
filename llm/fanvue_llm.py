@@ -48,5 +48,5 @@ class FanvueLLM(BaseLLM):
         return self._generate_dict_from_prompts(
             prompts=prompts,
             # preferred_models=self.preferred_models,
-            desc="Generating Fanvue platform planning",
+            tqdm_description="Generating Fanvue platform planning",
         )
