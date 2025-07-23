@@ -219,7 +219,7 @@ def background_worker(
             )
             time.sleep(sleep_seconds)
 
-        # TODO: check this
+        # TODO: check this, probably wrong
         # Append summary lore
         summary_lines = [f"## Summary at {datetime.now(timezone.utc).isoformat()}"]
         for day_folder in sorted(pub_dir.iterdir()):
