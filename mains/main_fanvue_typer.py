@@ -1,3 +1,4 @@
+import multiprocessing
 import time
 from datetime import datetime, timezone
 from multiprocessing import Process
@@ -14,6 +15,12 @@ from main_components.posting_scheduler import PostingScheduler, _iter_day_folder
 from main_components.publications_generator import PublicationsGenerator
 from generation_tools.image_generator.comfy_local import ComfyLocal
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
+
+# Import the new queue-based serializer
+from generation_tools.image_generator.comfy_queue import (
+    QueueComfyClient,
+    spawn_image_consumer,
+)
 
 # CLI application for the Fanvue pipeline
 app = typer.Typer()
@@ -91,30 +98,45 @@ def do_plan(profiles: list[Profile], use_initial_conditions: bool) -> None:
     logger.success("Planning completed.")
 
 
-def do_generate(profiles: list[Profile]) -> None:
+def do_generate(
+    profiles: list[Profile], task_queue: Optional[multiprocessing.Queue] = None
+) -> None:
     workflow_files = {
         profile.name: RESOURCES_DIR
         / profile.name
         / f"{profile.name}_comfyworkflow.json"
         for profile in profiles
     }
-    for profile in profiles:
-        client = ComfyLocal(workflow_path=workflow_files[profile.name])
-        try:
-            client.client.get_json(f"http://{client.server}/system_stats")
-        except Exception as error:
-            logger.critical(
-                f"Failed to connect to ComfyUI for '{profile.name}': {error}"
-            )
-            raise typer.Exit(1)
+    if task_queue is None:
+        for profile in profiles:
+            client = ComfyLocal(workflow_path=workflow_files[profile.name])
+            try:
+                client.client.get_json(f"http://{client.server}/system_stats")
+            except Exception as error:
+                logger.critical(
+                    f"Failed to connect to ComfyUI for '{profile.name}': {error}"
+                )
+                raise typer.Exit(1)
 
-    PublicationsGenerator(
-        template_profiles=profiles,
-        platform_name=Platform.FANVUE,
-        image_generator_tool=ComfyLocal,
-        workflow_files=workflow_files,  # Pass mapping for multithreaded generation
-    ).generate()
-    logger.success("Generation completed.")
+        PublicationsGenerator(
+            template_profiles=profiles,
+            platform_name=Platform.FANVUE,
+            image_generator_tool=ComfyLocal,
+            workflow_files=workflow_files,  # Pass mapping for multithreaded generation
+        ).generate()
+        logger.success("Generation completed.")
+    else:
+        # enqueue-only
+        def gen_factory(workflow_path, **kwargs):
+            return QueueComfyClient(task_queue, workflow_path)
+
+        PublicationsGenerator(
+            template_profiles=profiles,
+            platform_name=Platform.FANVUE,
+            image_generator_tool=gen_factory,
+            workflow_files=workflow_files,
+        ).generate()
+        logger.success("Generation queued.")
 
 
 def do_schedule(profiles: list[Profile]) -> None:
@@ -162,7 +184,9 @@ def schedule(
     do_schedule(profiles)
 
 
-def background_worker(profile: Profile) -> None:
+def background_worker(
+    profile: Profile, task_queue: Optional[multiprocessing.Queue]
+) -> None:
     """
     Continuous loop: do_plan → do_generate → do_schedule → sleep → update lore.
     """
@@ -170,7 +194,7 @@ def background_worker(profile: Profile) -> None:
     while True:
         logger.info(f"[{profile.name}] Cycle start.")
         do_plan([profile], use_initial_conditions)
-        do_generate([profile])
+        do_generate([profile], task_queue)
         do_schedule([profile])
         logger.success(f"[{profile.name}] Cycle complete.")
 
@@ -226,12 +250,13 @@ def start_pipeline(
         + "=" * 60
     )
     profiles = resolve_profiles(profile_indexes, profile_names)
+    task_queue, consumer = spawn_image_consumer()
     workers: list[Process] = []
 
     for profile in profiles:
         worker = Process(
             target=background_worker,
-            args=(profile,),
+            args=(profile, task_queue),
             daemon=False,
         )
         worker.start()
@@ -239,6 +264,8 @@ def start_pipeline(
 
     for worker in workers:
         worker.join()
+    task_queue.put(None)
+    consumer.join()
 
 
 if __name__ == "__main__":
