@@ -101,7 +101,7 @@ def generate(
     """Run the generation phase, ensuring ComfyUI is available."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     for profile in profiles:
-        logger.info(f"▶️  Checking ComfyUI for {profile.name}…")
+        logger.info(f"▶️  Checking ComfyUI for {profile.name} before generating assets…")
         client = ComfyLocal(
             workflow_path=RESOURCES_DIR
             / profile.name
@@ -146,8 +146,24 @@ def run_all(
     """
     1) Plan → 2) Generate (serial GPU with ComfyUI check) → 3) Schedule/upload in background threads.
     """
+    # Always do this in the beginning
     profiles = resolve_profiles(profile_indexes, profile_names)
 
+    # Check ComfyUI only once using the first profile's workflow
+    first_profile = profiles[0]
+    logger.info("▶️  Checking that ComfyUI is up and running.")
+    client = ComfyLocal(
+        workflow_path=RESOURCES_DIR
+        / first_profile.name
+        / f"{first_profile.name}_comfyworkflow.json"
+    )
+    try:
+        client.check_connection()
+    except Exception as e:
+        logger.error(f"ComfyUI server not reachable: {e}")
+        raise typer.Exit(code=1)
+
+    # Run the pipeline for each profile:
     for profile in profiles:
         logger.info(f"▶️ Processing profile '{profile.name}'")
 

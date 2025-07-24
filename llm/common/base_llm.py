@@ -185,7 +185,7 @@ class BaseLLM:
                 {
                     "role": "system",
                     "content": self._replace_prompt_placeholders(
-                        prompt=prompt_spec.system_prompt,
+                        prompt=prompt_spec["system_prompt"],
                         cache=cache,
                         # accept_unfilled=function_call is not None,
                         accept_unfilled=False,
@@ -194,7 +194,7 @@ class BaseLLM:
                 {
                     "role": "user",
                     "content": self._replace_prompt_placeholders(
-                        prompt=prompt_spec.prompt,
+                        prompt=prompt_spec["prompt"],
                         cache=cache,
                         # accept_unfilled=function_call is not None,
                         accept_unfilled=False,
@@ -235,10 +235,10 @@ class BaseLLM:
             ):
                 if len(preferred_models) == 0:
                     raise RuntimeError(
-                        f"No models can assist with prompt: {prompt_spec.prompt}"
+                        f"No models can assist with prompt: {prompt_spec['prompt']}"
                     )
                 logger.warning(
-                    f"Assistant cannot assist with prompt: {prompt_spec.prompt}. Retrying with a different model"
+                    f"Assistant cannot assist with prompt: {prompt_spec['prompt']}. Retrying with a different model"
                 )
                 # TODO: it does not make sense to retry with a different model if the
                 # _get_model_response does not accept a preferred_models argument
@@ -251,7 +251,7 @@ class BaseLLM:
                     force_reasoning=force_reasoning,
                 )
             # Add the assistant's response to the cache
-            cache[prompt_spec.cache_key] = assistant_reply
+            cache[prompt_spec["cache_key"]] = assistant_reply
 
         if isinstance(assistant_reply, dict):
             return assistant_reply
