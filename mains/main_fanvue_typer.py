@@ -21,6 +21,25 @@ RESOURCES_DIR = ROOT_DIR / "resources"
 profile_manager = ProfileManager(RESOURCES_DIR)
 
 
+# -- Helpers ---------------------------------------------------
+def resolve_profiles(indexes: list[int], names: Optional[str]) -> list[Profile]:
+    """
+    Resolve profiles by index list or comma-separated names.
+
+    Edge case: if both indexes and names are provided, indexes take precedence.
+
+    Raises:
+        typer.BadParameter: if neither argument is provided.
+    """
+    if indexes:
+        return [profile_manager.get_profile_by_index(i) for i in indexes]
+    if names:
+        return [
+            profile_manager.get_profile_by_name(n.strip()) for n in names.split(",")
+        ]
+    raise typer.BadParameter("Must provide either profile_indexes or profile_names.")
+
+
 def pre_command_callback() -> None:
     """
     Load and validate profiles before any CLI command.
@@ -34,6 +53,7 @@ def pre_command_callback() -> None:
         raise typer.Exit(1)
 
 
+# -- Typer CLI Commands ----------------------------------------
 @app.callback()
 def load_profiles_callback() -> None:
     """
@@ -177,22 +197,3 @@ def run_all(
 
 if __name__ == "__main__":
     app()
-
-
-# Helper to resolve profiles by index or name
-def resolve_profiles(indexes: list[int], names: Optional[str]) -> list[Profile]:
-    """
-    Resolve profiles by index list or comma-separated names.
-
-    Edge case: if both indexes and names are provided, indexes take precedence.
-
-    Raises:
-        typer.BadParameter: if neither argument is provided.
-    """
-    if indexes:
-        return [profile_manager.get_profile_by_index(i) for i in indexes]
-    if names:
-        return [
-            profile_manager.get_profile_by_name(n.strip()) for n in names.split(",")
-        ]
-    raise typer.BadParameter("Must provide either profile_indexes or profile_names.")
