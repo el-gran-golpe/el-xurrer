@@ -139,7 +139,6 @@ def run_all(
     """
     1) Plan → 2) Generate (serial GPU with ComfyUI check) → 3) Schedule/upload in background threads.
     """
-    # Always do this in the beginning
     profiles = resolve_profiles(profile_indexes, profile_names)
 
     # Check ComfyUI only once using the first profile's workflow
