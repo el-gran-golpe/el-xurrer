@@ -40,7 +40,9 @@ def resolve_profiles(indexes: list[int], names: Optional[str]) -> list[Profile]:
     raise typer.BadParameter("Must provide either profile_indexes or profile_names.")
 
 
-def pre_command_callback() -> None:
+# -- Typer CLI Commands ----------------------------------------
+@app.callback()
+def load_profiles_callback() -> None:
     """
     Load and validate profiles before any CLI command.
 
@@ -53,15 +55,6 @@ def pre_command_callback() -> None:
         raise typer.Exit(1)
 
 
-# -- Typer CLI Commands ----------------------------------------
-@app.callback()
-def load_profiles_callback() -> None:
-    """
-    Ensures profiles are loaded before running any command.
-    """
-    pre_command_callback()
-
-
 @app.command()
 def list_profiles() -> None:
     """List available profiles with their indexes and names."""
@@ -71,7 +64,7 @@ def list_profiles() -> None:
             p = profile_manager.get_profile_by_index(idx)
             typer.echo(f"{idx}: {p.name}")
             idx += 1
-        except Exception:
+        except IndexError:
             break
 
 
