@@ -11,7 +11,6 @@ from generation_tools.image_generator.comfy_local import ComfyLocal
 from main_components.common.constants import Platform
 from main_components.common.profile import Profile
 
-
 # -- Data Models --------------------------------------------------------------
 
 
@@ -75,11 +74,8 @@ class DirectoryManager:
 
 
 class ImageGeneratorService:
-    def __init__(
-        self, generator_cls: type[ComfyLocal], workflow_files: dict[str, Path]
-    ):
-        self._generator_cls = generator_cls
-        self._workflow_files = workflow_files
+    def __init__(self, generator: ComfyLocal):
+        self._generator = generator
 
     def generate_images(
         self,
@@ -87,8 +83,6 @@ class ImageGeneratorService:
         output_dir: Path,
         profile_name: str,
     ) -> None:
-        workflow_file = self._workflow_files[profile_name]
-        generator = self._generator_cls(workflow_path=workflow_file)
         for pub in publications:
             for spec in pub.images:
                 image_path = output_dir / f"{pub.slug}_{spec.index}.png"
@@ -96,7 +90,7 @@ class ImageGeneratorService:
                     logger.debug(f"Skipping existing image: {image_path}")
                     continue
                 logger.info(f"Generating image '{image_path.name}' for '{pub.slug}'")
-                success: bool = generator.generate_image(
+                success: bool = self._generator.generate_image(
                     prompt=spec.description,
                     output_path=image_path,
                     width=1080,
@@ -144,12 +138,11 @@ class PublicationsGenerator:
         self,
         template_profiles: List[Profile],
         platform_name: Platform,
-        image_generator_tool: Any,  # TODO: Should be a class like ComfyLocal
-        workflow_files: dict[str, Path],
+        image_generator_tool: Any,  # TODO: Should be a ComfyLocal instance
     ):
         self.platform_name = platform_name
         self.template_profiles = template_profiles
-        self.image_service = ImageGeneratorService(image_generator_tool, workflow_files)
+        self.image_service = ImageGeneratorService(image_generator_tool)
 
     def generate_publications_from_planning(
         self, profile_name: str, planning_file: Path, output_folder: Path

@@ -48,6 +48,20 @@ class ComfyLocal:
             f"Initialized ComfyLocal with server={self.server} and workflow={self.workflow_path}"
         )
 
+    def check_connection(self, timeout: Optional[float] = None) -> None:
+        """
+        Try a simple GET against the ComfyUI server root to verify it’s up.
+        Raises RuntimeError if the server cannot be reached or returns non‑2xx.
+        """
+        # Compose the health‑check URL (adjust if your server URL differs)
+        url = f"http://{self.server}/"
+        tm = timeout or self.client.timeout
+        try:
+            resp = self.client.session.get(url, timeout=tm)
+            resp.raise_for_status()
+        except Exception as e:
+            raise RuntimeError(f"Cannot reach ComfyUI at {url!r}: {e}")
+
     def generate_image(
         self,
         prompt: str,

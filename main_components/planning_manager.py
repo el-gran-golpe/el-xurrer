@@ -31,7 +31,7 @@ class PlanningManager:
         self,
         template_profiles: list[Profile],
         platform_name: Platform,
-        use_initial_conditions: bool = True,
+        use_initial_conditions: bool,
     ):
         self.template_profiles = template_profiles
         self.platform_name = platform_name
