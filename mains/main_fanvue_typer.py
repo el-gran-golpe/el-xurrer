@@ -52,8 +52,8 @@ def load_profiles_callback() -> None:
     """
     Sync resources from Google Drive and load profiles before any CLI command.
     """
+    gdrive_sync.pull(RESOURCES_DIR)
     try:
-        gdrive_sync.pull(RESOURCES_DIR)
         profile_manager.load_profiles()
     except Exception as e:
         logger.error(f"Failed to load profiles: {e}")
@@ -207,7 +207,6 @@ def run_all(
 
     logger.success("✅ All profiles processed — background uploads in progress.")
     logger.info("Pushing local resources to Google Drive...")
-    # Push local resources to Google Drive
     gdrive_sync.push(RESOURCES_DIR)
 
 
