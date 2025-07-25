@@ -34,8 +34,8 @@ python-socks[asyncio]
 websocket-client
 pynput
 pydantic-settings
-
-
+google-api-python-client
+google-auth-oauthlib
 
 # Only for Windows
 ftfy; sys_platform == 'win32'
