@@ -12,8 +12,14 @@ from main_components.publications_generator import PublicationsGenerator
 from main_components.posting_scheduler import PostingScheduler
 from generation_tools.image_generator.comfy_local import ComfyLocal
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
+from scripts.sync_resources import GoogleDriveSync, GDriveSettings
 
+# Typer CLI and Google Drive sync setup
 app = typer.Typer()
+# TODO: Fix the ignore[call-arg] mypy error
+settings = GDriveSettings()  # type: ignore[call-arg]
+gdrive_sync = GoogleDriveSync(settings)
+
 
 # Paths and profile manager
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -21,7 +27,7 @@ RESOURCES_DIR = ROOT_DIR / "resources"
 profile_manager = ProfileManager(RESOURCES_DIR)
 
 
-# -- Helpers ---------------------------------------------------
+# --- Helpers --------------------------------------------------
 def resolve_profiles(indexes: list[int], names: Optional[str]) -> list[Profile]:
     """
     Resolve profiles by index list or comma-separated names.
@@ -40,15 +46,14 @@ def resolve_profiles(indexes: list[int], names: Optional[str]) -> list[Profile]:
     raise typer.BadParameter("Must provide either profile_indexes or profile_names.")
 
 
-# -- Typer CLI Commands ----------------------------------------
+# --- Typer CLI Commands ---------------------------------------
 @app.callback()
 def load_profiles_callback() -> None:
     """
-    Load and validate profiles before any CLI command.
-
-    Exits the program if loading fails.
+    Sync resources from Google Drive and load profiles before any CLI command.
     """
     try:
+        gdrive_sync.pull(RESOURCES_DIR)
         profile_manager.load_profiles()
     except Exception as e:
         logger.error(f"Failed to load profiles: {e}")
@@ -201,6 +206,9 @@ def run_all(
         logger.success(f"[{profile.name}] Upload & scheduler launched in background.")
 
     logger.success("✅ All profiles processed — background uploads in progress.")
+    logger.info("Pushing local resources to Google Drive...")
+    # Push local resources to Google Drive
+    gdrive_sync.push(RESOURCES_DIR)
 
 
 if __name__ == "__main__":
