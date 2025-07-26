@@ -3,6 +3,7 @@ import io
 import pickle
 import hashlib
 from typing import Optional
+from tqdm import tqdm
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -37,7 +38,7 @@ class GoogleDriveSync:
 
     SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-    def __init__(self, settings: Optional[GDriveSettings]):
+    def __init__(self, settings: Optional[GDriveSettings] = None):
         self.settings = settings or GDriveSettings()
         self.token_path = self.settings.token_path.expanduser()
         self.folder_id = self.settings.folder_id
@@ -56,30 +57,10 @@ class GoogleDriveSync:
         logger.success("Drive → local sync complete: {}", dest)
 
     def push(self, src: Path) -> None:
-        """Upload/update all files under local path to Drive folder."""
+        """Upload/update all files under local path to Drive folder, preserving structure."""
         service = self._get_drive_service()
         src = src.expanduser()
-
-        query = f"'{self.folder_id}' in parents and trashed = false"
-        resp = service.files().list(q=query, fields="files(id,name)").execute()
-        remote_map = {item["name"]: item["id"] for item in resp.get("files", [])}
-
-        for path in src.rglob("*"):
-            if not path.is_file():
-                continue
-            name = path.name
-            media = MediaFileUpload(str(path), resumable=True)
-            if name in remote_map:
-                logger.info("Updating remote file {}", name)
-                service.files().update(
-                    fileId=remote_map[name], media_body=media
-                ).execute()
-            else:
-                logger.info("Uploading new file {}", name)
-                service.files().create(
-                    body={"name": name, "parents": [self.folder_id]}, media_body=media
-                ).execute()
-
+        self._upload_folder(service, src, self.folder_id)
         logger.success("Local→Drive sync complete: {}", src)
 
     def _get_drive_service(self):
@@ -98,7 +79,7 @@ class GoogleDriveSync:
                         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                         "token_uri": "https://oauth2.googleapis.com/token",
                         "redirect_uris": [
-                            "urn:ietf:wg:oauth:2.0:oob",
+                            "urn:ietf:wg:oauth2:2.0:oob",
                             "http://localhost",
                         ],
                     }
@@ -114,36 +95,106 @@ class GoogleDriveSync:
             logger.exception("Failed to obtain Drive service")
             raise
 
-    def _download_folder(self, service, drive_folder_id: str, local_path: Path) -> None:
-        query = f"'{drive_folder_id}' in parents and trashed = false"
-        resp = service.files().list(q=query, fields="files(id,name,mimeType)").execute()
-        for item in resp.get("files", []):
-            fid = item["id"]
-            name = item["name"]
-            mime = item["mimeType"]
-            target = local_path / name
-            if mime == "application/vnd.google-apps.folder":
-                self._download_folder(service, fid, target)
+    def _upload_folder(self, service, local_path: Path, drive_folder_id: str) -> None:
+        """Recursively upload a local folder to the corresponding Drive folder."""
+        files = [f for f in local_path.rglob("*") if f.is_file()]
+        for file_path in tqdm(files, desc="Uploading files", unit="file"):
+            rel_parent = file_path.parent.relative_to(local_path)
+            parent_id = drive_folder_id
+            for part in rel_parent.parts:
+                parent_id = self._get_or_create_drive_folder(service, part, parent_id)
+            updated = self._upload_file(service, file_path, parent_id)
+            if updated:
+                # Replaced existing remote file (yellow)
+                logger.warning("Overwrote file on Drive: {}", file_path)
             else:
+                # Uploaded new remote file (green)
+                logger.success("Uploaded new file to Drive: {}", file_path)
+
+    def _get_or_create_drive_folder(
+        self, service, folder_name: str, parent_id: str
+    ) -> str:
+        query = (
+            f"'{parent_id}' in parents and name = '{folder_name}' and "
+            "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        )
+        resp = service.files().list(q=query, fields="files(id)").execute()
+        files = resp.get("files", [])
+        if files:
+            return files[0]["id"]
+        folder = (
+            service.files()
+            .create(
+                body={
+                    "name": folder_name,
+                    "mimeType": "application/vnd.google-apps.folder",
+                    "parents": [parent_id],
+                },
+                fields="id",
+            )
+            .execute()
+        )
+        logger.success(
+            "Created new remote folder: '{}' (id={})", folder_name, folder["id"]
+        )
+        return folder["id"]
+
+    def _upload_file(self, service, file_path: Path, parent_id: str) -> bool:
+        name = file_path.name
+        query = f"'{parent_id}' in parents and name = '{name}' and trashed = false"
+        resp = service.files().list(q=query, fields="files(id)").execute()
+        files = resp.get("files", [])
+        media = MediaFileUpload(str(file_path), resumable=True)
+        if files:
+            service.files().update(fileId=files[0]["id"], media_body=media).execute()
+            return True
+        service.files().create(
+            body={"name": name, "parents": [parent_id]}, media_body=media
+        ).execute()
+        return False
+
+    def _download_folder(self, service, drive_folder_id: str, local_path: Path) -> None:
+        files_to_download = []
+
+        def collect_files(folder_id, path):
+            query = f"'{folder_id}' in parents and trashed = false"
+            resp = (
+                service.files()
+                .list(q=query, fields="files(id,name,mimeType)")
+                .execute()
+            )
+            for item in resp.get("files", []):
+                fid, name, mime = item["id"], item["name"], item["mimeType"]
+                target = path / name
+                if mime == "application/vnd.google-apps.folder":
+                    collect_files(fid, target)
+                else:
+                    files_to_download.append((fid, target))
+
+        collect_files(drive_folder_id, local_path)
+        with tqdm(
+            total=len(files_to_download), desc="Synchronizing files", unit="file"
+        ) as pbar:
+            for fid, target in files_to_download:
                 if target.exists():
                     remote_bytes = self._download_file_to_bytes(service, fid)
                     if self._file_contents_equal(target, remote_bytes):
-                        logger.info("Skipping identical file {}", target)
+                        pbar.update(1)
                         continue
-                    else:
-                        logger.info("Overwriting differing file {}", target)
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        with target.open("wb") as out_f:
-                            out_f.write(remote_bytes)
-                        logger.info(
-                            "\033[93mDownloaded (overwritten)\033[0m {}", target
-                        )
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with target.open("wb") as out_f:
+                        out_f.write(remote_bytes)
+                    # Replaced existing local file (yellow)
+                    logger.warning(
+                        "Replaced local file with updated version: {}", target
+                    )
                 else:
                     self._download_file(service, fid, target)
-                    logger.info("Downloaded {}", target)
+                    # Downloaded new local file (green)
+                    logger.success("Downloaded new file to local: {}", target)
+                pbar.update(1)
 
     def _download_file(self, service, file_id: str, target: Path) -> None:
-        """Stream a single Drive file to local path."""
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
@@ -155,7 +206,6 @@ class GoogleDriveSync:
             out_f.write(fh.getvalue())
 
     def _download_file_to_bytes(self, service, file_id: str) -> bytes:
-        """Download a Drive file and return its bytes."""
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
@@ -165,9 +215,6 @@ class GoogleDriveSync:
         return fh.getvalue()
 
     def _file_contents_equal(self, local_path: Path, remote_bytes: bytes) -> bool:
-        """Compare local file content with remote bytes using hash."""
-        if not local_path.exists():
-            return False
         local_hash = hashlib.md5(local_path.read_bytes()).digest()
         remote_hash = hashlib.md5(remote_bytes).digest()
         return local_hash == remote_hash
