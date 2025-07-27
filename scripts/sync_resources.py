@@ -42,7 +42,7 @@ class GoogleDriveSync:
         self.settings = settings or GDriveSettings()
         self.token_path = self.settings.token_path.expanduser()
         self.folder_id = self.settings.folder_id
-        logger.debug(
+        logger.info(
             "Initialized {} for Drive folder {}",
             self.__class__.__name__,
             self.folder_id,
@@ -70,7 +70,7 @@ class GoogleDriveSync:
             if self.token_path.exists():
                 with open(self.token_path, "rb") as f:
                     creds = pickle.load(f)
-                logger.debug("Loaded cached credentials from {}", self.token_path)
+                logger.info("Loaded cached credentials from {}", self.token_path)
             else:
                 config = {
                     "installed": {

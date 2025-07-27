@@ -5,6 +5,7 @@ from typing import Optional
 from scripts.sync_resources import GoogleDriveSync, GDriveSettings
 from main_components.common.profile import ProfileManager, Profile
 
+# project root is three levels up from this file
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 RESOURCES_DIR = ROOT_DIR / "resources"
 

@@ -17,7 +17,7 @@ def plan(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
 ):
-    """Create META planning JSON."""
+    """Create META planning JSON (DEBUG baseline)."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     pipeline.plan(Platform.META, profiles, use_initial_conditions)
 
@@ -27,7 +27,7 @@ def generate(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
-    """Generate META images & assets."""
+    """Generate META images & assets (DEBUG baseline)."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     pipeline.generate(Platform.META, profiles)
 
@@ -37,6 +37,6 @@ def schedule(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
-    """Upload & schedule META posts."""
+    """Upload & schedule META posts (DEBUG baseline)."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     pipeline.schedule(Platform.META, profiles, GraphAPI)

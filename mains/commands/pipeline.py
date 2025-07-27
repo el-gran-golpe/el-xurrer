@@ -11,11 +11,7 @@ from generation_tools.image_generator.comfy_local import ComfyLocal
 from mains.commands.utils import RESOURCES_DIR
 
 
-def plan(
-    platform: Platform,
-    profiles: list[Profile],
-    use_initial_conditions: bool,
-):
+def plan(platform: Platform, profiles: list[Profile], use_initial_conditions: bool):
     for p in profiles:
         PlanningManager(
             template_profiles=[p],
@@ -25,10 +21,7 @@ def plan(
         logger.success("{} planning done for '{}'.", platform.name, p.name)
 
 
-def generate(
-    platform: Platform,
-    profiles: list[Profile],
-):
+def generate(platform: Platform, profiles: list[Profile]):
     if not profiles:
         logger.warning("No profiles to generate for {}.", platform.name)
         return
@@ -50,11 +43,7 @@ def generate(
         logger.success("{} assets generated for '{}'.", platform.name, p.name)
 
 
-def schedule(
-    platform: Platform,
-    profiles: list[Profile],
-    publisher_cls,
-):
+def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
     for p in profiles:
         t = threading.Thread(
             target=lambda profile=p: PostingScheduler(

@@ -1,8 +1,8 @@
 import typer
 from sys import stderr
-from loguru import logger
 from typing import Optional
 
+from loguru import logger
 from main_components.common.profile import Profile
 from main_components.common.constants import Platform
 
@@ -41,11 +41,6 @@ def _execute_all(
         pipeline.schedule(Platform.FANVUE, [p], FanvuePublisher)
 
     logger.success("✅ All profiles processed — background uploads in progress.")
-    try:
-        gdrive_sync.push(RESOURCES_DIR)
-    except Exception as e:
-        logger.error("Failed to push resources to Google Drive: {}", e)
-        raise typer.Exit(1)
 
 
 @app.command("run_all")
@@ -60,12 +55,18 @@ def run_all(
     """
     Run the full pipeline (META → FANVUE) at INFO level.
     """
+    # Silence DEBUG, switch to INFO
+    logger.remove()
+    logger.add(stderr, level="INFO")
 
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process.")
         return
+
     _execute_all(profiles, overwrite, use_initial_conditions)
+    logger.info("Pushing local resources → Google Drive…")
+    gdrive_sync.push(RESOURCES_DIR)
 
 
 @app.command("debug")
@@ -78,9 +79,14 @@ def debug(
     ),
 ):
     """
-    Run the full pipeline (META → FANVUE) with DEBUG‑level logging.
+    Run the full pipeline with DEBUG‑level logging (baseline).
     """
-    logger.remove()
-    logger.add(stderr, level="DEBUG")
-    logger.debug("Debug mode: emitting DEBUG logs for every step.")
-    run_all(profile_indexes, profile_names, overwrite, use_initial_conditions)
+    # baseline is already DEBUG—no change needed
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    if not profiles:
+        logger.warning("No profiles to process.")
+        return
+
+    _execute_all(profiles, overwrite, use_initial_conditions)
+    logger.debug("Pushing local resources → Google Drive…")
+    gdrive_sync.push(RESOURCES_DIR)
