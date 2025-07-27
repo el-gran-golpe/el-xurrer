@@ -17,7 +17,7 @@ def plan(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
 ):
-    """Create FANVUE planning JSON (DEBUG baseline)."""
+    """Create FANVUE planning JSON."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     pipeline.plan(Platform.FANVUE, profiles, use_initial_conditions)
 
@@ -27,7 +27,7 @@ def generate(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
-    """Generate FANVUE images & assets (DEBUG baseline)."""
+    """Generate FANVUE images & assets."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     pipeline.generate(Platform.FANVUE, profiles)
 
@@ -37,6 +37,6 @@ def schedule(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
-    """Upload & schedule FANVUE posts (DEBUG baseline)."""
+    """Upload & schedule FANVUE posts."""
     profiles = resolve_profiles(profile_indexes, profile_names)
     pipeline.schedule(Platform.FANVUE, profiles, FanvuePublisher)
