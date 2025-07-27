@@ -1,0 +1,39 @@
+import typer
+from loguru import logger
+
+from mains.commands.utils import gdrive_sync, profile_manager
+from mains.commands.meta import app as meta_app
+from mains.commands.fanvue import app as fanvue_app
+from mains.commands.all import app as all_app
+
+app = typer.Typer(help="Top‑level CLI: meta, fanvue, or all")
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(ctx: typer.Context):
+    """
+    1) Sync resources from Google Drive
+    2) Load & validate profiles
+    """
+    try:
+        gdrive_sync.pull(profile_manager.resource_path)
+    except Exception as e:
+        logger.error("Failed to sync resources from Google Drive: {}", e)
+        raise typer.Exit(1)
+
+    try:
+        profile_manager.load_profiles()
+    except Exception as e:
+        logger.error("Failed to load profiles: {}", e)
+        raise typer.Exit(1)
+
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
+app.add_typer(meta_app, name="meta", help="META pipeline commands")
+app.add_typer(fanvue_app, name="fanvue", help="FANVUE pipeline commands")
+app.add_typer(all_app, name="all", help="Run all pipelines end‑to‑end")
+
+if __name__ == "__main__":
+    app()
