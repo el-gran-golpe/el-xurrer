@@ -175,7 +175,7 @@ class ProfileManager:
                 if not content:
                     logger.warning("initial_conditions.md is empty in {}", inputs)
                 else:
-                    logger.success(
+                    logger.debug(
                         "initial_conditions.md found in {} and contains text.", inputs
                     )
 
