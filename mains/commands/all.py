@@ -82,5 +82,6 @@ def debug(
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
+    # TODO: make this log more coherent with the uploading logs
     logger.debug("Pushing local resources → Google Drive…")
     gdrive_sync.push(RESOURCES_DIR)
