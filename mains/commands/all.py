@@ -1,5 +1,4 @@
 import typer
-from sys import stderr
 from typing import Optional
 
 from loguru import logger
@@ -55,10 +54,6 @@ def run_all(
     """
     Run the full pipeline (META → FANVUE) at INFO level.
     """
-    # Silence DEBUG, switch to INFO
-    logger.remove()
-    logger.add(stderr, level="INFO")
-
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process.")
@@ -81,7 +76,6 @@ def debug(
     """
     Run the full pipeline with DEBUG‑level logging (baseline).
     """
-    # baseline is already DEBUG—no change needed
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process.")

@@ -20,6 +20,11 @@ def main_callback(ctx: typer.Context):
     1) Sync resources from Google Drive
     2) Load & validate profiles
     """
+    # If running `python -m mains.main all run_all`, switch to INFO before sync/load
+    if len(sys.argv) >= 3 and sys.argv[1] == "all" and sys.argv[2] == "run_all":
+        logger.remove()
+        logger.add(sys.stderr, level="INFO")
+
     try:
         gdrive_sync.pull(profile_manager.resource_path)
     except Exception as e:
