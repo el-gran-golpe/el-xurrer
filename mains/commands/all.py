@@ -1,7 +1,7 @@
 import typer
 from sys import stderr
 from loguru import logger
-from typing import Optional, List
+from typing import Optional
 
 from main_components.common.profile import Profile
 from main_components.common.constants import Platform
@@ -15,7 +15,7 @@ app = typer.Typer(help="Run META → FANVUE end‑to‑end for profiles")
 
 
 def _execute_all(
-    profiles: List[Profile],
+    profiles: list[Profile],
     overwrite: bool,
     use_initial_conditions: bool,
 ):
@@ -48,9 +48,9 @@ def _execute_all(
         raise typer.Exit(1)
 
 
-@app.command("run-all")
+@app.command("run_all")
 def run_all(
-    profile_indexes: List[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
     overwrite: bool = typer.Option(False, "-o", "--overwrite-outputs"),
     use_initial_conditions: bool = typer.Option(
@@ -69,7 +69,7 @@ def run_all(
 
 @app.command("debug")
 def debug(
-    profile_indexes: List[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
     overwrite: bool = typer.Option(False, "-o", "--overwrite-outputs"),
     use_initial_conditions: bool = typer.Option(
@@ -82,9 +82,4 @@ def debug(
     logger.remove()
     logger.add(stderr, level="DEBUG")
     logger.debug("Debug mode: emitting DEBUG logs for every step.")
-
-    profiles = resolve_profiles(profile_indexes, profile_names)
-    if not profiles:
-        logger.warning("No profiles to process.")
-        return
-    _execute_all(profiles, overwrite, use_initial_conditions)
+    run_all(profile_indexes, profile_names, overwrite, use_initial_conditions)

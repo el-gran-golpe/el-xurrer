@@ -1,26 +1,23 @@
 import typer
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 
 from scripts.sync_resources import GoogleDriveSync, GDriveSettings
 from main_components.common.profile import ProfileManager, Profile
 
-# project root is two levels up
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 RESOURCES_DIR = ROOT_DIR / "resources"
 
-# Google Drive sync client
 settings = GDriveSettings()  # type: ignore[call-arg]
 gdrive_sync = GoogleDriveSync(settings)
 
-# Profile manager
 profile_manager = ProfileManager(RESOURCES_DIR)
 
 
 def resolve_profiles(
-    indexes: List[int],
+    indexes: list[int],
     names: Optional[str],
-) -> List[Profile]:
+) -> list[Profile]:
     """
     Pick profiles by index list or comma‑separated names. Indexes win.
     """

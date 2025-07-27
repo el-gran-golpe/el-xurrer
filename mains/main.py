@@ -6,7 +6,7 @@ from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
 from mains.commands.all import app as all_app
 
-app = typer.Typer(help="Top‑level CLI: meta, fanvue, or all")
+app = typer.Typer(help="Top‑level CLI: meta, fanvue, or pipelines")
 
 
 @app.callback(invoke_without_command=True)
@@ -33,7 +33,7 @@ def main_callback(ctx: typer.Context):
 
 app.add_typer(meta_app, name="meta", help="META pipeline commands")
 app.add_typer(fanvue_app, name="fanvue", help="FANVUE pipeline commands")
-app.add_typer(all_app, name="all", help="Run all pipelines end‑to‑end")
+app.add_typer(all_app, name="all", help="End‑to‑end pipelines (run_all/debug)")
 
 if __name__ == "__main__":
     app()

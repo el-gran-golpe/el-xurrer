@@ -1,5 +1,5 @@
 import typer
-from typing import Optional, List
+from typing import Optional
 
 from mains.commands.utils import resolve_profiles
 import mains.commands.pipeline as pipeline
@@ -11,7 +11,7 @@ app = typer.Typer(help="META‑only pipeline commands")
 
 @app.command()
 def plan(
-    profile_indexes: List[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
@@ -24,7 +24,7 @@ def plan(
 
 @app.command()
 def generate(
-    profile_indexes: List[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
     """Generate META images & assets."""
@@ -34,7 +34,7 @@ def generate(
 
 @app.command()
 def schedule(
-    profile_indexes: List[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
     """Upload & schedule META posts."""

@@ -1,5 +1,6 @@
 import threading
 from loguru import logger
+
 from main_components.common.constants import Platform
 from main_components.common.profile import Profile
 from main_components.planning_manager import PlanningManager
@@ -32,10 +33,8 @@ def generate(
         logger.warning("No profiles to generate for {}.", platform.name)
         return
 
-    workflow = (
-        RESOURCES_DIR / profiles[0].name / f"{profiles[0].name}_comfyworkflow.json"
-    )
-    client = ComfyLocal(workflow_path=workflow)
+    wf = RESOURCES_DIR / profiles[0].name / f"{profiles[0].name}_comfyworkflow.json"
+    client = ComfyLocal(workflow_path=wf)
     try:
         client.check_connection()
     except Exception as e:
@@ -57,7 +56,7 @@ def schedule(
     publisher_cls,
 ):
     for p in profiles:
-        thread = threading.Thread(
+        t = threading.Thread(
             target=lambda profile=p: PostingScheduler(
                 template_profiles=[profile],
                 platform_name=platform,
@@ -65,5 +64,5 @@ def schedule(
             ).upload(),
             daemon=True,
         )
-        thread.start()
+        t.start()
         logger.success("{} upload scheduler launched for '{}'.", platform.name, p.name)
