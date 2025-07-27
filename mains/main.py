@@ -7,7 +7,7 @@ from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
 from mains.commands.all import app as all_app
 
-# ─── Baseline DEBUG for everything ───
+# Baseline DEBUG for everything
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
 
@@ -19,7 +19,6 @@ def main_callback(ctx: typer.Context):
     """
     1) Sync resources from Google Drive
     2) Load & validate profiles
-    (Logging is DEBUG by default.)
     """
     try:
         gdrive_sync.pull(profile_manager.resource_path)
