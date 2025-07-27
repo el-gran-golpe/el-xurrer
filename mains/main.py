@@ -1,11 +1,17 @@
 import typer
 from loguru import logger
+from sys import stderr
+
 
 from mains.commands.utils import gdrive_sync, profile_manager
 from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
 from mains.commands.all import app as all_app
 
+
+# INFO is now the default level of logging
+logger.remove()
+logger.add(stderr, level="INFO")
 app = typer.Typer(help="Top‑level CLI: meta, fanvue, or pipelines")
 
 
@@ -15,6 +21,7 @@ def main_callback(ctx: typer.Context):
     1) Sync resources from Google Drive
     2) Load & validate profiles
     """
+
     try:
         gdrive_sync.pull(profile_manager.resource_path)
     except Exception as e:

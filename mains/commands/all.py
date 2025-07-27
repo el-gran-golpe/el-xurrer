@@ -7,7 +7,7 @@ from main_components.common.profile import Profile
 from main_components.common.constants import Platform
 
 from mains.commands.utils import resolve_profiles, gdrive_sync, RESOURCES_DIR
-from mains.commands.pipeline import plan, generate, schedule
+import mains.commands.pipeline as pipeline
 from automation.meta_api.graph_api import GraphAPI
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 
@@ -26,9 +26,9 @@ def _execute_all(
         if not overwrite and any(out_meta.iterdir()):
             logger.warning("Skipping META plan for '{}' (outputs exist)", p.name)
         else:
-            plan(Platform.META, [p], use_initial_conditions)
-        generate(Platform.META, [p])
-        schedule(Platform.META, [p], GraphAPI)
+            pipeline.plan(Platform.META, [p], use_initial_conditions)
+        pipeline.generate(Platform.META, [p])
+        pipeline.schedule(Platform.META, [p], GraphAPI)
 
         # FANVUE
         logger.info("▶️  FANVUE pipeline for '{}'", p.name)
@@ -36,9 +36,9 @@ def _execute_all(
         if not overwrite and any(out_fan.iterdir()):
             logger.warning("Skipping FANVUE plan for '{}' (outputs exist)", p.name)
         else:
-            plan(Platform.FANVUE, [p], use_initial_conditions)
-        generate(Platform.FANVUE, [p])
-        schedule(Platform.FANVUE, [p], FanvuePublisher)
+            pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
+        pipeline.generate(Platform.FANVUE, [p])
+        pipeline.schedule(Platform.FANVUE, [p], FanvuePublisher)
 
     logger.success("✅ All profiles processed — background uploads in progress.")
     try:
@@ -60,6 +60,7 @@ def run_all(
     """
     Run the full pipeline (META → FANVUE) at INFO level.
     """
+
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process.")
@@ -77,7 +78,7 @@ def debug(
     ),
 ):
     """
-    Run the full pipeline with DEBUG‑level logging.
+    Run the full pipeline (META → FANVUE) with DEBUG‑level logging.
     """
     logger.remove()
     logger.add(stderr, level="DEBUG")
