@@ -1,15 +1,15 @@
 import sys
+import typer
 from loguru import logger
+
+from mains.commands.utils import gdrive_sync, profile_manager
+from mains.commands.meta import app as meta_app
+from mains.commands.fanvue import app as fanvue_app
+from mains.commands.all import app as all_app
 
 # ─── Baseline DEBUG for everything ───
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
-
-import typer  # noqa: E402
-from mains.commands.utils import gdrive_sync, profile_manager  # noqa: E402
-from mains.commands.meta import app as meta_app  # noqa: E402
-from mains.commands.fanvue import app as fanvue_app  # noqa: E402
-from mains.commands.all import app as all_app  # noqa: E402
 
 app = typer.Typer(help="Top‑level CLI: meta, fanvue, or all")
 
