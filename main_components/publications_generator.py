@@ -81,7 +81,6 @@ class ImageGeneratorService:
         self,
         publications: list[PublicationContent],
         output_dir: Path,
-        profile_name: str,
     ) -> None:
         for pub in publications:
             for spec in pub.images:
@@ -89,7 +88,7 @@ class ImageGeneratorService:
                 if image_path.exists():
                     logger.debug(f"Skipping existing image: {image_path}")
                     continue
-                logger.info(f"Generating image '{image_path.name}' for '{pub.slug}'")
+                logger.info(f"Generating image '{image_path.name}'")
                 success: bool = self._generator.generate_image(
                     prompt=spec.description,
                     output_path=image_path,
@@ -98,7 +97,9 @@ class ImageGeneratorService:
                 )
                 if not success or not image_path.exists():
                     raise RuntimeError(f"Image generation failed for '{image_path}'")
-                logger.success(f"Image saved at: {image_path}")
+
+                rel_path = str(image_path).split("el-xurrer", 1)[-1]
+                logger.success(f"Image saved at: el-xurrer{rel_path}")
 
 
 # -- Main Publications Generator ----------------------------------------------
@@ -147,8 +148,6 @@ class PublicationsGenerator:
     def generate_publications_from_planning(
         self, profile_name: str, planning_file: Path, output_folder: Path
     ) -> None:
-        logger.info(f"Processing profile: {profile_name}")
-
         planning = _load_planning(planning_file)
 
         publications_base_dir = output_folder
@@ -160,9 +159,7 @@ class PublicationsGenerator:
                 day_folder = week_folder / f"day_{day_data['day']}"
                 publications = _parse_day(day_data)
                 if self.image_service and publications:
-                    self.image_service.generate_images(
-                        publications, day_folder, profile_name
-                    )
+                    self.image_service.generate_images(publications, day_folder)
 
     def generate(self) -> None:
         for profile in self.template_profiles:

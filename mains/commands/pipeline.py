@@ -18,7 +18,7 @@ def plan(platform: Platform, profiles: list[Profile], use_initial_conditions: bo
             platform_name=platform,
             use_initial_conditions=use_initial_conditions,
         ).plan()
-        logger.success("{} planning done for '{}'.", platform.name, p.name)
+        logger.success("{} planning done for {}.", platform.name, p.name)
 
 
 def generate(platform: Platform, profiles: list[Profile]):
@@ -40,7 +40,7 @@ def generate(platform: Platform, profiles: list[Profile]):
             platform_name=platform,
             image_generator_tool=client,
         ).generate()
-        logger.success("{} assets generated for '{}'.", platform.name, p.name)
+        logger.success("{} assets generated for {}.", platform.name, p.name)
 
 
 def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
@@ -54,4 +54,4 @@ def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
             daemon=True,
         )
         t.start()
-        logger.success("{} upload scheduler launched for '{}'.", platform.name, p.name)
+        logger.success("{} scheduler launched for {}.", platform.name, p.name)

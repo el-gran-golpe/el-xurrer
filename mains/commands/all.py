@@ -23,7 +23,7 @@ def _execute_all(
         logger.info("▶️  META pipeline for '{}'", p.name)
         out_meta = p.platform_info[Platform.META].outputs_path
         if not overwrite and any(out_meta.iterdir()):
-            logger.warning("Skipping META plan for '{}' (outputs exist)", p.name)
+            logger.warning("Skipping META plan for '{}' (outputs exists)", p.name)
         else:
             pipeline.plan(Platform.META, [p], use_initial_conditions)
         pipeline.generate(Platform.META, [p])
@@ -33,13 +33,13 @@ def _execute_all(
         logger.info("▶️  FANVUE pipeline for '{}'", p.name)
         out_fan = p.platform_info[Platform.FANVUE].outputs_path
         if not overwrite and any(out_fan.iterdir()):
-            logger.warning("Skipping FANVUE plan for '{}' (outputs exist)", p.name)
+            logger.warning("Skipping FANVUE plan for '{}' (outputs exists)", p.name)
         else:
             pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
         pipeline.generate(Platform.FANVUE, [p])
         pipeline.schedule(Platform.FANVUE, [p], FanvuePublisher)
 
-    logger.success("✅ All profiles processed — background uploads in progress.")
+    logger.success("✅  All profiles processed — background uploads in progress.")
 
 
 @app.command("run_all")
@@ -60,7 +60,7 @@ def run_all(
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
-    logger.info("Pushing local resources → Google Drive…")
+    logger.info("Pushing Local resources → Google Drive…")
     gdrive_sync.push(RESOURCES_DIR)
 
 
@@ -83,5 +83,5 @@ def debug(
 
     _execute_all(profiles, overwrite, use_initial_conditions)
     # TODO: make this log more coherent with the uploading logs
-    logger.debug("Pushing local resources → Google Drive…")
+    logger.debug("Pushing Local resources → Google Drive…")
     gdrive_sync.push(RESOURCES_DIR)

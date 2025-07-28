@@ -105,7 +105,7 @@ class ProfileManager:
                 profile = Profile(name=profile_name, platform_info=platforms)
                 self._profiles_by_name[profile_name] = profile
                 self._profiles.append(profile)
-                logger.success("Profile '{}' loaded and validated.", profile_name)
+                logger.success("Profile {} loaded and validated.", profile_name)
             except Exception as e:
                 logger.critical("Failed to load profile '{}': {}", profile_name, e)
                 raise

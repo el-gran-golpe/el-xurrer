@@ -43,7 +43,7 @@ class GoogleDriveSync:
         self.token_path = self.settings.token_path.expanduser()
         self.folder_id = self.settings.folder_id
         logger.info(
-            "Initialized {} for Drive folder {}",
+            "Initialized {} for Google Drive folder with id {}",
             self.__class__.__name__,
             self.folder_id,
         )
@@ -54,14 +54,14 @@ class GoogleDriveSync:
         dest = dest.expanduser()
         dest.mkdir(parents=True, exist_ok=True)
         self._download_folder(service, self.folder_id, dest)
-        logger.success("Drive → local sync complete: {}", dest)
+        logger.success("Google Drive → Local sync complete: {}", dest)
 
     def push(self, src: Path) -> None:
         """Upload/update all files under local path to Drive folder, preserving structure."""
         service = self._get_drive_service()
         src = src.expanduser()
         self._upload_folder(service, src, self.folder_id)
-        logger.success("Local→Drive sync complete: {}", src)
+        logger.success("Local → Google Drive sync complete: {}", src)
 
     def _get_drive_service(self):
         """Authenticate (or load cached token) and return Drive v3 client."""
@@ -70,7 +70,6 @@ class GoogleDriveSync:
             if self.token_path.exists():
                 with open(self.token_path, "rb") as f:
                     creds = pickle.load(f)
-                logger.info("Loaded cached credentials from {}", self.token_path)
             else:
                 config = {
                     "installed": {

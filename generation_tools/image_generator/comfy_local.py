@@ -78,7 +78,7 @@ class ComfyLocal:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         seed = seed or uuid.uuid4().int & ((1 << 32) - 1)
 
-        logger.info(f"Generating image: prompt='{prompt[:50]}...', seed={seed}")
+        logger.debug(f"Generating image: prompt='{prompt[:50]}...', seed={seed}")
         prompt_id = self._enqueue_prompt(prompt, seed)
         ws_client = self._wait_for_completion(prompt_id)
         try:
@@ -107,7 +107,7 @@ class ComfyLocal:
         if not prompt_id:
             raise RuntimeError("Failed to enqueue prompt; no prompt_id returned.")
 
-        logger.info(f"Enqueued prompt ID={prompt_id}")
+        logger.debug(f"Enqueued prompt ID={prompt_id}")
         # Store client_id for websocket
         self._client_id = client_id
         return prompt_id
