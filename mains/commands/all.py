@@ -46,7 +46,7 @@ def _execute_all(
 def run_all(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-    overwrite: bool = typer.Option(False, "-o", "--overwrite-outputs"),
+    overwrite: bool = typer.Option(True, "-o", "--overwrite-outputs"),
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
@@ -73,7 +73,7 @@ def run_all(
 def debug(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-    overwrite: bool = typer.Option(False, "-o", "--overwrite-outputs"),
+    overwrite: bool = typer.Option(True, "-o", "--overwrite-outputs"),
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
