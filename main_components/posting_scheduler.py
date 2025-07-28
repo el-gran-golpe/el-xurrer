@@ -139,7 +139,7 @@ class PostingScheduler:
                     )
                     continue
 
-            self._cleanup(pub_root)
+            # self._cleanup(pub_root)
 
     def _upload_via_api(self, pub: Publication, client_class: Type[GraphAPI]) -> None:
         """

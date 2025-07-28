@@ -20,20 +20,20 @@ def _execute_all(
 ):
     for p in profiles:
         # META
-        logger.info("▶️  META pipeline for '{}'", p.name)
+        logger.info("▶️  META pipeline for {}", p.name)
         out_meta = p.platform_info[Platform.META].outputs_path
         if not overwrite and any(out_meta.iterdir()):
-            logger.warning("Skipping META plan for '{}' (outputs exists)", p.name)
+            logger.warning("Skipping META plan for {} (outputs exists)", p.name)
         else:
             pipeline.plan(Platform.META, [p], use_initial_conditions)
         pipeline.generate(Platform.META, [p])
         pipeline.schedule(Platform.META, [p], GraphAPI)
 
         # FANVUE
-        logger.info("▶️  FANVUE pipeline for '{}'", p.name)
+        logger.info("▶️  FANVUE pipeline for {}", p.name)
         out_fan = p.platform_info[Platform.FANVUE].outputs_path
         if not overwrite and any(out_fan.iterdir()):
-            logger.warning("Skipping FANVUE plan for '{}' (outputs exists)", p.name)
+            logger.warning("Skipping FANVUE plan for {} (outputs exists)", p.name)
         else:
             pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
         pipeline.generate(Platform.FANVUE, [p])
@@ -56,7 +56,7 @@ def run_all(
     """
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
-        logger.warning("No profiles to process.")
+        logger.warning("No profiles to process")
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
@@ -83,7 +83,7 @@ def debug(
     """
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
-        logger.warning("No profiles to process.")
+        logger.warning("No profiles to process")
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
