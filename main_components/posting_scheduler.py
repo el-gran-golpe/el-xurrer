@@ -220,6 +220,7 @@ class PostingScheduler:
                 f"[{self.platform_name}] Scheduled time has already passed. Continuing without sleep..."
             )
 
+    # TODO: this should not be here. This class is just for scheduling as its name suggests
     def _cleanup(self, root: Path) -> None:
         """
         Remove publications directory after upload.

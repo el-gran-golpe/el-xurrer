@@ -61,6 +61,11 @@ def run_all(
 
     _execute_all(profiles, overwrite, use_initial_conditions)
     logger.info("Pushing Local resources → Google Drive…")
+    # TODO: inside this is where I should put the cleanup function
+    # or wait a minute, does it actually make sense to delete stuff?
+    # I might delete it myself if I pick up to overwrite outputs
+    # if I decide to overwrite outputs, maybe in the sync download I can decide not to download the outputs folder for each profile
+    # Also, should I sync for one particular profile? or leave as it it for each profile.
     gdrive_sync.push(RESOURCES_DIR)
 
 
