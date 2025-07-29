@@ -14,9 +14,9 @@ def _save_planning(planning: dict[str, Any], output_path: Path) -> None:
         with open(output_path, "w", encoding="utf-8") as file:
             json.dump(planning, file, indent=4, ensure_ascii=False)
         logger.success(f"Planning saved to: {output_path}")
-    # TODO: maybe we can remove this except since the existence of /outputs is checked in profile.py
     except Exception as e:
         logger.error(f"Error writing to file {output_path}: {e}")
+        raise
 
 
 class PlanningManager:
