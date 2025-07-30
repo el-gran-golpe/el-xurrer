@@ -2,7 +2,7 @@ import sys
 import typer
 from loguru import logger
 
-from mains.commands.utils import gdrive_sync, profile_manager
+from mains.commands.utils import profile_manager
 from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
 from mains.commands.all import app as all_app
@@ -26,7 +26,8 @@ def main_callback(ctx: typer.Context):
         logger.add(sys.stderr, level="INFO")
 
     try:
-        gdrive_sync.pull(profile_manager.resource_path)
+        # gdrive_sync.pull(profile_manager.resource_path)
+        pass
     except Exception as e:
         logger.error("Failed to sync resources from Google Drive: {}", e)
         raise typer.Exit(1)
