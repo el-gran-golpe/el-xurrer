@@ -62,7 +62,6 @@ def run_all(
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
-    logger.info("Pushing Local resources → Google Drive…")
     # TODO: inside this is where I should put the cleanup function
     # or wait a minute, does it actually make sense to delete stuff?
     # I might delete it myself if I pick up to overwrite outputs
@@ -91,6 +90,4 @@ def debug(
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
-    # TODO: make this log more coherent with the uploading logs
-    logger.debug("Pushing Local resources → Google Drive…")
     gdrive_sync.push(RESOURCES_DIR)
