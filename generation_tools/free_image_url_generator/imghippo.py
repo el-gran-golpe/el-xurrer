@@ -39,8 +39,8 @@ class ImgHippo:
             data = {"api_key": self.api_key}
             response = self.scraper.post(url, files=files, data=data)
 
-        logger.info(f"Request URL: {response.url}")
-        logger.info(f"Status Code: {response.status_code}")
+        logger.debug(f"Request URL: {response.url}")
+        logger.debug(f"Status Code: {response.status_code}")
 
         response.raise_for_status()
         payload = response.json()
