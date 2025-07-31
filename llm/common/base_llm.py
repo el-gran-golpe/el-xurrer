@@ -1,13 +1,13 @@
 from pathlib import Path
-from dotenv import dotenv_values
 import random
+
+from dotenv import dotenv_values
 from copy import deepcopy
 import json
 import re
 from typing import Iterable, Union, Optional, Literal, Any, cast
 
 from azure.core.exceptions import HttpResponseError
-from dotenv import load_dotenv
 from openai import OpenAI, APIStatusError
 from openai.types.chat import (
     ChatCompletionChunk,
@@ -16,7 +16,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
     ChatCompletionAssistantMessageParam,
 )
-from pydantic import BaseModel, Field, ValidationError, model_validator, field_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from tqdm import tqdm
 from loguru import logger
 
@@ -60,7 +60,7 @@ class LLMApiKeys(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def load_all_api_keys(cls, values):
+    def load_all_api_keys(cls, values) -> dict:
         env_file = values.get("env_file")
         if not env_file or not Path(env_file).is_file():
             raise FileNotFoundError(f"Missing API key file: {env_file}.")
@@ -71,7 +71,7 @@ class LLMApiKeys(BaseModel):
         if not api_keys:
             raise ValueError("No API keys found in the env file.")
         values["api_keys"] = api_keys
-        load_dotenv(env_file)
+        # load_dotenv(env_file)
         return values
 
     @model_validator(mode="after")
@@ -79,6 +79,31 @@ class LLMApiKeys(BaseModel):
         if not self.api_keys:
             raise ValueError("At least one API key must be provided.")
         return self
+
+    def get_random_github_api_key(self) -> ApiKey:
+        """
+        Extracts a random GitHub API key from the environment variables.
+        Raises ValueError if no GitHub API key is found.
+        """
+        github_keys = [
+            key for name, key in self.api_keys.items() if "GITHUB" in name.upper()
+        ]
+        if not github_keys:
+            raise ValueError("No GitHub API key found in the env file.")
+        api_key = random.choice(github_keys)
+        return ApiKey(api_key=api_key, paid=False)
+
+    def get_openia_key(self) -> ApiKey:
+        """
+        Extracts the OpenAI API key from the environment variables.
+        Raises ValueError if no OpenAI API key is found.
+        """
+        openai_keys = [
+            key for name, key in self.api_keys.items() if "OPENAI" in name.upper()
+        ]
+        if not openai_keys:
+            raise ValueError("No OpenAI API key found in the env file.")
+        return ApiKey(api_key=openai_keys[0], paid=True)
 
 
 class LLMConfig(BaseModel):
@@ -121,41 +146,12 @@ class BaseLLM:
         self.preferred_models = config.preferred_models
         self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
 
-        self.api_keys = self._load_api_keys()
-        self.github_api_keys = self._extract_github_keys()
-        self.openai_api_key = self._extract_openai_key()
+        self.api_keys_manager = LLMApiKeys(env_file=ENV_FILE)
 
         self.exhausted_models: list[str] = []
         self.client: Optional[Union[ChatCompletionsClient, OpenAI]] = None
         self.active_backend: Optional[Union[Literal["openai", "azure"]]] = None
         self.using_paid_api = False
-
-    # --- Helper methods for API keys and clients ---
-    # TODO:  we might be able to remove this self.apikeys
-    def _load_api_keys(self) -> LLMApiKeys:
-        try:
-            return LLMApiKeys(env_file=ENV_FILE)
-        except (ValidationError, FileNotFoundError) as e:
-            raise ValueError(f"API key validation failed: {e}")
-
-    def _extract_github_keys(self) -> list[ApiKey]:
-        return [
-            ApiKey(api_key=key, paid=False)
-            for name, key in self.api_keys.api_keys.items()
-            if "GITHUB" in name.upper()
-        ]
-
-    def _extract_openai_key(self) -> ApiKey:
-        openai_keys = [
-            key
-            for name, key in self.api_keys.api_keys.items()
-            if "OPENAI" in name.upper()
-        ]
-        if not openai_keys:
-            raise ValueError("No OpenAI API key found in the env file.")
-        return ApiKey(api_key=openai_keys[0], paid=True)
-
-    # --- End of helper methods ---
 
     # --- Methods for generating responses from prompts ---
     # TODO: pass the actual prompt_spec instead of a dict
@@ -278,7 +274,6 @@ class BaseLLM:
         stream = self.__get_response_stream(
             conversation=conversation,
             preferred_models=preferred_models,
-            # structured_json=structured_json,
             as_json=as_json,
             large_output=large_output,
             force_reasoning=force_reasoning,
@@ -368,6 +363,7 @@ class BaseLLM:
 
     # --- End of methods for generating responses from prompts ---
 
+    # TODO: (MOI) Extract client logic into a separate class
     def get_client(self, model: str, paid_api: bool = False):
         assert model in MODEL_BY_BACKEND, f"Model not found: {model}"
         backend = MODEL_BY_BACKEND[model]
@@ -389,10 +385,7 @@ class BaseLLM:
             raise NotImplementedError(f"Backend not implemented: {backend}")
 
     def get_new_client_azure(self):
-        assert len(self.github_api_keys) > 0, (
-            "Missing GITHUB_API_KEY for Azure authentication"
-        )
-        github_api_key = random.choice(self.github_api_keys)
+        github_api_key = self.api_keys_manager.get_random_github_api_key()
         if github_api_key:
             self.client = ChatCompletionsClient(
                 endpoint="https://models.inference.ai.azure.com",
@@ -407,10 +400,10 @@ class BaseLLM:
         # We are routing to azure first because it's free using our GitHub api keys and also because azure api is
         # compatible with OpenAI's API
         if not paid_api:
-            api_key: ApiKey = random.choice(self.github_api_keys)
+            api_key: ApiKey = self.api_keys_manager.get_random_github_api_key()
             base_url = "https://models.inference.ai.azure.com"
         else:
-            api_key = self.openai_api_key
+            api_key = self.api_keys_manager.get_openia_key()
             base_url = None
 
         self.client = OpenAI(
@@ -436,6 +429,7 @@ class BaseLLM:
         additional_params: dict[str, Any] = {}
 
         # Select the best model that is not exhausted
+        # TODO: (MOI) this is not the best way to do it, this could be a funcioncita to pick up desired model
         if not use_paid_api:
             preferred_models = [
                 model
@@ -465,7 +459,9 @@ class BaseLLM:
                     f"Couldn't force a reasoning models because no one available. Using {preferred_models[0]}"
                 )
 
-        assert len(preferred_models) > 0, "No models available"
+        assert len(preferred_models) > 0, (
+            "No models available"
+        )  # TODO: (MOI) this should be a warning and we need to default to some model because we don't want to fail the pipeline
         model: str = preferred_models[0]
         logger.info(f"Using model: {model}")
 
@@ -480,7 +476,7 @@ class BaseLLM:
 
         try:
             # TODO: here its calling the api, update it with the new client
-            # TODO: make a method to call Azure and another for OpenAI
+            # TODO: (MOI) make a method to call the llm without knowing wich backend is using
             if self.active_backend == AZURE:
                 raw_response = self.call_azure(
                     additional_params,
