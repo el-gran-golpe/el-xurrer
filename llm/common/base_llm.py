@@ -3,14 +3,12 @@ import json
 import re
 from typing import Iterable, Union, Optional, Literal, Any, cast
 
+
 from azure.core.exceptions import HttpResponseError
 from openai import OpenAI, APIStatusError
 from openai.types.chat import (
     ChatCompletionChunk,
     ChatCompletion,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionUserMessageParam,
-    ChatCompletionAssistantMessageParam,
 )
 from pydantic import BaseModel, field_validator
 from tqdm import tqdm
@@ -20,11 +18,7 @@ from llm.common.api_keys import api_keys
 
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
-    SystemMessage,
-    UserMessage,
     StreamingChatCompletionsUpdate,
-    AssistantMessage,
-    ChatRequestMessage,
     ChatCompletions,
 )
 
@@ -309,8 +303,6 @@ class BaseLLM:
         assert finish_reason == "stop", f"Unexpected finish reason: {finish_reason}"
         return assistant_reply, finish_reason
 
-    # --- End of methods for generating responses from prompts ---
-
     def __get_response_stream(
         self,
         conversation: list[dict],
@@ -501,26 +493,6 @@ class BaseLLM:
         )
         return raw_response
 
-    def conversation_to_azure_format(
-        self, conversation: list[dict]
-    ) -> list[ChatRequestMessage]:
-        azure_conversation = []
-        for message in conversation:
-            assert "content" in message and "role" in message, (
-                f"Invalid message format: {message}"
-            )
-            content, role = message["content"], message["role"]
-            if role == "user":
-                azure_message: ChatRequestMessage = UserMessage(content=content)
-            elif role == "assistant":
-                azure_message = AssistantMessage(content=content)
-            elif role == "system":
-                azure_message = SystemMessage(content=content)
-            else:
-                raise ValueError(f"Invalid role: {role}")
-            azure_conversation.append(azure_message)
-        return azure_conversation
-
     def decode_json_from_message(self, message: str) -> dict:
         if message.startswith("```json"):
             message = message[len("```json") : -len("```")]
@@ -666,37 +638,3 @@ class BaseLLM:
             logger.error("Assistant reply is empty after removing the markers")
             finish_reason = "stop"
         return finish_reason, assistant_reply
-
-    def conversation_to_openai_format(
-        self, conversation: list[dict]
-    ) -> list[
-        Union[
-            ChatCompletionSystemMessageParam,
-            ChatCompletionUserMessageParam,
-            ChatCompletionAssistantMessageParam,
-        ]
-    ]:
-        openai_conversation = []
-        for message in conversation:
-            assert "content" in message and "role" in message, (
-                f"Invalid message format: {message}"
-            )
-            content, role = message["content"], message["role"]
-            if role == "user":
-                openai_message: Union[
-                    ChatCompletionUserMessageParam,
-                    ChatCompletionSystemMessageParam,
-                    ChatCompletionAssistantMessageParam,
-                ] = ChatCompletionUserMessageParam(content=content, role=role)
-            elif role == "assistant":
-                openai_message = ChatCompletionAssistantMessageParam(
-                    content=content, role=role
-                )
-            elif role == "system":
-                openai_message = ChatCompletionSystemMessageParam(
-                    content=content, role=role
-                )
-            else:
-                raise ValueError(f"Invalid role: {role}")
-            openai_conversation.append(openai_message)
-        return openai_conversation
