@@ -1,5 +1,5 @@
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator, ValidationError
 
 
@@ -7,14 +7,11 @@ ENV_FILE = Path(__file__).parent / "api_key.env"
 
 
 class LLMApiKeysLoader(BaseSettings):
-    # These are the values being validated and extracted from the env file by Pydantic
-    openai_keys: dict[str, str] = {}
-    github_keys: dict[str, str] = {}
-
-    class Config:
-        env_file = ENV_FILE
-        env_file_encoding = "utf-8"
-        extra = "allow"  # This is important since we allow extra keys with slightly different names (which do not match exactly the type of openai_keys and github_keys)  in the env file
+    model_config = SettingsConfigDict(
+        env_file=str(ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="allow",
+    )  # This SettingsConfigDict is new in pydantic v2.x
 
     # This method runs before model instance is created
     @model_validator(mode="before")
@@ -26,23 +23,26 @@ class LLMApiKeysLoader(BaseSettings):
             raise ValueError(f"Env file '{ENV_FILE}' is empty.")
         return values
 
+    @property
+    def openai_keys(self) -> dict[str, str]:
+        raw = self.model_dump()
+        return {
+            k: v for k, v in raw.items() if k.upper().startswith("OPENAI") and v != ""
+        }
+
+    @property
+    def github_keys(self) -> dict[str, str]:
+        raw = self.model_dump()
+        return {
+            k: v for k, v in raw.items() if k.upper().startswith("GITHUB") and v != ""
+        }
+
     @model_validator(mode="after")
-    def extract_and_validate_keys(self) -> "LLMApiKeysLoader":
-        openai = {}
-        github = {}
-        for key, value in self.__dict__.items():
-            if key.upper().startswith("OPENAI"):
-                openai[key] = value
-            elif key.upper().startswith("GITHUB"):
-                github[key] = value
-
-        if not openai:
+    def ensure_key_groups_exist(self):
+        if not self.openai_keys:
             raise ValueError("No OPENAI keys found in env file.")
-        if not github:
+        if not self.github_keys:
             raise ValueError("No GITHUB keys found in env file.")
-
-        self.openai_keys = openai
-        self.github_keys = github
         return self
 
     def extract_github_keys(self) -> list[str]:

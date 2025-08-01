@@ -368,7 +368,7 @@ class BaseLLM:
 
         self.client = self.client_manager.get_client(
             model=model,
-            paid_api=use_paid_api,
+            free_api=not use_paid_api,
             MODEL_BY_BACKEND=MODEL_BY_BACKEND,
             OPENAI=OPENAI,
             AZURE=AZURE,
