@@ -52,6 +52,7 @@ class LLMApiKeysLoader(BaseSettings):
         return list(self.openai_keys.values())
 
 
+# TODO: Ask Moi what does he think about this approach
 # Instantiate once (singleton)
 try:
     api_keys = LLMApiKeysLoader()
