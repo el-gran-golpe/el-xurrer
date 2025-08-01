@@ -11,6 +11,11 @@ class LLMApiKeysLoader(BaseSettings):
     openai_keys: dict[str, str] = {}
     github_keys: dict[str, str] = {}
 
+    class Config:
+        env_file = ENV_FILE
+        env_file_encoding = "utf-8"
+        extra = "allow"  # This is important since we allow extra keys with slightly different names (which do not match exactly the type of openai_keys and github_keys)  in the env file
+
     # This method runs before model instance is created
     @model_validator(mode="before")
     def check_env_file_not_empty(cls, values) -> dict[str, str]:
@@ -22,11 +27,10 @@ class LLMApiKeysLoader(BaseSettings):
         return values
 
     @model_validator(mode="after")
-    def extract_and_validate_keys(self):
+    def extract_and_validate_keys(self) -> "LLMApiKeysLoader":
         openai = {}
         github = {}
-        extras = self.model_extra or {}
-        for key, value in extras.items():
+        for key, value in self.__dict__.items():
             if key.upper().startswith("OPENAI"):
                 openai[key] = value
             elif key.upper().startswith("GITHUB"):
