@@ -1,7 +1,3 @@
-from pathlib import Path
-import random
-
-from dotenv import dotenv_values
 from copy import deepcopy
 import json
 import re
@@ -16,9 +12,11 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
     ChatCompletionAssistantMessageParam,
 )
-from pydantic import BaseModel, Field, model_validator, field_validator
+from pydantic import BaseModel, field_validator
 from tqdm import tqdm
 from loguru import logger
+
+from llm.common.api_keys import api_keys
 
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
@@ -29,10 +27,9 @@ from azure.ai.inference.models import (
     ChatRequestMessage,
     ChatCompletions,
 )
-from azure.core.credentials import AzureKeyCredential
 
+from llm.common.clients import LLMClientManager
 from llm.common.constants import (
-    MODEL_BY_BACKEND,
     AZURE,
     OPENAI,
     PREFERRED_PAID_MODELS,
@@ -46,64 +43,7 @@ from llm.common.constants import (
     MODELS_INCLUDING_CHAIN_THOUGHT,
 )
 
-ENV_FILE = Path(__file__).parent / "api_key.env"
-
-
-class ApiKey(BaseModel):
-    api_key: str
-    paid: bool = False
-
-
-class LLMApiKeys(BaseModel):
-    api_keys: dict[str, str] = Field(default_factory=dict)
-    env_file: Path
-
-    @model_validator(mode="before")
-    @classmethod
-    def load_all_api_keys(cls, values) -> dict:
-        env_file = values.get("env_file")
-        if not env_file or not Path(env_file).is_file():
-            raise FileNotFoundError(f"Missing API key file: {env_file}.")
-        # Load all key-value pairs from the env file
-        env_vars = dotenv_values(env_file)
-        # Filter out empty values
-        api_keys = {k: v for k, v in env_vars.items() if v}
-        if not api_keys:
-            raise ValueError("No API keys found in the env file.")
-        values["api_keys"] = api_keys
-        # load_dotenv(env_file)
-        return values
-
-    @model_validator(mode="after")
-    def at_least_one_key(self):
-        if not self.api_keys:
-            raise ValueError("At least one API key must be provided.")
-        return self
-
-    def get_random_github_api_key(self) -> ApiKey:
-        """
-        Extracts a random GitHub API key from the environment variables.
-        Raises ValueError if no GitHub API key is found.
-        """
-        github_keys = [
-            key for name, key in self.api_keys.items() if "GITHUB" in name.upper()
-        ]
-        if not github_keys:
-            raise ValueError("No GitHub API key found in the env file.")
-        api_key = random.choice(github_keys)
-        return ApiKey(api_key=api_key, paid=False)
-
-    def get_openia_key(self) -> ApiKey:
-        """
-        Extracts the OpenAI API key from the environment variables.
-        Raises ValueError if no OpenAI API key is found.
-        """
-        openai_keys = [
-            key for name, key in self.api_keys.items() if "OPENAI" in name.upper()
-        ]
-        if not openai_keys:
-            raise ValueError("No OpenAI API key found in the env file.")
-        return ApiKey(api_key=openai_keys[0], paid=True)
+from llm.common.constants import MODEL_BY_BACKEND
 
 
 class LLMConfig(BaseModel):
@@ -137,16 +77,24 @@ class BaseLLM:
     def __init__(
         self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
     ):
+        # TODO: think how to pick up the api keys in case there are 2 or more
+        self.github_api_keys: list[str] = api_keys.extract_github_keys()
+        self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
+
+        self.client_manager = LLMClientManager(
+            github_api_keys=self.github_api_keys,
+            openai_api_keys=self.openai_api_keys,
+        )
+
         # Use Pydantic LLMConfig for validation
         config = LLMConfig(
             preferred_models=[preferred_models]
             if isinstance(preferred_models, str)
             else preferred_models
         )
+
         self.preferred_models = config.preferred_models
         self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
-
-        self.api_keys_manager = LLMApiKeys(env_file=ENV_FILE)
 
         self.exhausted_models: list[str] = []
         self.client: Optional[Union[ChatCompletionsClient, OpenAI]] = None
@@ -363,58 +311,6 @@ class BaseLLM:
 
     # --- End of methods for generating responses from prompts ---
 
-    # TODO: (MOI) Extract client logic into a separate class
-    def get_client(self, model: str, paid_api: bool = False):
-        assert model in MODEL_BY_BACKEND, f"Model not found: {model}"
-        backend = MODEL_BY_BACKEND[model]
-        if paid_api:
-            assert backend == OPENAI, "Paid API is only available for OpenAI models"
-
-        if (
-            self.active_backend == backend
-            and self.client is not None
-            and self.using_paid_api == paid_api
-        ):
-            return self.client
-
-        if backend == OPENAI:
-            return self.get_new_client_openai(paid_api=paid_api)
-        elif backend == AZURE:
-            return self.get_new_client_azure()
-        else:
-            raise NotImplementedError(f"Backend not implemented: {backend}")
-
-    def get_new_client_azure(self):
-        github_api_key = self.api_keys_manager.get_random_github_api_key()
-        if github_api_key:
-            self.client = ChatCompletionsClient(
-                endpoint="https://models.inference.ai.azure.com",
-                credential=AzureKeyCredential(github_api_key),
-            )
-        self.active_backend = AZURE
-        self.using_paid_api = False
-        return self.client
-
-    def get_new_client_openai(self, paid_api: bool = False):
-        # First of all, try to use the GitHub API key if available (Is free)
-        # We are routing to azure first because it's free using our GitHub api keys and also because azure api is
-        # compatible with OpenAI's API
-        if not paid_api:
-            api_key: ApiKey = self.api_keys_manager.get_random_github_api_key()
-            base_url = "https://models.inference.ai.azure.com"
-        else:
-            api_key = self.api_keys_manager.get_openia_key()
-            base_url = None
-
-        self.client = OpenAI(
-            base_url=base_url,
-            api_key=api_key.api_key,
-        )
-
-        self.active_backend = OPENAI
-        self.using_paid_api = paid_api
-        return self.client
-
     def __get_response_stream(
         self,
         conversation: list[dict],
@@ -470,7 +366,16 @@ class BaseLLM:
                 conversation=conversation
             )
 
-        self.client = self.get_client(model=model, paid_api=use_paid_api)
+        self.client = self.client_manager.get_client(
+            model=model,
+            paid_api=use_paid_api,
+            MODEL_BY_BACKEND=MODEL_BY_BACKEND,
+            OPENAI=OPENAI,
+            AZURE=AZURE,
+        )
+        self.active_backend = self.client_manager.active_backend
+        self.using_paid_api = self.client_manager.using_paid_api
+
         stream_response = stream_response and model not in MODELS_NOT_ACCEPTING_STREAM
         raw_response: Union[Iterable[ResponseChunk], ResponseChunk]
 

@@ -45,11 +45,11 @@ class LLMApiKeysLoader(BaseSettings):
         self.github_keys = github
         return self
 
-    def extract_github_keys(self) -> dict[str, str]:
-        return self.github_keys
+    def extract_github_keys(self) -> list[str]:
+        return list(self.github_keys.values())
 
-    def extract_openai_keys(self) -> dict[str, str]:
-        return self.openai_keys
+    def extract_openai_keys(self) -> list[str]:
+        return list(self.openai_keys.values())
 
 
 # Instantiate once (singleton)
