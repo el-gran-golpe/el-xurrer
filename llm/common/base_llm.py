@@ -1,8 +1,10 @@
 from copy import deepcopy
-import json
 import re
 from typing import Iterable, Union, Optional, Literal, Any, cast
-
+from llm.common.conversation_format import (
+    conversation_to_openai_format,
+    conversation_to_azure_format,
+)
 
 from azure.core.exceptions import HttpResponseError
 from openai import OpenAI, APIStatusError
@@ -31,13 +33,19 @@ from llm.common.constants import (
     CANNOT_ASSIST_PHRASES,
     MODELS_NOT_ACCEPTING_SYSTEM_ROLE,
     MODELS_NOT_ACCEPTING_STREAM,
-    VALIDATION_SYSTEM_PROMPT,
     MODELS_ACCEPTING_JSON_FORMAT,
     REASONING_MODELS,
     MODELS_INCLUDING_CHAIN_THOUGHT,
 )
 
 from llm.common.constants import MODEL_BY_BACKEND
+from llm.common.prompt_utils import replace_prompt_placeholders
+from llm.common.conversation_format import (
+    merge_system_and_user_messages,
+)
+from llm.common.response import decode_json_from_message
+from llm.common.response import recalculate_finish_reason
+# Maybe the above file should be renamed to validation.py or something similar
 
 
 class LLMConfig(BaseModel):
@@ -122,7 +130,7 @@ class BaseLLM:
             conversation = [
                 {
                     "role": "system",
-                    "content": self._replace_prompt_placeholders(
+                    "content": replace_prompt_placeholders(
                         prompt=prompt_spec["system_prompt"],
                         cache=cache,
                         # accept_unfilled=function_call is not None,
@@ -131,7 +139,7 @@ class BaseLLM:
                 },
                 {
                     "role": "user",
-                    "content": self._replace_prompt_placeholders(
+                    "content": replace_prompt_placeholders(
                         prompt=prompt_spec["prompt"],
                         cache=cache,
                         # accept_unfilled=function_call is not None,
@@ -198,7 +206,7 @@ class BaseLLM:
             "Assistant response not found"
         )
         # Decode the JSON object for the last assistant_reply
-        output_dict = self.decode_json_from_message(message=assistant_reply)
+        output_dict = decode_json_from_message(message=assistant_reply)
         return output_dict
 
     def _get_model_response(
@@ -264,8 +272,10 @@ class BaseLLM:
             ).strip()
 
         if finish_reason == "stop" and validate:
-            finish_reason, assistant_reply = self.recalculate_finish_reason(
-                assistant_reply=assistant_reply
+            finish_reason, assistant_reply = recalculate_finish_reason(
+                assistant_reply=assistant_reply,
+                get_model_response=self._get_model_response,
+                preferred_validation_models=self.preferred_validation_models,
             )
         assert finish_reason is not None, (
             "Finish reason not found"
@@ -354,9 +364,7 @@ class BaseLLM:
         logger.info(f"Using model: {model}")
 
         if model in MODELS_NOT_ACCEPTING_SYSTEM_ROLE:
-            conversation = self.merge_system_and_user_messages(
-                conversation=conversation
-            )
+            conversation = merge_system_and_user_messages(conversation=conversation)
 
         self.client = self.client_manager.get_client(
             model=model,
@@ -385,9 +393,7 @@ class BaseLLM:
                 if not isinstance(self.client, OpenAI):
                     raise ValueError(f"Client is not OpenAI: {self.client} - {model}")
                 raw_response = self.client.chat.completions.create(
-                    messages=self.conversation_to_openai_format(
-                        conversation=conversation
-                    ),
+                    messages=conversation_to_openai_format(conversation=conversation),
                     model=model,
                     stream=stream_response,
                     **additional_params,
@@ -486,155 +492,9 @@ class BaseLLM:
         if not isinstance(self.client, ChatCompletionsClient):
             raise ValueError(f"Client is not Azure: {self.client} - {model}")
         raw_response = self.client.complete(
-            messages=self.conversation_to_azure_format(conversation=conversation),
+            messages=conversation_to_azure_format(conversation=conversation),
             model=model,
             stream=stream_response,
             **additional_params,
         )
         return raw_response
-
-    def decode_json_from_message(self, message: str) -> dict:
-        if message.startswith("```json"):
-            message = message[len("```json") : -len("```")]
-
-            # THOUGHTS: Check why is this used three times, I think is because of the json format but check it anyway
-            message = (
-                message.replace("\n```json", "")
-                .replace("```json\n", "")
-                .replace("```json", "")
-            )
-
-        message = message.strip('"')
-        # Remove trailing commas before closing brackets
-        message = re.sub(r",\s*}", "}", message)
-        try:
-            return json.loads(message)
-        except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON from message: {message}")
-            raise
-
-    def merge_system_and_user_messages(self, conversation: list[dict]) -> list[dict]:
-        """
-        for each message, if its 'role' is 'system', merge it with the next 'user' message
-        :param conversation: The conversation to merge. A list of dictionaries with 'role' and 'content'
-        :return: The conversation with the system messages merged with the next user message
-        """
-        # TODO: why is this a for loop? This is called for a conversation that seems to be composed of system_prompt
-        #  and prompt
-        merged_conversation, last_system_message = [], None
-        for i, message in enumerate(conversation):
-            role, content = message["role"], message["content"]
-            # If is a system message, keep it in memory to merge it with the next user message
-            if role == "system":
-                assert i < len(conversation) - 1, (
-                    f"System message is the last message while merging.\n\n {conversation}"
-                )
-                assert last_system_message is None, (
-                    "Two consecutive system messages found"
-                )
-                last_system_message = content
-            # If is a user message, merge it with the previous system message as user message
-            elif role == "user":
-                # If there was a system message before, merge it with the user message
-                if last_system_message is not None:
-                    new_message = last_system_message + "\n\n" + content
-                    merged_conversation.append({"role": "user", "content": new_message})
-                    last_system_message = None
-                # Otherwise, just append the user message
-                else:
-                    merged_conversation.append(message)
-            # If not a system or user message, just append
-            else:
-                # First make sure that it is an assistant message
-                assert role in ("assistant",), f"Unexpected role: {role}"
-                merged_conversation.append(message)
-
-        assert last_system_message is None, (
-            "Last message was a system message. Unexpected"
-        )
-
-        return merged_conversation
-
-    def _replace_prompt_placeholders(
-        self, prompt: str, cache: dict[str, str], accept_unfilled: bool = False
-    ) -> str:
-        """
-        Replace all `{placeholder}` patterns in the prompt string with values from the cache.
-
-        - If `accept_unfilled` is False (default), all placeholders must be present in the cache.
-          Raises AssertionError if any are missing.
-        - If `accept_unfilled` is True, only replaces placeholders that exist in the cache;
-          leaves others unchanged.
-
-        Args:
-            prompt: The prompt string with `{placeholder}` patterns.
-            cache: Dictionary mapping placeholder names to their replacement values.
-            accept_unfilled: If True, allows placeholders to remain if not in cache.
-
-        Returns:
-            The prompt string with placeholders replaced as appropriate.
-        """
-        placeholders = re.findall(r"{(\w+)}", prompt)
-        for placeholder in placeholders:
-            if placeholder in cache:
-                prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
-            elif not accept_unfilled:
-                raise AssertionError(
-                    f"Placeholder '{{{placeholder}}}' not found in cache for prompt: {prompt}"
-                )
-            # else: leave the placeholder as-is if accept_unfilled is True
-        return prompt
-
-    def recalculate_finish_reason(self, assistant_reply: str) -> tuple[str, str]:
-        """
-        Validate that the finish reason is the expected one
-        :param finish_reason: The finish reason to validate
-        :param expected_finish_reason: The expected finish reason
-        :return: True if the finish reason is the expected one
-        """
-
-        conversation = [
-            {"role": "system", "content": VALIDATION_SYSTEM_PROMPT},
-            {"role": "user", "content": assistant_reply},
-        ]
-
-        print("\n\n----------------- VALIDATION -----------------")
-        output_dict, finish_reason = self._get_model_response(
-            conversation=conversation,
-            preferred_models=self.preferred_validation_models,
-            as_json=True,
-            validate=False,
-            large_output=False,
-            force_reasoning=False,
-        )
-        print()
-        # Decode the JSON object for the last assistant_reply
-        output_dict = self.decode_json_from_message(message=output_dict)
-
-        assert "finish_reason" in output_dict, (
-            f"Finish reason not found in the output: {output_dict}"
-        )
-        assert "markers" in output_dict, (
-            f"Markers not found in the output: {output_dict}"
-        )
-
-        finish_reason, markers = output_dict["finish_reason"], output_dict["markers"]
-        if finish_reason == "stop":
-            assert len(markers) == 0, (
-                f"Markers found in the assistant reply when finish_reason is stop: "
-                f"{markers}"
-            )
-        for marker in markers:
-            # Sometimes the final dots are a problem. So remove them if it's the case
-            marker = f"{marker}."
-            while marker not in assistant_reply and marker.endswith("."):
-                marker = marker[:-1]
-            assert marker in assistant_reply, (
-                f"Marker not found in the assistant reply: {marker}"
-            )
-
-            assistant_reply = assistant_reply.replace(marker, "").strip()
-        if assistant_reply == "":
-            logger.error("Assistant reply is empty after removing the markers")
-            finish_reason = "stop"
-        return finish_reason, assistant_reply
