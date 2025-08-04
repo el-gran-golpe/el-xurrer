@@ -83,12 +83,20 @@ class BaseLLM:
     def _generate_dict_from_prompts(
         self,
         prompts: list[Union[PromptSpecification, dict]],
-        tqdm_description: str = "Generating",
         cache: Optional[dict[str, str]] = None,
         preferred_models: Optional[list[str]] = None,
     ) -> dict:
+        # I think that the first step of this whole process should be
+        # to receive a prompt specification
+
         if cache is None:
             cache = {}
+
+        # This is the second step of the flowchart were we read the prompt  specifications
+        # and use the ContentClassifier to divide into HOT vs GENERAL and also
+        # if they accept JSON format or not (intelligence of the model)
+
+        # 3rd step is to use the ModelRouting Policy to pick up the best model for the prompt
         models_override = (
             list(preferred_models)
             if preferred_models is not None
@@ -96,6 +104,8 @@ class BaseLLM:
         )
 
         last_reply: Union[str, dict] = ""
+
+        # For each model in the ordered list: then we do this
         for raw_spec in tqdm(
             prompts, desc="Generating text with AI", total=len(prompts)
         ):

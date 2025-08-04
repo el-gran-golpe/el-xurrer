@@ -1,4 +1,3 @@
-from typing import List
 from loguru import logger
 
 from llm.common.request_options import RequestOptions
@@ -6,11 +5,11 @@ from llm.common.constants import REASONING_MODELS, MODELS_ACCEPTING_JSON_FORMAT
 
 
 def select_models(
-    base_models: List[str],
-    exhausted_models: List[str],
+    base_models: list[str],
+    exhausted_models: list[str],
     options: RequestOptions,
     use_paid_api: bool,
-) -> List[str]:
+) -> list[str]:
     """
     Apply filtering/prioritization to models: exhaustion, JSON constraints, forced reasoning.
     """
