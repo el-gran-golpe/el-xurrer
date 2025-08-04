@@ -1,54 +1,33 @@
+from __future__ import annotations
+
 from copy import deepcopy
 import re
-from typing import Iterable, Union, Optional, Literal, Any, cast
-from llm.common.conversation_format import (
-    conversation_to_openai_format,
-    conversation_to_azure_format,
-)
+from typing import Iterable, Union, Optional, Literal, Any
 
-from azure.core.exceptions import HttpResponseError
-from openai import OpenAI, APIStatusError
-from openai.types.chat import (
-    ChatCompletionChunk,
-    ChatCompletion,
-)
-from pydantic import BaseModel, field_validator
-from tqdm import tqdm
+from pydantic import BaseModel, field_validator, ConfigDict
 from loguru import logger
+from tqdm import tqdm
 
-from llm.common.api_keys import api_keys
-
-from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import (
-    StreamingChatCompletionsUpdate,
-    ChatCompletions,
-)
-
+from llm.common.request_options import RequestOptions
+from llm.common.model_selector import select_models
+from llm.common.error_handler import handle_api_error
+from llm.common.backend_invoker import invoke_backend
+from llm.common.conversation_builder import prepare_conversation
+from llm.common.response import decode_json_from_message, recalculate_finish_reason
 from llm.common.clients import LLMClientManager
+from llm.common.api_keys import api_keys
 from llm.common.constants import (
-    AZURE,
-    OPENAI,
-    PREFERRED_PAID_MODELS,
     DEFAULT_PREFERRED_MODELS,
     CANNOT_ASSIST_PHRASES,
-    MODELS_NOT_ACCEPTING_SYSTEM_ROLE,
-    MODELS_NOT_ACCEPTING_STREAM,
-    MODELS_ACCEPTING_JSON_FORMAT,
-    REASONING_MODELS,
     MODELS_INCLUDING_CHAIN_THOUGHT,
+    MODEL_BY_BACKEND,
 )
 
-from llm.common.constants import MODEL_BY_BACKEND
-from llm.common.prompt_utils import replace_prompt_placeholders
-from llm.common.conversation_format import (
-    merge_system_and_user_messages,
-)
-from llm.common.response import decode_json_from_message
-from llm.common.response import recalculate_finish_reason
-# Maybe the above file should be renamed to validation.py or something similar
+ResponseChunk = Any  # upstream unioned types are defined in backend_invoker
 
 
 class LLMConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     preferred_models: list[str]
 
     @field_validator("preferred_models")
@@ -60,441 +39,309 @@ class LLMConfig(BaseModel):
 
 
 class PromptSpecification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     system_prompt: str
     prompt: str
     cache_key: str
-
-
-ResponseChunk = Union[
-    (
-        StreamingChatCompletionsUpdate,
-        ChatCompletions,
-        ChatCompletionChunk,
-        ChatCompletion,
-    )
-]
+    json: bool = False
+    force_reasoning: bool = False
+    large_output: bool = False
+    validate: bool = False
 
 
 class BaseLLM:
     def __init__(
-        self, preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS
+        self,
+        preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS,
     ):
-        # TODO: think how to pick up the api keys in case there are 2 or more
         self.github_api_keys: list[str] = api_keys.extract_github_keys()
         self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
 
         self.client_manager = LLMClientManager(
-            github_api_keys=self.github_api_keys,
-            openai_api_keys=self.openai_api_keys,
+            github_api_keys=self.github_api_keys, openai_api_keys=self.openai_api_keys
         )
 
-        # Use Pydantic LLMConfig for validation
         config = LLMConfig(
             preferred_models=[preferred_models]
             if isinstance(preferred_models, str)
             else preferred_models
         )
-
         self.preferred_models = config.preferred_models
         self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
 
         self.exhausted_models: list[str] = []
-        self.client: Optional[Union[ChatCompletionsClient, OpenAI]] = None
-        self.active_backend: Optional[Union[Literal["openai", "azure"]]] = None
+        self.active_backend: Optional[Literal["openai", "azure"]] = None
         self.using_paid_api = False
 
-    # --- Methods for generating responses from prompts ---
-    # TODO: pass the actual prompt_spec instead of a dict
+    def _clean_chain_of_thought(self, model: str, assistant_reply: str) -> str:
+        if model in MODELS_INCLUDING_CHAIN_THOUGHT:
+            return re.sub(
+                r"<think>.*?</think>", "", assistant_reply, flags=re.DOTALL
+            ).strip()
+        return assistant_reply
+
     def _generate_dict_from_prompts(
         self,
-        prompts: list[PromptSpecification],
+        prompts: list[Union[PromptSpecification, dict]],
         tqdm_description: str = "Generating",
-        cache: dict[str, str] = dict(),  # TODO: understand this cache better
+        cache: Optional[dict[str, str]] = None,
+        preferred_models: Optional[list[str]] = None,
     ) -> dict:
-        preferred_models = self.preferred_models
+        if cache is None:
+            cache = {}
+        models_override = (
+            list(preferred_models)
+            if preferred_models is not None
+            else list(self.preferred_models)
+        )
 
-        # Loop through each prompt_spec (that is, a ternary of system_promt + prompt + cache_key specified in
-        # the .json) and get a response
-        for i, prompt_spec in tqdm(
-            enumerate(prompts), desc=tqdm_description, total=len(prompts)
+        last_reply: Union[str, dict] = ""
+        for raw_spec in tqdm(
+            prompts, desc="Generating text with AI", total=len(prompts)
         ):
-            # These other variables are optional
-            # function_call = prompt_spec.get("function_call", None)  # FIXME: ask Haru
-            # structured_json = prompt_spec.get("structured_json", None)
-            as_json = prompt_spec.get("json", False)
-            force_reasoning = prompt_spec.get("force_reasoning", False)
-            large_output = prompt_spec.get("large_output", False)
-            validate = prompt_spec.get("validate", False)
+            # Normalize into dict via PromptSpecification if needed
+            if isinstance(raw_spec, dict):
+                spec = PromptSpecification.model_validate(raw_spec)
+            elif isinstance(raw_spec, PromptSpecification):
+                spec = raw_spec
+            else:
+                # attempt attribute access
+                spec = PromptSpecification.model_validate(raw_spec.__dict__)  # type: ignore
 
-            # --- Replace {placeholders} for their cache value ---
-            conversation = [
-                {
-                    "role": "system",
-                    "content": replace_prompt_placeholders(
-                        prompt=prompt_spec["system_prompt"],
-                        cache=cache,
-                        # accept_unfilled=function_call is not None,
-                        accept_unfilled=False,
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": replace_prompt_placeholders(
-                        prompt=prompt_spec["prompt"],
-                        cache=cache,
-                        # accept_unfilled=function_call is not None,
-                        accept_unfilled=False,
-                    ),
-                },
-            ]
+            conversation = prepare_conversation(spec=spec.model_dump(), cache=cache)
+            options = RequestOptions(
+                as_json=spec.json,
+                large_output=spec.large_output,
+                validate=spec.validate,
+                force_reasoning=spec.force_reasoning,
+            )
 
-            # TODO: what the hell is this function_call? --> No clue, I will remove it for now since it is not used
-            # if function_call is not None:
-            #     assert isinstance(function_call, str), "Invalid function call"
-            #     assert hasattr(self, function_call), (
-            #         f"Function not found: {function_call}"
-            #     )
-            #     # Get the function within this class
-            #     function = getattr(self, function_call)
-            #     # Call the function with the cache as the argument
-            #     assistant_reply = function(
-            #         cache=cache,
-            #         system_prompt=system_prompt,
-            #         prompt=prompt,
-            #         preferred_models=preferred_models,
-            #     )
-            # else:
-            # Get the assistant's response
             assistant_reply, finish_reason = self._get_model_response(
                 conversation=conversation,
-                preferred_models=preferred_models,
-                # structured_json=structured_json,
-                as_json=as_json,
-                large_output=large_output,
-                validate=validate,
-                force_reasoning=force_reasoning,
+                options=options,
+                preferred_models=models_override,
+                verbose=True,
             )
 
             if any(
                 cant_assist.lower() in assistant_reply.lower()
                 for cant_assist in CANNOT_ASSIST_PHRASES
             ):
-                if len(preferred_models) == 0:
+                if len(models_override) <= 1:
                     raise RuntimeError(
-                        f"No models can assist with prompt: {prompt_spec['prompt']}"
+                        f"No models can assist with prompt: {spec.prompt}"
                     )
                 logger.warning(
-                    f"Assistant cannot assist with prompt: {prompt_spec['prompt']}. Retrying with a different model"
+                    "Assistant cannot assist with prompt: {}. Retrying with next model(s): {}",
+                    spec.prompt,
+                    models_override[1:],
                 )
-                # TODO: it does not make sense to retry with a different model if the
-                # _get_model_response does not accept a preferred_models argument
+                models_override = models_override[1:]
                 assistant_reply, finish_reason = self._get_model_response(
                     conversation=conversation,
-                    preferred_models=preferred_models[1:],
-                    as_json=as_json,
-                    large_output=large_output,
-                    validate=validate,
-                    force_reasoning=force_reasoning,
+                    options=options,
+                    preferred_models=models_override,
+                    verbose=True,
                 )
-            # Add the assistant's response to the cache
-            cache[prompt_spec["cache_key"]] = assistant_reply
 
-        if isinstance(assistant_reply, dict):
-            return assistant_reply
+            cache[spec.cache_key] = assistant_reply
+            last_reply = assistant_reply
 
-        assert isinstance(assistant_reply, str) and len(assistant_reply) > 0, (
-            "Assistant response not found"
-        )
-        # Decode the JSON object for the last assistant_reply
-        output_dict = decode_json_from_message(message=assistant_reply)
-        return output_dict
+        if isinstance(last_reply, dict):
+            return last_reply  # type: ignore
+        output = decode_json_from_message(message=last_reply)
+        return output
 
     def _get_model_response(
         self,
         conversation: list[dict],
+        options: Optional[RequestOptions] = None,
         verbose: bool = True,
-        as_json: bool = False,
-        large_output: bool = False,
-        validate: bool = False,
-        force_reasoning: bool = False,
         preferred_models: Optional[list[str]] = None,
-    ) -> tuple:
-        preferred_models = self.preferred_models
-
-        stream = self.__get_response_stream(
-            conversation=conversation,
-            preferred_models=preferred_models,
-            as_json=as_json,
-            large_output=large_output,
-            force_reasoning=force_reasoning,
+    ) -> tuple[str, str]:
+        if options is None:
+            options = RequestOptions()
+        models = (
+            list(preferred_models)
+            if preferred_models is not None
+            else list(self.preferred_models)
         )
+        assistant_reply = ""
+        finish_reason: Optional[str] = None
+        convo = conversation
 
-        # --- Stream the response and collect the assistant reply ---
-        assistant_reply, finish_reason = "", None
-        for chunk in stream:
-            if len(chunk.choices) == 0:
+        while models:
+            selected_models = select_models(
+                base_models=models,
+                exhausted_models=self.exhausted_models,
+                options=options,
+                use_paid_api=False,
+            )
+            model = selected_models[0]
+            logger.info("Using model: {}", model)
+
+            additional_params: dict[str, Any] = {}
+            if options.as_json:
+                additional_params["response_format"] = {"type": "json_object"}
+
+            try:
+                stream = self.__get_response_stream(
+                    conversation=convo,
+                    preferred_models=selected_models,
+                    use_paid_api=False,
+                    options=options,
+                    stream_response=True,
+                )
+            except Exception as e:
+                stream = handle_api_error(
+                    e=e,
+                    conversation=convo,
+                    preferred_models=selected_models,
+                    exhausted_models=self.exhausted_models,
+                    use_paid_api=False,
+                    options=options,
+                    stream_response=True,
+                    get_stream_callable=self.__get_response_stream,
+                )
+
+            assistant_reply = ""
+            finish_reason = None
+
+            for chunk in stream:
+                if not hasattr(chunk, "choices") or len(chunk.choices) == 0:
+                    continue
+                choice = chunk.choices[0]
+                current_finish_reason = getattr(choice, "finish_reason", None)
+                if hasattr(choice, "delta"):
+                    new_content = getattr(choice.delta, "content", None)
+                else:
+                    new_content = getattr(choice.message, "content", None)
+
+                if new_content:
+                    assistant_reply += new_content
+                    if verbose:
+                        logger.info("{}", new_content)
+
+                if current_finish_reason is not None:
+                    finish_reason = current_finish_reason
+
+            non_exhausted = [
+                m for m in selected_models if m not in self.exhausted_models
+            ]
+            used_model = non_exhausted[0] if non_exhausted else selected_models[0]
+
+            if (
+                not (used_model.startswith("gpt-") or used_model.startswith("o1"))
+                and finish_reason is None
+            ):
+                logger.debug(
+                    "Model {} did not return finish reason. Assuming stop", used_model
+                )
+                finish_reason = "stop"
+
+            assistant_reply = self._clean_chain_of_thought(
+                model=used_model, assistant_reply=assistant_reply
+            )
+
+            if finish_reason == "stop" and options.validate:
+                try:
+                    finish_reason, assistant_reply = recalculate_finish_reason(
+                        assistant_reply=assistant_reply,
+                        get_model_response_callable=lambda **k: self._get_model_response(
+                            **k
+                        ),
+                        preferred_validation_models=self.preferred_validation_models,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Validation finish_reason failed; proceeding with current reply"
+                    )
+
+            if finish_reason is None:
+                raise RuntimeError("Finish reason not found for model response")
+
+            if any(
+                cant_assist.lower() in assistant_reply.lower()
+                for cant_assist in CANNOT_ASSIST_PHRASES
+            ):
+                if len(models) <= 1:
+                    raise RuntimeError("No models left to assist with prompt.")
+                logger.warning(
+                    "Assistant cannot assist; trying next model(s): {}", models[1:]
+                )
+                models = models[1:]
                 continue
-            current_finish_reason = chunk.choices[0].finish_reason
-            # delta will be available when streaming the response. Otherwise, the info will just come at message
-            new_content = (
-                chunk.choices[0].delta.content
-                if hasattr(chunk.choices[0], "delta")
-                else chunk.choices[0].message.content
-            )
 
-            if new_content is not None:
-                assistant_reply += new_content
-                if verbose:
-                    print(new_content, end="")
+            if finish_reason == "length":
+                logger.info(
+                    "Finish reason 'length' encountered; continuing conversation"
+                )
+                convo = deepcopy(convo)
+                convo.append({"role": "assistant", "content": assistant_reply})
+                convo.append(
+                    {"role": "user", "content": "Continue EXACTLY where we left off"}
+                )
+                continue
 
-            if current_finish_reason is not None:
-                finish_reason = current_finish_reason
-        # --- End of streaming the response ---
+            if finish_reason == "content_filter":
+                if len(models) <= 1:
+                    raise RuntimeError(
+                        "No more models to retry after content_filter finish reason"
+                    )
+                models = models[1:]
+                continue
 
-        # TODO: That's for non-gpt models that seems to not return a finish reason
-        model = [
-            model for model in preferred_models if model not in self.exhausted_models
-        ][0]
-        if (
-            not (model.startswith("gpt-") or model.startswith("o1"))
-            and finish_reason is None
-        ):
-            logger.debug(f"Model {model} did not return a finish reason. Assuming stop")
-            finish_reason = "stop"
+            if finish_reason != "stop":
+                raise AssertionError(f"Unexpected finish reason: {finish_reason}")
 
-        if model in MODELS_INCLUDING_CHAIN_THOUGHT:
-            # Remove <think> ... </think> tags from the assistant reply
-            assistant_reply = re.sub(
-                pattern=r"<think>.*?</think>",
-                repl="",
-                string=assistant_reply,
-                flags=re.DOTALL,
-            ).strip()
+            return assistant_reply, finish_reason
 
-        if finish_reason == "stop" and validate:
-            finish_reason, assistant_reply = recalculate_finish_reason(
-                assistant_reply=assistant_reply,
-                get_model_response=self._get_model_response,
-                preferred_validation_models=self.preferred_validation_models,
-            )
-        assert finish_reason is not None, (
-            "Finish reason not found"
-        )  # FIXME: This is a problem for unattended running
-
-        if finish_reason == "length":
-            continue_conversation = deepcopy(conversation)
-            continue_conversation.append(
-                {"role": "assistant", "content": assistant_reply}
-            )
-            continue_conversation.append(
-                {"role": "user", "content": "Continue EXACTLY where we left off"}
-            )
-            new_assistant_reply, finish_reason = self._get_model_response(
-                conversation=continue_conversation,
-                preferred_models=preferred_models,
-                as_json=as_json,
-                large_output=large_output,
-                validate=validate,
-            )
-            assistant_reply += new_assistant_reply
-
-        elif finish_reason == "content_filter":
-            print("\n")
-            logger.debug("Content filter triggered. Retrying with a different model")
-            assert len(preferred_models) > 1, "No more models to try"
-            assistant_reply, finish_reason = self._get_model_response(
-                conversation=conversation,
-                preferred_models=preferred_models[1:],
-                as_json=as_json,
-                large_output=large_output,
-                validate=validate,
-            )
-
-        assert finish_reason == "stop", f"Unexpected finish reason: {finish_reason}"
-        return assistant_reply, finish_reason
+        raise RuntimeError("Exhausted all preferred models without successful response")
 
     def __get_response_stream(
         self,
         conversation: list[dict],
         preferred_models: list[str],
         use_paid_api: bool = False,
-        as_json: bool = False,
-        large_output: bool = False,
-        force_reasoning: bool = False,
+        options: Optional[RequestOptions] = None,
         stream_response: bool = True,
     ) -> Iterable[ResponseChunk]:
-        conversation = deepcopy(conversation)
-        additional_params: dict[str, Any] = {}
+        if options is None:
+            options = RequestOptions()
 
-        # Select the best model that is not exhausted
-        # TODO: (MOI) this is not the best way to do it, this could be a funcioncita to pick up desired model
-        if not use_paid_api:
-            preferred_models = [
-                model
-                for model in preferred_models
-                if model not in self.exhausted_models
-            ]
-
-        if as_json:
-            preferred_models = [
-                model
-                for model in preferred_models
-                if model in MODELS_ACCEPTING_JSON_FORMAT
-            ]
-            additional_params["response_format"] = {"type": "json_object"}
-            # FIXME: This can be done in a way more explicit, for example using a flag and it has to be specific for
-            #  OpenAI and Azure because the API is different
-
-        if force_reasoning:
-            # Use the order of REASONING_MODELS to be better first
-            reasoning_models = [
-                model for model in REASONING_MODELS if model in preferred_models
-            ]
-            if len(reasoning_models) > 0:
-                preferred_models = reasoning_models
-            else:
-                logger.warning(
-                    f"Couldn't force a reasoning models because no one available. Using {preferred_models[0]}"
-                )
-
-        assert len(preferred_models) > 0, (
-            "No models available"
-        )  # TODO: (MOI) this should be a warning and we need to default to some model because we don't want to fail the pipeline
-        model: str = preferred_models[0]
-        logger.info(f"Using model: {model}")
-
-        if model in MODELS_NOT_ACCEPTING_SYSTEM_ROLE:
-            conversation = merge_system_and_user_messages(conversation=conversation)
-
-        self.client = self.client_manager.get_client(
-            model=model,
-            free_api=not use_paid_api,
-            MODEL_BY_BACKEND=MODEL_BY_BACKEND,
-            OPENAI=OPENAI,
-            AZURE=AZURE,
+        selected = select_models(
+            base_models=preferred_models,
+            exhausted_models=self.exhausted_models,
+            options=options,
+            use_paid_api=use_paid_api,
         )
-        self.active_backend = self.client_manager.active_backend
-        self.using_paid_api = self.client_manager.using_paid_api
+        model = selected[0]
+        logger.info("Attempting stream with model: {}", model)
 
-        stream_response = stream_response and model not in MODELS_NOT_ACCEPTING_STREAM
-        raw_response: Union[Iterable[ResponseChunk], ResponseChunk]
+        additional_params: dict[str, Any] = {}
+        if options.as_json:
+            additional_params["response_format"] = {"type": "json_object"}
 
         try:
-            # TODO: here its calling the api, update it with the new client
-            # TODO: (MOI) make a method to call the llm without knowing wich backend is using
-            if self.active_backend == AZURE:
-                raw_response = self.call_azure(
-                    additional_params,
-                    conversation,
-                    model,
-                    stream_response,
-                )
-            elif self.active_backend == OPENAI:
-                if not isinstance(self.client, OpenAI):
-                    raise ValueError(f"Client is not OpenAI: {self.client} - {model}")
-                raw_response = self.client.chat.completions.create(
-                    messages=conversation_to_openai_format(conversation=conversation),
-                    model=model,
-                    stream=stream_response,
-                    **additional_params,
-                )
-            else:
-                raise NotImplementedError(
-                    f"Backend not implemented: {self.active_backend}"
-                )
-
-            if not stream_response and not isinstance(raw_response, Iterable):
-                stream: Iterable[ResponseChunk] = [raw_response]
-            else:
-                stream = cast(Iterable[ResponseChunk], raw_response)
-
-        except (APIStatusError, HttpResponseError) as e:
-            if isinstance(e, APIStatusError):
-                error_code = e.code
-                error_message = e.message
-            elif isinstance(e, HttpResponseError):
-                error_code = (
-                    e.error.code
-                    if e.error is not None and e.error.code is not None
-                    else str(e)
-                )
-                error_message = (
-                    e.error.message
-                    if e.error is not None and e.error.message is not None
-                    else str(e)
-                )
-            else:
-                raise e
-
-            if error_code == "tokens_limit_reached":
-                # Context token limit reached. So we'll have to move to the OpenAI paid API for this
-                assert not use_paid_api, (
-                    "This error should not happen when using the paid API"
-                )
-                logger.warning(
-                    f"Request size exceeded free github API limit. Retrying with "
-                    f"OpenAI paid API ({PREFERRED_PAID_MODELS[0]})"
-                )
-                stream = self.__get_response_stream(
-                    conversation=conversation,
-                    preferred_models=PREFERRED_PAID_MODELS,
-                    use_paid_api=True,
-                    as_json=as_json,
-                    force_reasoning=False,
-                )
-                # Move to a different model
-            elif error_code == "RateLimitReached":
-                # We have exhausted the free API limit for this model
-                self.exhausted_models.append(model)
-                print()
-                logger.warning(
-                    f"Exhausted free API limit for model {model}. Retrying with a different model"
-                )
-                if len(preferred_models) == 1 and not use_paid_api:
-                    logger.warning("No more models to try. Retrying with the paid API")
-                    stream = self.__get_response_stream(
-                        conversation=conversation,
-                        preferred_models=PREFERRED_PAID_MODELS,
-                        use_paid_api=True,
-                        as_json=as_json,
-                        force_reasoning=False,
-                    )
-                else:
-                    stream = self.__get_response_stream(
-                        conversation=conversation,
-                        preferred_models=preferred_models[1:],
-                        use_paid_api=use_paid_api,
-                        as_json=as_json,
-                        large_output=large_output,
-                        force_reasoning=force_reasoning,
-                    )
-            elif error_code == "content_filter":
-                logger.warning(
-                    f"Content filter triggered for model {model}. Retrying with a different model"
-                )
-                assert len(preferred_models) > 1, "No more models to try"
-                stream = self.__get_response_stream(
-                    conversation=conversation,
-                    preferred_models=preferred_models[1:],
-                    use_paid_api=use_paid_api,
-                    as_json=as_json,
-                    large_output=large_output,
-                    force_reasoning=force_reasoning,
-                )
-            elif error_code == "unauthorized":
-                raise PermissionError(f"Unauthorized: {error_message}")
-            else:
-                raise NotImplementedError(f"Error: {error_code} - {error_message}")
-
+            stream = invoke_backend(
+                client_manager=self.client_manager,
+                conversation=conversation,
+                model=model,
+                stream_response=stream_response,
+                additional_params=additional_params,
+                use_paid_api=use_paid_api,
+                MODEL_BY_BACKEND=MODEL_BY_BACKEND,
+            )
+        except Exception as e:
+            logger.warning("API error encountered: {}. Delegating to handler.", e)
+            stream = handle_api_error(
+                e=e,
+                conversation=conversation,
+                preferred_models=selected,
+                exhausted_models=self.exhausted_models,
+                use_paid_api=use_paid_api,
+                options=options,
+                stream_response=stream_response,
+                get_stream_callable=self.__get_response_stream,
+            )
         return stream
-
-    def call_azure(self, additional_params, conversation, model, stream_response):
-        if not isinstance(self.client, ChatCompletionsClient):
-            raise ValueError(f"Client is not Azure: {self.client} - {model}")
-        raw_response = self.client.complete(
-            messages=conversation_to_azure_format(conversation=conversation),
-            model=model,
-            stream=stream_response,
-            **additional_params,
-        )
-        return raw_response

@@ -1,5 +1,10 @@
-from openai import OpenAI
+import os
 import random
+from typing import Any, Optional
+
+from openai import OpenAI
+from azure.ai.inference import ChatCompletionsClient
+from azure.core.credentials import AzureKeyCredential
 
 
 class LLMClientManager:
@@ -11,39 +16,56 @@ class LLMClientManager:
         self.github_api_keys = github_api_keys
         self.openai_api_keys = openai_api_keys
 
-        self.client = None
-        self.active_backend = None
-        self.using_paid_api = False
+        self.client: Optional[Any] = None
+        self.active_backend: Optional[str] = None
+        self.using_paid_api: bool = False
 
-    def get_client(self, model, free_api, MODEL_BY_BACKEND, OPENAI, AZURE):
-        backend = MODEL_BY_BACKEND[model]
-        if not free_api:
-            assert backend == OPENAI, "Paid API is only available for OpenAI models"
-        if (
-            self.active_backend == backend
-            and self.client
-            and self.using_paid_api == (not free_api)
-        ):
-            return self.client
-        if backend == OPENAI:
-            return self.get_new_client_openai(free_api=free_api)
-        elif backend == AZURE:
-            return self.get_new_client_azure()
-        else:
-            raise NotImplementedError(f"Backend not implemented: {backend}")
-
-    def get_new_client_openai(self, free_api=True):
-        if free_api:
-            api_key = random.choice(self.github_api_keys)
-            base_url = "https://models.inference.ai.azure.com"
-        else:
+    def get_client(
+        self,
+        model: str,
+        free_api: bool,
+        MODEL_BY_BACKEND: dict[str, str],
+        OPENAI: str,
+        AZURE: str,
+    ) -> Any:
+        """
+        Returns a client instance for the given model by resolving the backend.
+        """
+        backend = MODEL_BY_BACKEND.get(model, OPENAI)
+        if backend == AZURE:
+            endpoint = os.environ.get("AZURE_INFERENCE_ENDPOINT")
+            key = os.environ.get("AZURE_INFERENCE_KEY")
+            if not endpoint or not key:
+                raise RuntimeError(
+                    "Azure inference endpoint/key not set in environment"
+                )
+            client = ChatCompletionsClient(
+                endpoint=endpoint, credential=AzureKeyCredential(key)
+            )
+            self.client = client
+            self.active_backend = AZURE
+            self.using_paid_api = not free_api
+            return client
+        elif backend == OPENAI:
+            if not self.openai_api_keys:
+                raise RuntimeError("No OpenAI API keys available")
             api_key = random.choice(self.openai_api_keys)
-            base_url = None
-
-        self.client = OpenAI(
-            base_url=base_url,
-            api_key=api_key,
-        )
-        self.active_backend = "openai"
-        self.using_paid_api = not free_api
-        return self.client
+            base_url = os.environ.get("OPENAI_BASE_URL", None)
+            client = (
+                OpenAI(api_key=api_key, base_url=base_url)
+                if base_url
+                else OpenAI(api_key=api_key)
+            )
+            self.client = client
+            self.active_backend = OPENAI
+            self.using_paid_api = not free_api
+            return client
+        else:
+            if not self.openai_api_keys:
+                raise RuntimeError("No OpenAI API keys available")
+            api_key = random.choice(self.openai_api_keys)
+            client = OpenAI(api_key=api_key)
+            self.client = client
+            self.active_backend = OPENAI
+            self.using_paid_api = not free_api
+            return client
