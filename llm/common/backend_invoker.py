@@ -7,7 +7,7 @@ from llm.common.conversation_format import (
     conversation_to_azure_format,
     merge_system_and_user_messages,
 )
-from llm.common.constants import (
+from llm.constants import (
     OPENAI,
     AZURE,
     MODELS_NOT_ACCEPTING_STREAM,

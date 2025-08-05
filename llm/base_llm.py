@@ -1,27 +1,30 @@
-from __future__ import annotations
-
-from copy import deepcopy
+import json
+from pathlib import Path
 import re
+from copy import deepcopy
 from typing import Iterable, Union, Optional, Literal, Any
 
-from pydantic import BaseModel, field_validator, ConfigDict
 from loguru import logger
+from pydantic import BaseModel, field_validator, ConfigDict
 from tqdm import tqdm
 
-from llm.common.request_options import RequestOptions
-from llm.common.model_selector import select_models
-from llm.common.error_handler import handle_api_error
-from llm.common.backend_invoker import invoke_backend
-from llm.common.conversation_builder import prepare_conversation
-from llm.common.response import decode_json_from_message, recalculate_finish_reason
-from llm.common.clients import LLMClientManager
 from llm.common.api_keys import api_keys
-from llm.common.constants import (
+from llm.common.backend_invoker import invoke_backend
+from llm.common.clients import LLMClientManager
+from llm.common.routing.content_classifier import ContentClassifier
+from llm.constants import (
     DEFAULT_PREFERRED_MODELS,
     CANNOT_ASSIST_PHRASES,
     MODELS_INCLUDING_CHAIN_THOUGHT,
     MODEL_BY_BACKEND,
 )
+from llm.common.conversation_builder import prepare_conversation
+from llm.common.error_handler import handle_api_error
+from llm.common.model_selector import select_models
+from llm.common.request_options import RequestOptions
+from llm.common.response import decode_json_from_message, recalculate_finish_reason
+from llm.utils import get_closest_monday
+from main_components.common.constants import Platform
 
 ResponseChunk = Any  # upstream unioned types are defined in backend_invoker
 
@@ -43,20 +46,23 @@ class PromptSpecification(BaseModel):
     system_prompt: str
     prompt: str
     cache_key: str
-    json: bool = False
-    force_reasoning: bool = False
-    large_output: bool = False
-    validate: bool = False
+    # json: bool = False
+    # force_reasoning: bool = False
+    # large_output: bool = False
+    # validate: bool = False
 
 
 class BaseLLM:
     def __init__(
         self,
+        prompt_json_template_path: Path,
+        previous_storyline: str,
+        platform_name: Platform,
         preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS,
     ):
+        # Github models and OpenAI API keys
         self.github_api_keys: list[str] = api_keys.extract_github_keys()
         self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
-
         self.client_manager = LLMClientManager(
             github_api_keys=self.github_api_keys, openai_api_keys=self.openai_api_keys
         )
@@ -73,6 +79,35 @@ class BaseLLM:
         self.active_backend: Optional[Literal["openai", "azure"]] = None
         self.using_paid_api = False
 
+        # The new stuff that I am including
+        self.prompt_json_template_path = prompt_json_template_path
+        self.previous_storyline = previous_storyline
+        self.platform_name = platform_name
+
+    # --- Helper methods ---
+    def _load_and_prepare_prompts(self) -> list[PromptSpecification]:
+        with self.prompt_json_template_path.open("r", encoding="utf-8") as file:
+            prompt_template = json.load(file)
+
+        prompts = prompt_template["prompts"]
+        lang = prompt_template.get(
+            "lang", "en"
+        )  # TODO: are we going to support other languages?
+        monday_date = get_closest_monday().strftime("%Y-%m-%d")
+        monday = "Monday" if lang == "en" else "Lunes"
+        day = f"{monday} {monday_date}"
+
+        if prompts and self.previous_storyline:
+            prompts[0]["prompt"] = prompts[0]["prompt"].format(
+                previous_storyline=self.previous_storyline
+            )
+        for prompt in prompts:
+            if "system_prompt" in prompt:
+                prompt["system_prompt"] = prompt["system_prompt"].format(day=day)
+
+        # TODO: Maybe pydantic is redundant here, since this is checked in profile.py
+        return [PromptSpecification.model_validate(prompt) for prompt in prompts]
+
     def _clean_chain_of_thought(self, model: str, assistant_reply: str) -> str:
         if model in MODELS_INCLUDING_CHAIN_THOUGHT:
             return re.sub(
@@ -80,17 +115,21 @@ class BaseLLM:
             ).strip()
         return assistant_reply
 
-    def _generate_dict_from_prompts(
-        self,
-        prompts: list[Union[PromptSpecification, dict]],
-        cache: Optional[dict[str, str]] = None,
-        preferred_models: Optional[list[str]] = None,
-    ) -> dict:
-        # I think that the first step of this whole process should be
-        # to receive a prompt specification
+    # --- End of helper methods ---
 
-        if cache is None:
-            cache = {}
+    def generate_dict_from_prompts(self) -> dict:
+        prompts: list[PromptSpecification] = self._load_and_prepare_prompts()
+        content_classifier = ContentClassifier()
+        content_type: Literal["hot", "innocent"] = content_classifier.classify_prompts(
+            prompts
+        )
+
+        if content_type == "hot":
+            logger.info("Content classified as 'hot'. Using censored models.")
+        elif content_type == "innocent":
+            logger.info("Content classified as 'innocent'. Using uncensored models.")
+        else:
+            raise ValueError(f"Unexpected content type: {content_type}")
 
         # This is the second step of the flowchart were we read the prompt  specifications
         # and use the ContentClassifier to divide into HOT vs GENERAL and also
@@ -98,12 +137,14 @@ class BaseLLM:
 
         # 3rd step is to use the ModelRouting Policy to pick up the best model for the prompt
         models_override = (
-            list(preferred_models)
-            if preferred_models is not None
+            list(self.preferred_models)
+            if self.preferred_models is not None
             else list(self.preferred_models)
         )
 
         last_reply: Union[str, dict] = ""
+
+        prompts = self._load_and_prepare_prompts() if not prompts else prompts
 
         # For each model in the ordered list: then we do this
         for raw_spec in tqdm(
@@ -117,8 +158,10 @@ class BaseLLM:
             else:
                 # attempt attribute access
                 spec = PromptSpecification.model_validate(raw_spec.__dict__)  # type: ignore
-
-            conversation = prepare_conversation(spec=spec.model_dump(), cache=cache)
+            cache: dict = {}
+            conversation = prepare_conversation(
+                spec=spec.model_dump(), cache=cache
+            )  # TODO: careful here
             options = RequestOptions(
                 as_json=spec.json,
                 large_output=spec.large_output,

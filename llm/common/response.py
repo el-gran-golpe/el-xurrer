@@ -3,7 +3,7 @@ import json
 from typing import Tuple
 from loguru import logger
 
-from llm.common.constants import VALIDATION_SYSTEM_PROMPT
+from llm.constants import VALIDATION_SYSTEM_PROMPT
 
 
 def decode_json_from_message(message: str) -> dict:

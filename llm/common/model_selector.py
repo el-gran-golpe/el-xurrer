@@ -1,7 +1,7 @@
 from loguru import logger
 
 from llm.common.request_options import RequestOptions
-from llm.common.constants import REASONING_MODELS, MODELS_ACCEPTING_JSON_FORMAT
+from llm.constants import REASONING_MODELS, MODELS_ACCEPTING_JSON_FORMAT
 
 
 def select_models(
