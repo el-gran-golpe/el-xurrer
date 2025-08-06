@@ -5,6 +5,10 @@ from llm.routing.content_classifier import ContentClassifier
 
 
 class ModelRoutingPolicy:
+    """
+    Handles routing logic, model selection (censored, uncensored or fallback), and querying available models.
+    """
+
     def __init__(
         self,
         github_client: GitHubModelsClient,
