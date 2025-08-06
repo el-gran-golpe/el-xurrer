@@ -1,6 +1,6 @@
 from typing import Literal
 from llm.constants import HOT_KEYWORDS
-from llm.base_llm import PromptSpecification
+from llm.types import PromptSpecification
 
 
 class ContentClassifier:
@@ -14,7 +14,6 @@ class ContentClassifier:
         self, prompts: list[PromptSpecification]
     ) -> Literal["hot", "innocent"]:
         for spec in prompts:
-            # Use .model_dump to get dict representation
             sys_text = spec.system_prompt
             usr_text = spec.prompt
             cache_text = spec.cache_key

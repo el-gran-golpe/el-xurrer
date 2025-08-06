@@ -25,6 +25,7 @@ from llm.common.request_options import RequestOptions
 from llm.common.response import decode_json_from_message, recalculate_finish_reason
 from llm.utils import get_closest_monday
 from main_components.common.constants import Platform
+from llm.types import PromptSpecification
 
 ResponseChunk = Any  # upstream unioned types are defined in backend_invoker
 
@@ -39,17 +40,6 @@ class LLMConfig(BaseModel):
         if not v:
             raise ValueError("preferred_models must not be empty")
         return v
-
-
-class PromptSpecification(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    system_prompt: str
-    prompt: str
-    cache_key: str
-    # json: bool = False
-    # force_reasoning: bool = False
-    # large_output: bool = False
-    # validate: bool = False
 
 
 class BaseLLM:
@@ -134,6 +124,10 @@ class BaseLLM:
         # This is the second step of the flowchart were we read the prompt  specifications
         # and use the ContentClassifier to divide into HOT vs GENERAL and also
         # if they accept JSON format or not (intelligence of the model)
+
+        # available_models_on_github = (
+        #     self.client_manager.github_client.get_available_models()
+        # )
 
         # 3rd step is to use the ModelRouting Policy to pick up the best model for the prompt
         models_override = (
