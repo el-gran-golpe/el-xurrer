@@ -26,6 +26,7 @@ from llm.common.response import decode_json_from_message, recalculate_finish_rea
 from llm.utils import get_closest_monday
 from main_components.common.constants import Platform
 from llm.types import PromptSpecification
+from llm.common.routing.model_router import ModelRouter
 
 ResponseChunk = Any  # upstream unioned types are defined in backend_invoker
 
@@ -108,26 +109,21 @@ class BaseLLM:
     # --- End of helper methods ---
 
     def generate_dict_from_prompts(self) -> dict:
-        prompts: list[PromptSpecification] = self._load_and_prepare_prompts()
+        prompt_specs: list[PromptSpecification] = self._load_and_prepare_prompts()
+
+        # TODO: maybe this contentclassifier can be included inside ModelRouter?
         content_classifier = ContentClassifier()
         content_type: Literal["hot", "innocent"] = content_classifier.classify_prompts(
-            prompts
+            prompt_specs
         )
 
-        if content_type == "hot":
-            logger.info("Content classified as 'hot'. Using censored models.")
-        elif content_type == "innocent":
-            logger.info("Content classified as 'innocent'. Using uncensored models.")
-        else:
-            raise ValueError(f"Unexpected content type: {content_type}")
-
-        # This is the second step of the flowchart were we read the prompt  specifications
-        # and use the ContentClassifier to divide into HOT vs GENERAL and also
-        # if they accept JSON format or not (intelligence of the model)
-
-        # available_models_on_github = (
-        #     self.client_manager.github_client.get_available_models()
-        # )
+        # Might be interesting to use the prompt_specs because I only need
+        # the json outputting in the last conversation/prompt
+        # Maybe I can play with this
+        model_router = ModelRouter(pat_keys=self.github_api_keys)
+        # TODO: this has to be alive -> put it in __init__?
+        # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
+        model_router.get_models(content_type=content_type, prompt_spec=prompt_specs[0])
 
         # 3rd step is to use the ModelRouting Policy to pick up the best model for the prompt
         models_override = (
@@ -138,7 +134,7 @@ class BaseLLM:
 
         last_reply: Union[str, dict] = ""
 
-        prompts = self._load_and_prepare_prompts() if not prompts else prompts
+        prompts = self._load_and_prepare_prompts() if not prompt_specs else prompt_specs
 
         # For each model in the ordered list: then we do this
         for raw_spec in tqdm(
