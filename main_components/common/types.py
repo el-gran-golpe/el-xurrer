@@ -4,16 +4,19 @@ from pydantic import BaseModel, field_validator, ConfigDict
 from enum import Enum
 
 
+# ---------------------------
+# Pydantic models (strict)
+# ---------------------------
+
+
+# --- Platform ---
+
+
 class Platform(str, Enum):
     """Enumeration of supported platforms."""
 
     META = "meta"
     FANVUE = "fanvue"
-
-
-# ---------------------------
-# Pydantic models (strict)
-# ---------------------------
 
 
 class PlatformInfo(BaseModel):
@@ -67,6 +70,9 @@ class PromptItem(BaseModel):
         if "{day}" not in v:
             raise ValueError("system_prompt must include '{day}'")
         return v
+
+
+# --- Profile ---
 
 
 class Profile(BaseModel):
