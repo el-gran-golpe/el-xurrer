@@ -1,46 +1,31 @@
-import json
 from pathlib import Path
 import re
 from copy import deepcopy
 from typing import Iterable, Union, Optional, Literal, Any
 
 from loguru import logger
-from pydantic import BaseModel, field_validator, ConfigDict
 from tqdm import tqdm
 
 from llm.common.api_keys import api_keys
 from llm.common.backend_invoker import invoke_backend
 from llm.common.clients import LLMClientManager
-from llm.common.routing.content_classifier import ContentClassifier
+
 from llm.constants import (
     DEFAULT_PREFERRED_MODELS,
     CANNOT_ASSIST_PHRASES,
     MODELS_INCLUDING_CHAIN_THOUGHT,
     MODEL_BY_BACKEND,
 )
-from llm.common.conversation_builder import prepare_conversation
 from llm.common.error_handler import handle_api_error
 from llm.common.model_selector import select_models
 from llm.common.request_options import RequestOptions
 from llm.common.response import decode_json_from_message, recalculate_finish_reason
-from llm.utils import get_closest_monday
-from main_components.common.constants import Platform
-from llm.types import PromptSpecification
+from main_components.common.types import Platform
 from llm.common.routing.model_router import ModelRouter
+from llm.utils import load_and_prepare_prompts
+from main_components.common.types import PromptItem
 
 ResponseChunk = Any  # upstream unioned types are defined in backend_invoker
-
-
-class LLMConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    preferred_models: list[str]
-
-    @field_validator("preferred_models")
-    @classmethod
-    def not_empty(cls, v):
-        if not v:
-            raise ValueError("preferred_models must not be empty")
-        return v
 
 
 class BaseLLM:
@@ -51,53 +36,35 @@ class BaseLLM:
         platform_name: Platform,
         preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS,
     ):
-        # Github models and OpenAI API keys
-        self.github_api_keys: list[str] = api_keys.extract_github_keys()
-        self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
-        self.client_manager = LLMClientManager(
-            github_api_keys=self.github_api_keys, openai_api_keys=self.openai_api_keys
-        )
-
-        config = LLMConfig(
-            preferred_models=[preferred_models]
-            if isinstance(preferred_models, str)
-            else preferred_models
-        )
-        self.preferred_models = config.preferred_models
-        self.preferred_validation_models: list[str] = DEFAULT_PREFERRED_MODELS[::-1]
-
-        self.exhausted_models: list[str] = []
-        self.active_backend: Optional[Literal["openai", "azure"]] = None
-        self.using_paid_api = False
-
-        # The new stuff that I am including
+        # Main input variables
         self.prompt_json_template_path = prompt_json_template_path
         self.previous_storyline = previous_storyline
         self.platform_name = platform_name
 
-    # --- Helper methods ---
-    def _load_and_prepare_prompts(self) -> list[PromptSpecification]:
-        with self.prompt_json_template_path.open("r", encoding="utf-8") as file:
-            prompt_template = json.load(file)
+        # Github models and OpenAI API keys
+        self.github_api_keys: list[str] = api_keys.extract_github_keys()
+        self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
 
-        prompts = prompt_template["prompts"]
-        lang = prompt_template.get(
-            "lang", "en"
-        )  # TODO: are we going to support other languages?
-        monday_date = get_closest_monday().strftime("%Y-%m-%d")
-        monday = "Monday" if lang == "en" else "Lunes"
-        day = f"{monday} {monday_date}"
+        self.client_manager = LLMClientManager(
+            github_api_keys=self.github_api_keys, openai_api_keys=self.openai_api_keys
+        )
 
-        if prompts and self.previous_storyline:
-            prompts[0]["prompt"] = prompts[0]["prompt"].format(
-                previous_storyline=self.previous_storyline
-            )
-        for prompt in prompts:
-            if "system_prompt" in prompt:
-                prompt["system_prompt"] = prompt["system_prompt"].format(day=day)
+        self.model_router = ModelRouter(
+            github_api_keys=self.github_api_keys,
+            openai_api_keys=self.openai_api_keys,
+            platform_name=self.platform_name,
+        )
 
-        # TODO: Maybe pydantic is redundant here, since this is checked in profile.py
-        return [PromptSpecification.model_validate(prompt) for prompt in prompts]
+        # config = LLMConfig(
+        #     preferred_models=[preferred_models]
+        #     if isinstance(preferred_models, str)
+        #     else preferred_models
+        # )
+        # self.preferred_models = config.preferred_models
+
+        self.exhausted_models: list[str] = []
+        self.active_backend: Optional[Literal["openai", "azure"]] = None
+        self.using_paid_api = False
 
     def _clean_chain_of_thought(self, model: str, assistant_reply: str) -> str:
         if model in MODELS_INCLUDING_CHAIN_THOUGHT:
@@ -106,77 +73,47 @@ class BaseLLM:
             ).strip()
         return assistant_reply
 
-    # --- End of helper methods ---
-
     def generate_dict_from_prompts(self) -> dict:
-        prompt_specs: list[PromptSpecification] = self._load_and_prepare_prompts()
-
-        # TODO: maybe this contentclassifier can be included inside ModelRouter?
-        content_classifier = ContentClassifier()
-        content_type: Literal["hot", "innocent"] = content_classifier.classify_prompts(
-            prompt_specs
+        prompt_items: list[PromptItem] = load_and_prepare_prompts(
+            prompt_json_template_path=self.prompt_json_template_path,
+            previous_storyline=self.previous_storyline,
         )
 
-        # Might be interesting to use the prompt_specs because I only need
-        # the json outputting in the last conversation/prompt
-        # Maybe I can play with this
-        model_router = ModelRouter(pat_keys=self.github_api_keys)
-        # TODO: this has to be alive -> put it in __init__?
         # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
-        model_router.get_models(content_type=content_type, prompt_spec=prompt_specs[0])
+        # model_router.get_models(content_type=content_type, prompt_spec=prompt_items[0])
 
-        # 3rd step is to use the ModelRouting Policy to pick up the best model for the prompt
-        models_override = (
-            list(self.preferred_models)
-            if self.preferred_models is not None
-            else list(self.preferred_models)
-        )
+        # TODO: Use ModelRouter
 
         last_reply: Union[str, dict] = ""
 
-        prompts = self._load_and_prepare_prompts() if not prompt_specs else prompt_specs
-
         # For each model in the ordered list: then we do this
-        for raw_spec in tqdm(
-            prompts, desc="Generating text with AI", total=len(prompts)
+        for prompt_item in tqdm(
+            prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
-            # Normalize into dict via PromptSpecification if needed
-            if isinstance(raw_spec, dict):
-                spec = PromptSpecification.model_validate(raw_spec)
-            elif isinstance(raw_spec, PromptSpecification):
-                spec = raw_spec
-            else:
-                # attempt attribute access
-                spec = PromptSpecification.model_validate(raw_spec.__dict__)  # type: ignore
-            cache: dict = {}
-            conversation = prepare_conversation(
-                spec=spec.model_dump(), cache=cache
-            )  # TODO: careful here
-            options = RequestOptions(
-                as_json=spec.json,
-                large_output=spec.large_output,
-                validate=spec.validate,
-                force_reasoning=spec.force_reasoning,
-            )
+            conversation = [
+                {"role": "system", "content": prompt_item.system_prompt},
+                {"role": "user", "content": prompt_item.prompt},
+            ]
+
+            options = RequestOptions(as_json=prompt_item.output_as_json)
 
             assistant_reply, finish_reason = self._get_model_response(
                 conversation=conversation,
                 options=options,
                 preferred_models=models_override,
-                verbose=True,
+                verbose=False,
             )
 
             if any(
-                cant_assist.lower() in assistant_reply.lower()
-                for cant_assist in CANNOT_ASSIST_PHRASES
+                phrase.lower() in assistant_reply.lower()
+                for phrase in CANNOT_ASSIST_PHRASES
             ):
                 if len(models_override) <= 1:
                     raise RuntimeError(
-                        f"No models can assist with prompt: {spec.prompt}"
+                        f"No models can assist with prompt: {prompt_item.prompt}"
                     )
                 logger.warning(
-                    "Assistant cannot assist with prompt: {}. Retrying with next model(s): {}",
-                    spec.prompt,
+                    "Assistant refusal detected; retrying with next models: {}",
                     models_override[1:],
                 )
                 models_override = models_override[1:]
@@ -184,14 +121,9 @@ class BaseLLM:
                     conversation=conversation,
                     options=options,
                     preferred_models=models_override,
-                    verbose=True,
+                    verbose=False,
                 )
 
-            cache[spec.cache_key] = assistant_reply
-            last_reply = assistant_reply
-
-        if isinstance(last_reply, dict):
-            return last_reply  # type: ignore
         output = decode_json_from_message(message=last_reply)
         return output
 
@@ -204,6 +136,8 @@ class BaseLLM:
     ) -> tuple[str, str]:
         if options is None:
             options = RequestOptions()
+
+        # TODO: Use ModelRouter
         models = (
             list(preferred_models)
             if preferred_models is not None
@@ -212,7 +146,7 @@ class BaseLLM:
         assistant_reply = ""
         finish_reason: Optional[str] = None
         convo = conversation
-
+        # TODO: Use ModelRouter
         while models:
             selected_models = select_models(
                 base_models=models,
@@ -268,11 +202,12 @@ class BaseLLM:
                 if current_finish_reason is not None:
                     finish_reason = current_finish_reason
 
+            # TODO: Use ModelRouter
             non_exhausted = [
                 m for m in selected_models if m not in self.exhausted_models
             ]
             used_model = non_exhausted[0] if non_exhausted else selected_models[0]
-
+            # TODO: Use ModelRouter
             if (
                 not (used_model.startswith("gpt-") or used_model.startswith("o1"))
                 and finish_reason is None
@@ -325,7 +260,7 @@ class BaseLLM:
                     {"role": "user", "content": "Continue EXACTLY where we left off"}
                 )
                 continue
-
+            # TODO: Use ModelRouter
             if finish_reason == "content_filter":
                 if len(models) <= 1:
                     raise RuntimeError(
@@ -351,7 +286,7 @@ class BaseLLM:
     ) -> Iterable[ResponseChunk]:
         if options is None:
             options = RequestOptions()
-
+        # TODO: Use ModelRouter
         selected = select_models(
             base_models=preferred_models,
             exhausted_models=self.exhausted_models,

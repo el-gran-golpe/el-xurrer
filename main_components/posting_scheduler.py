@@ -11,8 +11,7 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
 from seleniumbase import SB
 
-from main_components.common.constants import Platform
-from main_components.common.profile import Profile
+from main_components.common.types import Platform, Profile
 
 
 class Publication(BaseModel):

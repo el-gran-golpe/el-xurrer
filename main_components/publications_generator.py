@@ -8,8 +8,8 @@ from typing import List, Any
 from dataclasses import dataclass
 
 from generation_tools.image_generator.comfy_local import ComfyLocal
-from main_components.common.constants import Platform
-from main_components.common.profile import Profile
+from main_components.common.types import Platform
+from main_components.common.types import Profile
 
 # -- Data Models --------------------------------------------------------------
 

@@ -4,8 +4,8 @@ from typing import Any
 from loguru import logger
 
 from llm.base_llm import BaseLLM
-from main_components.common.constants import Platform
-from main_components.common.profile import Profile
+from main_components.common.types import Platform
+from main_components.common.types import Profile
 
 
 def _save_planning(planning: dict[str, Any], output_path: Path) -> None:

@@ -3,7 +3,7 @@ from typing import Optional
 
 from loguru import logger
 from main_components.common.profile import Profile
-from main_components.common.constants import Platform
+from main_components.common.types import Platform
 
 from mains.commands.utils import resolve_profiles, gdrive_sync, RESOURCES_DIR
 import mains.commands.pipeline as pipeline

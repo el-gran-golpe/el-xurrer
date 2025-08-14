@@ -3,7 +3,7 @@ from typing import Optional
 
 from mains.commands.utils import resolve_profiles
 import mains.commands.pipeline as pipeline
-from main_components.common.constants import Platform
+from main_components.common.types import Platform
 from automation.meta_api.graph_api import GraphAPI
 
 app = typer.Typer(help="META‑only pipeline commands")

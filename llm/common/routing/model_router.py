@@ -1,82 +1,103 @@
-from typing import Literal
+import requests
+from loguru import logger
 
-from llm.common.routing.content_classifier import ContentClassifier
-from llm.types import PromptSpecification
-from llm.management.usage_tracker import ModelUsageTracker
-from llm.management.key_manager import KeyManager
+from llm.utils import load_and_prepare_prompts
+from main_components.common.types import Platform
+from main_components.common.types import PromptItem
+from pathlib import Path
+
+GITHUB_MODELS_BASE = "https://models.github.ai"
+CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
+CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
+API_VERSION = "2022-11-28"  # per GitHub REST docs
+
+from llm.common.api_keys import api_keys
 
 
 class ModelRouter:
+    """Fetches GitHub Models catalog and picks a model that satisfies requirements.
+
+    This router:
+      * Fetches the catalog per key (free tier varies by account/org).
+      * Filters by modalities and optional allow/block lists.
+      * Accounts for JSON/JSON-schema needs by probing a model once and caching the result.
+      * Tracks cooldowns by (token, model) and rotates among 3+ keys.
+      * Exposes a single `pick()` returning a SelectedModel (with key alias).
     """
-    Handles model selection (censored, uncensored or fallback/json structuring), and managing the model MANA (;P).
 
-    This class is responsible for routing requests to the appropriate AI model based on the content type
-    and the specifications provided in the prompt. It also tracks usage and manages API keys.
-    """
+    def __init__(
+        self,
+        github_api_keys: list[str],
+        openai_api_keys: list[str],
+        platform_name: Platform,
+    ):
+        self.github_api_keys = github_api_keys
+        self.openai_api_keys = openai_api_keys
+        self.prompt_items: list[PromptItem]
 
-    CATALOG_URL = "https://models.github.ai/catalog/models"
+        self.remaining_quota_usage: dict[str, int] = {}
 
-    def __init__(self, pat_keys):
-        self.key_manager = KeyManager(pat_keys)
-        self.usage = ModelUsageTracker()
-        self.daily_quotas: dict[str, int] = {}
-        self._load_usage()
-        self.classifier = ContentClassifier()
-        self.models_catalog = self._fetch_catalog()  # type: ignore
+    def fetch_github_models_catalog(self) -> dict[str, list[dict]]:
+        catalogs: dict[str, list[dict]] = {}
 
-    def _sort_by_intelligence(self, models: list[dict]) -> list[dict]:
-        # Example: sort by a 'score' field, or by model name heuristics
-        return sorted(models, key=lambda m: m.get("score", 0), reverse=True)
+        # Build stable aliases so we don't print raw tokens
+        token_alias = {tok: f"gh_{i + 1}" for i, tok in enumerate(self.github_api_keys)}
 
-    def get_models(
-        self, prompt_spec: PromptSpecification, content_type: Literal["hot", "innocent"]
-    ) -> list[str]:
-        require_json = getattr(prompt_spec, "json", False)
-        available = self.get_available_models()
-        censored = [m for m in available if "censored" in m["id"].lower()]
-        uncensored = [m for m in available if "uncensored" in m["id"].lower()]
-        json_models = [m for m in available if m.get("supports_json", False)]
+        base_headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": API_VERSION,
+        }
 
-        # Pick censored for hot, uncensored for innocent
-        if content_type == "hot":
-            candidates = censored
-        else:
-            candidates = uncensored
+        for token in self.github_api_keys:
+            alias = token_alias[token]
+            try:
+                resp = requests.get(
+                    CATALOG_URL,
+                    headers={**base_headers, "Authorization": f"Bearer {token}"},
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                models = data if isinstance(data, list) else []
+                catalogs[alias] = models
 
-        # If JSON required, filter for JSON support
-        if require_json:
-            candidates = [m for m in candidates if m in json_models] or json_models
+                logger.info("Catalog for {}: {} models", alias, len(models))
+                for m in models:
+                    mid = m.get("id", "<no-id>")
+                    pub = m.get("publisher") or m.get("registry") or "<unknown>"
+                    tier = m.get("rate_limit_tier") or "n/a"
+                    in_mods = ",".join(m.get("supported_input_modalities", [])) or "-"
+                    out_mods = ",".join(m.get("supported_output_modalities", [])) or "-"
+                    logger.info(
+                        "  • {} | publisher={} | tier={} | in=[{}] out=[{}]",
+                        mid,
+                        pub,
+                        tier,
+                        in_mods,
+                        out_mods,
+                    )
 
-        # Sort by intelligence
-        candidates = self._sort_by_intelligence(candidates)
+            except Exception as e:
+                logger.error("Failed fetching catalog for {}: {}", alias, e)
+                catalogs[alias] = []
 
-        # Fallback to all available if none found
-        if not candidates:
-            candidates = self._sort_by_intelligence(available)
+        return catalogs
 
-        return [m["id"] for m in candidates]
 
-    def get_available_models(self) -> list[dict]:
-        # Only return models with free tier left
-        available = []
-        for m in self.models_catalog:
-            mid = m["id"]
-            limit = m.get("free_daily_limit", 50)
-            used = self.daily_quotas.get(mid, 0)
-            if used < limit:
-                available.append(m)
-        return available
+if __name__ == "__main__":
+    github_api_keys = api_keys.extract_github_keys()
+    openai_api_keys = api_keys.extract_openai_keys()
 
-    # def record_usage(self, model_id: str, success: bool, latency: float):
-    #     self.daily_quotas[model_id] = self.daily_quotas.get(model_id, 0) + 1
-    #     self._save_usage()
-    #     self.usage.record(model_id, success, latency)
+    prompt_items: list[PromptItem] = load_and_prepare_prompts(
+        prompt_json_template_path=Path(
+            r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
+        ),
+        previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
+    )
 
-    def _load_usage(self) -> None:
-        # TODO: implement loading usage from storage
-        pass
-
-    def _fetch_catalog(self) -> list[dict]:
-        # TODO: implement fetching the model catalog
-        # For now, return an empty list or mock data
-        return []
+    model_router = ModelRouter(
+        github_api_keys=github_api_keys,
+        openai_api_keys=openai_api_keys,
+        prompt_items=prompt_items,
+    )
+    catalog = model_router.fetch_github_models_catalog()
