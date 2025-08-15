@@ -2,16 +2,14 @@ import requests
 from loguru import logger
 
 from llm.utils import load_and_prepare_prompts
-from main_components.common.types import Platform
-from main_components.common.types import PromptItem
+from main_components.common.types import Platform, PromptItem
 from pathlib import Path
+from llm.common.api_keys import api_keys
 
 GITHUB_MODELS_BASE = "https://models.github.ai"
 CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
 CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
 API_VERSION = "2022-11-28"  # per GitHub REST docs
-
-from llm.common.api_keys import api_keys
 
 
 class ModelRouter:
@@ -30,12 +28,16 @@ class ModelRouter:
         github_api_keys: list[str],
         openai_api_keys: list[str],
         platform_name: Platform,
+        prompt_items: list[PromptItem],
     ):
         self.github_api_keys = github_api_keys
         self.openai_api_keys = openai_api_keys
-        self.prompt_items: list[PromptItem]
+        self.prompt_items = prompt_items
 
         self.remaining_quota_usage: dict[str, int] = {}
+
+    # def get_available_model(self):
+    #
 
     def fetch_github_models_catalog(self) -> dict[str, list[dict]]:
         catalogs: dict[str, list[dict]] = {}
@@ -98,6 +100,7 @@ if __name__ == "__main__":
     model_router = ModelRouter(
         github_api_keys=github_api_keys,
         openai_api_keys=openai_api_keys,
+        platform_name=Platform.FANVUE,
         prompt_items=prompt_items,
     )
     catalog = model_router.fetch_github_models_catalog()

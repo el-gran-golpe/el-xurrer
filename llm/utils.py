@@ -33,24 +33,54 @@ def load_and_prepare_prompts(
     """
     Load the prompt JSON, apply dynamic fields, and return list[PromptItem].
     """
+    # Load raw JSON
     with prompt_json_template_path.open("r", encoding="utf-8") as file:
         payload = json.load(file)
 
-    # Load as dicts
-    prompts = payload["prompts"]
-    day = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
+    prompts_data = payload.get("prompts", [])
+    # 1. Validate raw items while placeholders still present
+    raw_items = [PromptItem.model_validate(p) for p in prompts_data]
 
-    # TODO: this previous_storyline in the first one should be checked in profile.py
-    if prompts and previous_storyline:
-        if "{previous_storyline}" in prompts[0].get("prompt", ""):
-            prompts[0]["prompt"] = prompts[0]["prompt"].format(
-                previous_storyline=previous_storyline
-            )
+    # 2. Format copies (do not mutate originals)
+    day_str = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
+    formatted_items: list[PromptItem] = []
 
-    for p in prompts:
-        if "system_prompt" in p and "{day}" in p["system_prompt"]:
-            p["system_prompt"] = p["system_prompt"].format(day=day)
+    for idx, item in enumerate(raw_items):
+        sys_prompt = item.system_prompt
+        if "{day}" in sys_prompt:
+            sys_prompt = sys_prompt.format(day=day_str)
 
-    # Convert to PromptItem models
-    prompt_items = [PromptItem.model_validate(p) for p in prompts]
-    return prompt_items
+        prompt_text = item.prompt
+        if (
+            idx == 0
+            and previous_storyline
+            and prompt_text
+            and "{previous_storyline}" in prompt_text
+        ):
+            prompt_text = prompt_text.format(previous_storyline=previous_storyline)
+
+        # model_copy validates updated fields (allowed by relaxed validator)
+        formatted_items.append(
+            item.model_copy(update={"system_prompt": sys_prompt, "prompt": prompt_text})
+        )
+
+    return formatted_items
+
+    # # Load as dicts
+    # prompts = payload["prompts"]
+    # day = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
+    #
+    # # TODO: this previous_storyline in the first one should be checked in profile.py
+    # if prompts and previous_storyline:
+    #     if "{previous_storyline}" in prompts[0].get("prompt", ""):
+    #         prompts[0]["prompt"] = prompts[0]["prompt"].format(
+    #             previous_storyline=previous_storyline
+    #         )
+    #
+    # for p in prompts:
+    #     if "system_prompt" in p and "{day}" in p["system_prompt"]:
+    #         p["system_prompt"] = p["system_prompt"].format(day=day)
+    #
+    # # Convert to PromptItem models
+    # prompt_items = [PromptItem.model_validate(p) for p in prompts]
+    # return prompt_items
