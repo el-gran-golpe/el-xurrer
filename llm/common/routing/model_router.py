@@ -7,6 +7,7 @@ from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from pathlib import Path
 from llm.common.api_keys import api_keys
+from typing import Mapping, Any
 
 GITHUB_MODELS_BASE = "https://models.github.ai"
 CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
@@ -211,6 +212,121 @@ class ModelRouter:
 
         return self._json_support_cache
 
+    def _parse_ratelimit_headers(self, headers: Mapping[str, str]) -> dict[str, Any]:
+        """Return a normalized view of GitHub Models rate-limit headers (both requests and tokens)."""
+        h = {k.lower(): v for k, v in headers.items()}
+
+        def _as_int(name: str) -> int | None:
+            v = h.get(name)
+            try:
+                return int(v) if v is not None and str(v).strip().isdigit() else None
+            except Exception:
+                return None
+
+        info: dict[str, Any] = {
+            # requests window
+            "limit_requests": _as_int("x-ratelimit-limit-requests"),
+            "remaining_requests": _as_int("x-ratelimit-remaining-requests"),
+            "reset_requests_epoch": _as_int("x-ratelimit-reset-requests"),
+            # tokens window
+            "limit_tokens": _as_int("x-ratelimit-limit-tokens"),
+            "remaining_tokens": _as_int("x-ratelimit-remaining-tokens"),
+            "reset_tokens_epoch": _as_int("x-ratelimit-reset-tokens"),
+            # other helpful bits (may or may not be present)
+            "model_id": h.get("x-github-model") or h.get("x-model") or None,
+            "model_tier": h.get("x-github-model-tier") or h.get("x-model-tier") or None,
+            "request_id": h.get("x-request-id") or None,
+        }
+
+        # Human-friendly reset timestamps if epoch seconds are provided
+        for k in ("reset_requests_epoch", "reset_tokens_epoch"):
+            if info[k] is not None:
+                info[k.replace("_epoch", "_utc")] = time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.gmtime(info[k])
+                )
+        return info
+
+    def check_github_models_quota(self, model_id: str | None = None) -> dict[str, Any]:
+        """
+        Make a minimal chat completion to retrieve rate-limit headers and per-request usage.
+        Returns a dict with 'status_code', 'ratelimit', and 'usage' (if available).
+        Works even if the API returns 429/403—headers are still parsed.
+        """
+        # Pick a model if none provided
+        if not model_id:
+            if not self._catalog:
+                self.fetch_github_models_catalog()
+            for _, models in self._catalog.items():
+                if models:
+                    model_id = models[0].get("id")
+                    break
+        if not model_id:
+            logger.error("No model_id available to probe quota.")
+            return {}
+
+        base_headers = {
+            "Accept": "application/json",
+            "X-GitHub-Api-Version": API_VERSION,
+            "Content-Type": "application/json",
+        }
+
+        body = {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "ping"}],
+            "temperature": 0,
+            "max_tokens": 1,  # cheap probe
+        }
+
+        last_error: Exception | None = None
+        for token in self.github_api_keys:
+            try:
+                resp = requests.post(
+                    CHAT_COMPLETIONS_URL,
+                    headers={**base_headers, "Authorization": f"Bearer {token}"},
+                    json=body,
+                    timeout=15,
+                )
+                # Parse headers regardless of success/failure
+                rl = self._parse_ratelimit_headers(resp.headers)
+
+                usage: dict[str, Any] | None = None
+                try:
+                    data = resp.json()
+                    usage = data.get("usage") if isinstance(data, dict) else None
+                except Exception:
+                    usage = None  # non-JSON error bodies are fine
+
+                # Log a concise summary
+                logger.info(
+                    "Quota probe for model {} -> status={} rem_reqs={}/{} reset={} | rem_tokens={}/{} reset={}",
+                    model_id,
+                    resp.status_code,
+                    rl.get("remaining_requests"),
+                    rl.get("limit_requests"),
+                    rl.get("reset_requests_utc"),
+                    rl.get("remaining_tokens"),
+                    rl.get("limit_tokens"),
+                    rl.get("reset_tokens_utc"),
+                )
+
+                return {
+                    "status_code": resp.status_code,
+                    "ratelimit": rl,
+                    "usage": usage,
+                }
+            except requests.Timeout as e:
+                last_error = e
+                logger.warning("Quota probe timed out for model {}", model_id)
+                continue
+            except Exception as e:
+                last_error = e
+                logger.warning("Quota probe error: {}", e)
+                continue
+
+        if last_error:
+            logger.error("All quota probes failed: {}", last_error)
+        return {}
+
 
 if __name__ == "__main__":
     github_api_keys = api_keys.extract_github_keys()
@@ -225,3 +341,6 @@ if __name__ == "__main__":
     catalog = router.fetch_github_models_catalog()
     best = router.get_best_available_model(prompt_items[0])
     logger.success("BEST MODEL: {}", best)
+
+    quota = router.check_github_models_quota(best)
+    logger.info("Quota snapshot: {}", quota)
