@@ -1,4 +1,4 @@
-tts
+
 loguru
 diffusers
 accelerate
