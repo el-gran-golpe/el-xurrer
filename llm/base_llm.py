@@ -79,17 +79,16 @@ class BaseLLM:
             previous_storyline=self.previous_storyline,
         )
 
-        # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
-        # model_router.get_models(content_type=content_type, prompt_spec=prompt_items[0])
-
-        # TODO: Use ModelRouter
-
         last_reply: Union[str, dict] = ""
 
         # For each model in the ordered list: then we do this
         for prompt_item in tqdm(
             prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
+            # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
+            # model_router.get_models(content_type=content_type, prompt_spec=prompt_items[0])
+
+            # TODO: Use ModelRouter
             conversation = [
                 {"role": "system", "content": prompt_item.system_prompt},
                 {"role": "user", "content": prompt_item.prompt},
