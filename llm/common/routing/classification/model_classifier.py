@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 import json
 import requests
@@ -42,11 +43,26 @@ class ModelClassifier:
         github_api_key: str,
     ):
         self.github_api_key: str = github_api_key
-        self.catalog: list[dict] = self._fetch_github_models_catalog()
+        self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
         self.models_catalog: dict[LLMModel] = {}
 
+    # Probably this method and the self.models_catalog will be the main entry points
+    # of this class
+    def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
+        output_json = prompt_item.output_as_json
+        censored = prompt_item.is_sensitive_content
+        sorted_model = self._get_model_ordered_by_iq()
+        for model in sorted_model:
+            if (
+                model.supports_json_format == output_json
+                and model.is_censored == censored
+                and not model.is_quota_exhausted
+            ):
+                return model
+        raise RuntimeError("No suitable model found for the given prompt item.")
+
     def populate_models_catalog(self):
-        models = self._fetch_github_models_catalog()
+        models = self.github_free_catalog()
 
         for m in models:
             model_id = m.get("id")
@@ -62,42 +78,6 @@ class ModelClassifier:
                 max_input_tokens=max_input_tokens,
                 max_output_tokens=max_output_tokens,
             )
-
-    # def get_model_classification(self) -> dict[str, list[str]]:
-    #     """
-    #     Classify models based on CI, json schema.
-    #     This method should return a ranking of models available for a particular GitHub API key:
-    #     that is, it should return a dict of models, where the keys of this dict is CI, json schema and
-    #     if it is censored or uncensored.
-    #     """
-    #     # For simplicity, we will classify based on the model ID string.
-    #     # In a real implementation, you would use the catalog data to classify properly.
-    #     IQ_scale = set()
-    #     json_supported_models = set()
-    #     json_unsupported_models = set()
-    #     censored_models = set()
-    #     uncensored_models = set()
-    #
-    #     for m in self.catalog:
-    #         model_id = m.get("id")
-    #         # Let's start checking the constraint of json schema support
-    #         if self._supports_json_response_format(model_id):
-    #             json_supported_models.add(model_id)
-    #         else:
-    #             json_unsupported_models.add(model_id)
-    #
-    #         # Now let's do a CI-based classification
-    #         # CI_scale.add(self._build_llm_arena_scoreboard_intersection())
-    #
-    #     classification = {
-    #         "ci": IQ_scale,
-    #         "json": json_supported_models,
-    #         "censored": censored_models,
-    #         "uncensored": uncensored_models,
-    #     }
-    #
-    #     logger.debug("Model classification: {}", classification)
-    #     return classification
 
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
@@ -132,50 +112,77 @@ class ModelClassifier:
             )
         return models
 
-    # --- Helper 1: Does the model support json formatting? ---
+    # --- Internal helpers: ---
 
-    def _supports_json_response_format(self, model_id: str) -> bool:
-        """
-        Return True if the model accepts response_format={'type': 'json_object'} and
-        produces parseable JSON; result is cached per model id.
-        """
-        headers = {
-            "Authorization": f"Bearer {self.github_api_key}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": self.API_VERSION,
-        }
-        payload = {
-            "model": model_id,
-            "messages": [
-                {"role": "system", "content": "Return a minimal JSON object only."},
-                {"role": "user", "content": 'Respond with {"ok": true} only.'},
-            ],
-            "response_format": {"type": "json_object"},
-        }
-
-        r = requests.post(
-            self.CHAT_COMPLETIONS_URL,
-            headers=headers,
-            json=payload,
+    def _get_model_ordered_by_iq(self):
+        # Sort models by IQ score in descending order
+        sorted_models = sorted(
+            self.models_catalog.values(), key=lambda m: m.iq_score, reverse=True
         )
+        return sorted_models
 
-        # TODO: I have the suspicion that this is wrong and I should call the Github api through ChatCompletionsClient
+    def _get_model_iq_score(self, model_id: str) -> int:
+        pass
 
-        if r.status_code == 200:
-            logger.debug("Model {} supports JSON response format.", model_id)
-            logger.debug("Response body: {}", r.text)
-            return True
+    def _is_model_censored(self, model_id: str) -> bool:
+        pass
 
+    def mark_model_as_quota_exhausted(self, model_id: str):
+        if model_id in self.models_catalog:
+            self.models_catalog[model_id].is_quota_exhausted = True
+            self.models_catalog[model_id].quota_exhausted_datetime = time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.gmtime()
+            )
+            logger.info("Model {} marked as quota exhausted.", model_id)
         else:
-            logger.debug(
-                "Model {} does NOT support JSON response format (status {}).",
-                model_id,
-                r.status_code,
-                r.text,
+            logger.warning(
+                "Model {} not found in catalog to mark as quota exhausted.", model_id
             )
 
-            return False
+        # --- Helper 1: Does the model support json formatting? ---
+
+        def _supports_json_response_format(self, model_id: str) -> bool:
+            """
+            Return True if the model accepts response_format={'type': 'json_object'} and
+            produces parseable JSON; result is cached per model id.
+            """
+            headers = {
+                "Authorization": f"Bearer {self.github_api_key}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-GitHub-Api-Version": self.API_VERSION,
+            }
+            payload = {
+                "model": model_id,
+                "messages": [
+                    {"role": "system", "content": "Return a minimal JSON object only."},
+                    {"role": "user", "content": 'Respond with {"ok": true} only.'},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+
+            r = requests.post(
+                self.CHAT_COMPLETIONS_URL,
+                headers=headers,
+                json=payload,
+            )
+
+            # TODO: I have the suspicion that this is wrong and I should call the Github api through ChatCompletionsClient
+
+            if r.status_code == 200:
+                logger.debug("Model {} supports JSON response format.", model_id)
+                logger.debug("Response body: {}", r.text)
+                return True
+
+            else:
+                logger.debug(
+                    "Model {} does NOT support JSON response format (status {}).",
+                    model_id,
+                    r.status_code,
+                    r.text,
+                )
+
+                return False
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
@@ -416,43 +423,6 @@ class ModelClassifier:
     #     if last_error:
     #         logger.error("All quota probes failed: {}", last_error)
     #     return {}
-    def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
-        output_json = prompt_item.output_as_json
-        censored = prompt_item.is_sensitive_content
-        sorted_model = self._get_model_ordered_by_iq()
-        for model in sorted_model:
-            if (
-                model.supports_json_format == output_json
-                and model.is_censored == censored
-                and not model.is_quota_exhausted
-            ):
-                return model
-        raise RuntimeError("No suitable model found for the given prompt item.")
-
-    def _get_model_ordered_by_iq(self):
-        # Sort models by IQ score in descending order
-        sorted_models = sorted(
-            self.models_catalog.values(), key=lambda m: m.iq_score, reverse=True
-        )
-        return sorted_models
-
-    def _get_model_iq_score(self, model_id: str) -> int:
-        pass
-
-    def _is_model_censored(self, model_id: str) -> bool:
-        pass
-
-    def mark_model_as_quota_exhausted(self, model_id: str):
-        if model_id in self.models_catalog:
-            self.models_catalog[model_id].is_quota_exhausted = True
-            self.models_catalog[model_id].quota_exhausted_datetime = time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.gmtime()
-            )
-            logger.info("Model {} marked as quota exhausted.", model_id)
-        else:
-            logger.warning(
-                "Model {} not found in catalog to mark as quota exhausted.", model_id
-            )
 
 
 if __name__ == "__main__":
@@ -465,26 +435,5 @@ if __name__ == "__main__":
     )
     # --- Instantiate classifier and build intersection scoreboard ---
     mc = ModelClassifier(github_api_key=github_api_keys[0])
-    classification = mc.get_model_classification()
 
-    try:
-        scoreboard_set = mc.build_llm_arena_scoreboard_intersection()
-        # Store already lives in mc.LLM_ARENA_SCOREBOARD; `scoreboard_set` returned for convenience.
-        logger.success("LLM_ARENA_SCOREBOARD size: {}", len(scoreboard_set))
-
-        # Debug preview (first 20, sorted for readability only here)
-        preview = sorted(list(scoreboard_set))[:20]
-        logger.info("Scoreboard preview (first 20 sorted for display): {}", preview)
-
-        # Persist a debug artifact so we can inspect easily
-        out_path = Path("llm_arena_scoreboard.json")
-        try:
-            out_path.write_text(
-                json.dumps(sorted(list(scoreboard_set)), indent=2), encoding="utf-8"
-            )
-            logger.info("Wrote debug scoreboard to {}", out_path.resolve())
-        except Exception as e:
-            logger.warning("Could not write {}: {}", out_path, e)
-
-    except Exception as e:
-        logger.exception("Failed building LMArena × GitHub Models intersection: {}", e)
+    mc.populate_models_catalog()
