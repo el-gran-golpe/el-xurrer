@@ -1,6 +1,10 @@
+import csv
+import re
 import time
 from dataclasses import dataclass
-import json
+from io import StringIO
+from typing import Optional
+
 import requests
 from pathlib import Path
 from loguru import logger
@@ -22,6 +26,9 @@ class LLMModel:
     max_output_tokens: int = 0
 
 
+UNCENSORED_MODEL_GUESSES: list[str] = ["deepsek", "grok"]
+
+
 class ModelClassifier:
     """
     This class classifies models based on: IQ, json schema.
@@ -33,7 +40,7 @@ class ModelClassifier:
     GITHUB_MODELS_BASE = "https://models.github.ai"
     CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
     CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
-    API_VERSION = "2024-08-01-preview"
+    API_VERSION = "2024-08-01-preview"  # TODO: not sure if this is correct
 
     # NEW: where we’ll keep the intersection (GitHub model IDs), ordered via LMArena then deduped into a set
     LLM_ARENA_SCOREBOARD: set[str] = set()
@@ -44,14 +51,16 @@ class ModelClassifier:
     ):
         self.github_api_key: str = github_api_key
         self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
+        # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[LLMModel] = {}
+        self.models_iq_scores: dict[LLMModel.identifier, LLMModel.iq_score] = {}
 
     # Probably this method and the self.models_catalog will be the main entry points
     # of this class
     def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
         output_json = prompt_item.output_as_json
         censored = prompt_item.is_sensitive_content
-        sorted_model = self._get_model_ordered_by_iq()
+        sorted_model = self._get_models_sorted_by_iq()
         for model in sorted_model:
             if (
                 model.supports_json_format == output_json
@@ -62,8 +71,7 @@ class ModelClassifier:
         raise RuntimeError("No suitable model found for the given prompt item.")
 
     def populate_models_catalog(self):
-        models = self.github_free_catalog()
-
+        models = self.github_free_catalog
         for m in models:
             model_id = m.get("id")
             max_input_tokens = m.get("limits", {}).get("max_input_tokens", 0)
@@ -79,6 +87,7 @@ class ModelClassifier:
                 max_output_tokens=max_output_tokens,
             )
 
+    # --- Private helpers ---
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
             "Accept": "application/vnd.github+json",
@@ -112,22 +121,17 @@ class ModelClassifier:
             )
         return models
 
-    # --- Internal helpers: ---
-
-    def _get_model_ordered_by_iq(self):
-        # Sort models by IQ score in descending order
-        sorted_models = sorted(
+    def _get_models_sorted_by_iq(self) -> list[LLMModel]:
+        return sorted(
             self.models_catalog.values(), key=lambda m: m.iq_score, reverse=True
         )
-        return sorted_models
-
-    def _get_model_iq_score(self, model_id: str) -> int:
-        pass
 
     def _is_model_censored(self, model_id: str) -> bool:
-        pass
+        return not any(
+            keyword.lower() in model_id.lower() for keyword in UNCENSORED_MODEL_GUESSES
+        )
 
-    def mark_model_as_quota_exhausted(self, model_id: str):
+    def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
             self.models_catalog[model_id].is_quota_exhausted = True
             self.models_catalog[model_id].quota_exhausted_datetime = time.strftime(
@@ -139,290 +143,203 @@ class ModelClassifier:
                 "Model {} not found in catalog to mark as quota exhausted.", model_id
             )
 
-        # --- Helper 1: Does the model support json formatting? ---
+    # --- Helper 1: Does the model support json formatting? ---
 
-        def _supports_json_response_format(self, model_id: str) -> bool:
-            """
-            Return True if the model accepts response_format={'type': 'json_object'} and
-            produces parseable JSON; result is cached per model id.
-            """
-            headers = {
-                "Authorization": f"Bearer {self.github_api_key}",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "X-GitHub-Api-Version": self.API_VERSION,
-            }
-            payload = {
-                "model": model_id,
-                "messages": [
-                    {"role": "system", "content": "Return a minimal JSON object only."},
-                    {"role": "user", "content": 'Respond with {"ok": true} only.'},
-                ],
-                "response_format": {"type": "json_object"},
-            }
+    def _supports_json_response_format(self, model_id: str) -> bool:
+        """
+        Return True if the model accepts response_format={'type': 'json_object'}.
+        Result is cached per model id.
+        """
+        # INFO: API_VERSION might be a mandatory parameter in order to use response_format feature
+        headers = {
+            "Authorization": f"Bearer {self.github_api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": self.API_VERSION,
+        }
+        payload = {
+            "model": model_id,
+            "messages": [
+                {"role": "system", "content": "Return a minimal JSON object only."},
+                {"role": "user", "content": 'Respond with {"ok": true} only.'},
+            ],
+            "response_format": {"type": "json_object"},
+        }
 
-            r = requests.post(
-                self.CHAT_COMPLETIONS_URL,
-                headers=headers,
-                json=payload,
+        r = requests.post(
+            self.CHAT_COMPLETIONS_URL,
+            headers=headers,
+            json=payload,
+        )
+
+        # TODO: I have the suspicion that this is wrong and I should call the Github api through ChatCompletionsClient
+
+        if r.status_code == 200:
+            logger.debug("Model {} supports JSON response format.", model_id)
+            logger.debug("Response body: {}", r.text)
+            return True
+
+        else:
+            logger.debug(
+                "Model {} does NOT support JSON response format (status {}).",
+                model_id,
+                r.status_code,
+                r.text,
             )
 
-            # TODO: I have the suspicion that this is wrong and I should call the Github api through ChatCompletionsClient
-
-            if r.status_code == 200:
-                logger.debug("Model {} supports JSON response format.", model_id)
-                logger.debug("Response body: {}", r.text)
-                return True
-
-            else:
-                logger.debug(
-                    "Model {} does NOT support JSON response format (status {}).",
-                    model_id,
-                    r.status_code,
-                    r.text,
-                )
-
-                return False
+            return False
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
-    # def _build_llm_arena_scoreboard_intersection(self) -> set[str]:
-    #
-    #
-    #     # Filter: models that have text output modality (LLM) and are available with rate limits
-    #     def _is_text_model(m: dict) -> bool:
-    #         if not isinstance(m, dict):
-    #             return False
-    #         outs: Iterable[str] = m.get("supported_output_modalities") or []
-    #         return (not require_text_output) or ("text" in outs)
-    #
-    #     gh_text_models = [m for m in gh_models if _is_text_model(m)]
-    #     logger.info("GitHub catalog text-capable models: {}", len(gh_text_models))
-    #
-    #     # Build a lookup of canonical GitHub IDs plus normalized aliases
-    #     def _norm(s: str) -> str:
-    #         s = s.lower()
-    #         s = s.strip()
-    #         s = s.replace("_", "-").replace("/", "-")
-    #         s = re.sub(r"[^a-z0-9.\-]+", "", s)
-    #         # coalesce repeated dashes
-    #         s = re.sub(r"-{2,}", "-", s)
-    #         return s
-    #
-    #     gh_id_by_alias: dict[str, str] = {}
-    #     for m in gh_text_models:
-    #         mid = (m.get("id") or "").strip()  # e.g., "openai/gpt-4o-mini"
-    #         if not mid:
-    #             continue
-    #         alias_full = _norm(mid)  # "openai-gpt-4o-mini"
-    #         alias_short = _norm(mid.split("/", 1)[-1])  # "gpt-4o-mini"
-    #         gh_id_by_alias.setdefault(alias_full, mid)
-    #         gh_id_by_alias.setdefault(alias_short, mid)
-    #
-    #     # -------- 2) Find and download latest LMArena leaderboard_table_YYYYMMDD.csv --------
-    #     # Use Hub's tree endpoint to list files in the Space and pick the newest CSV
-    #     tree_url = f"https://huggingface.co/api/spaces/{space_owner}/{space_name}/tree/main?recursive=1"
-    #     try:
-    #         tr = requests.get(tree_url, timeout=timeout)
-    #         tr.raise_for_status()
-    #         listing = tr.json()
-    #         csv_files = [
-    #             entry["path"]
-    #             for entry in listing
-    #             if isinstance(entry, dict)
-    #             and isinstance(entry.get("path"), str)
-    #             and re.fullmatch(r"leaderboard_table_\d{8}\.csv", entry["path"])
-    #         ]
-    #         if not csv_files:
-    #             raise RuntimeError("No leaderboard_table_*.csv found in Space")
-    #
-    #         def _date_key(fname: str) -> int:
-    #             return int(re.search(r"leaderboard_table_(\d{8})\.csv", fname).group(1))
-    #
-    #         latest_csv = max(csv_files, key=_date_key)
-    #         csv_url = f"https://huggingface.co/spaces/{space_owner}/{space_name}/resolve/main/{latest_csv}"
-    #     except Exception as e:
-    #         logger.error("Failed to list Space files for LMArena: {}", e)
-    #         # Fallback (last-resort): try to fetch a known older CSV so the pipeline still works
-    #         csv_url = f"https://huggingface.co/spaces/{space_owner}/{space_name}/resolve/main/leaderboard_table_20240326.csv"
-    #
-    #     try:
-    #         cr = requests.get(csv_url, timeout=timeout)
-    #         cr.raise_for_status()
-    #         csv_text = cr.text
-    #     except Exception as e:
-    #         logger.error("Failed to download LMArena CSV from {}: {}", csv_url, e)
-    #         csv_text = ""
-    #
-    #     # -------- 3) Parse CSV and collect model keys in the order they appear --------
-    #     arena_keys_ordered: list[str] = []
-    #     if csv_text:
-    #         reader = csv.DictReader(StringIO(csv_text))
-    #         # Prefer "key" column if it exists; otherwise derive from "Model"
-    #         has_key = "key" in (reader.fieldnames or [])
-    #         for row in reader:
-    #             if not isinstance(row, dict):
-    #                 continue
-    #             raw = (row.get("key") if has_key else row.get("Model")) or ""
-    #             if not raw:
-    #                 continue
-    #             arena_keys_ordered.append(raw)
-    #
-    #     logger.info("LMArena rows parsed: {}", len(arena_keys_ordered))
-    #
-    #     # -------- 4) Intersect (normalize both sides); order by LMArena appearance --------
-    #     intersection_ids: list[str] = []
-    #     seen: set[str] = set()
-    #
-    #     for raw in arena_keys_ordered:
-    #         alias = _norm(raw)
-    #         # try exact and a few common transforms
-    #         candidates = {
-    #             alias,
-    #             alias.replace("gpt4", "gpt-4"),  # occasional quirks
-    #             alias.replace("gpt-41", "gpt-4.1"),
-    #             alias.replace("gpt-40", "gpt-4o"),
-    #             alias.replace("claude37", "claude-3.7"),
-    #             alias.replace("claude35", "claude-3.5"),
-    #             alias.replace("llama31", "llama-3.1"),
-    #         }
-    #         gh_id: Optional[str] = None
-    #         for c in candidates:
-    #             if c in gh_id_by_alias:
-    #                 gh_id = gh_id_by_alias[c]
-    #                 break
-    #             # also try stripping vendor if present in alias
-    #             if "-" in c:
-    #                 tail = c.split("-", 1)[-1]
-    #                 if tail in gh_id_by_alias:
-    #                     gh_id = gh_id_by_alias[tail]
-    #                     break
-    #         if gh_id and gh_id not in seen:
-    #             intersection_ids.append(gh_id)
-    #             seen.add(gh_id)
-    #
-    #     # -------- 5) Store as a set[str] on the class (and return it) --------
-    #     # We keep ordering for logs, but the stored variable is the set as requested.
-    #     ordered_preview = ", ".join(intersection_ids[:10])
-    #     logger.info("Intersection (first 10 in LMArena order): {}", ordered_preview)
-    #     self.LLM_ARENA_SCOREBOARD = set(intersection_ids)
-    #     logger.info("LLM_ARENA_SCOREBOARD size: {}", len(self.LLM_ARENA_SCOREBOARD))
-    #     return self.LLM_ARENA_SCOREBOARD
+    def _get_model_iq_score(self, model_id: str) -> float:
+        pass
 
-    # def _parse_ratelimit_headers(self, headers: Mapping[str, str]) -> dict[str, Any]:
-    #     """Return a normalized view of GitHub Models rate-limit headers (both requests and tokens)."""
-    #     h = {k.lower(): v for k, v in headers.items()}
-    #
-    #     def _as_int(name: str) -> int | None:
-    #         v = h.get(name)
-    #         try:
-    #             return int(v) if v is not None and str(v).strip().isdigit() else None
-    #         except Exception:
-    #             return None
-    #
-    #     info: dict[str, Any] = {
-    #         # requests window
-    #         "limit_requests": _as_int("x-ratelimit-limit-requests"),
-    #         "remaining_requests": _as_int("x-ratelimit-remaining-requests"),
-    #         "reset_requests_epoch": _as_int("x-ratelimit-reset-requests"),
-    #         # tokens window
-    #         "limit_tokens": _as_int("x-ratelimit-limit-tokens"),
-    #         "remaining_tokens": _as_int("x-ratelimit-remaining-tokens"),
-    #         "reset_tokens_epoch": _as_int("x-ratelimit-reset-tokens"),
-    #         # other helpful bits (may or may not be present)
-    #         "model_id": h.get("x-github-model") or h.get("x-model") or None,
-    #         "model_tier": h.get("x-github-model-tier") or h.get("x-model-tier") or None,
-    #         "request_id": h.get("x-request-id") or None,
-    #     }
-    #
-    #     # Human-friendly reset timestamps if epoch seconds are provided
-    #     for k in ("reset_requests_epoch", "reset_tokens_epoch"):
-    #         if info[k] is not None:
-    #             info[k.replace("_epoch", "_utc")] = time.strftime(
-    #                 "%Y-%m-%d %H:%M:%S", time.gmtime(info[k])
-    #             )
-    #     return info
-    #
-    # def check_github_models_quota(self, model_id: str | None = None) -> dict[str, Any]:
-    #     """
-    #     Make a minimal chat completion to retrieve rate-limit headers and per-request usage.
-    #     Returns a dict with 'status_code', 'ratelimit', and 'usage' (if available).
-    #     Works even if the API returns 429/403—headers are still parsed.
-    #     """
-    #     # Pick a model if none provided
-    #     if not model_id:
-    #         if not self._catalog:
-    #             self.fetch_github_models_catalog()
-    #         for _, models in self._catalog.items():
-    #             if models:
-    #                 model_id = models[0].get("id")
-    #                 break
-    #     if not model_id:
-    #         logger.error("No model_id available to probe quota.")
-    #         return {}
-    #
-    #     base_headers = {
-    #         "Accept": "application/json",
-    #         "X-GitHub-Api-Version": API_VERSION,
-    #         "Content-Type": "application/json",
-    #     }
-    #
-    #     body = {
-    #         "model": model_id,
-    #         "messages": [{"role": "user", "content": "ping"}],
-    #         "temperature": 0,
-    #         "max_tokens": 1,  # cheap probe
-    #     }
-    #
-    #     last_error: Exception | None = None
-    #     for token in self.github_api_keys:
-    #         try:
-    #             resp = requests.post(
-    #                 CHAT_COMPLETIONS_URL,
-    #                 headers={**base_headers, "Authorization": f"Bearer {token}"},
-    #                 json=body,
-    #                 timeout=15,
-    #             )
-    #             # Parse headers regardless of success/failure
-    #             rl = self._parse_ratelimit_headers(resp.headers)
-    #
-    #             usage: dict[str, Any] | None = None
-    #             try:
-    #                 data = resp.json()
-    #                 usage = data.get("usage") if isinstance(data, dict) else None
-    #             except Exception:
-    #                 usage = None  # non-JSON error bodies are fine
-    #
-    #             # Log a concise summary
-    #             logger.info(
-    #                 "Quota probe for model {} -> status={} rem_reqs={}/{} reset={} | rem_tokens={}/{} reset={}",
-    #                 model_id,
-    #                 resp.status_code,
-    #                 rl.get("remaining_requests"),
-    #                 rl.get("limit_requests"),
-    #                 rl.get("reset_requests_utc"),
-    #                 rl.get("remaining_tokens"),
-    #                 rl.get("limit_tokens"),
-    #                 rl.get("reset_tokens_utc"),
-    #             )
-    #
-    #             return {
-    #                 "status_code": resp.status_code,
-    #                 "ratelimit": rl,
-    #                 "usage": usage,
-    #             }
-    #         except requests.Timeout as e:
-    #             last_error = e
-    #             logger.warning("Quota probe timed out for model {}", model_id)
-    #             continue
-    #         except Exception as e:
-    #             last_error = e
-    #             logger.warning("Quota probe error: {}", e)
-    #             continue
-    #
-    #     if last_error:
-    #         logger.error("All quota probes failed: {}", last_error)
-    #     return {}
+    def _build_llm_arena_scoreboard_intersection(self) -> set[str]:
+        """
+        1) Download latest LMArena leaderboard_table_YYYYMMDD.csv
+        2) Parse ELO per model
+        3) Match against our GitHub model IDs
+        4) Populate self.models_iq_scores with ELO (no normalization)
+        5) Return the intersection as a set[str] of matched GitHub model IDs
+        """
+
+        # ---- 1) Find & download latest LMArena CSV ----
+        tree_url = "https://huggingface.co/api/spaces/lmarena-ai/lmarena-leaderboard/tree/main?recursive=1"
+        try:
+            response = requests.get(tree_url, timeout=10)
+            response.raise_for_status()
+            listing = response.json()
+            csv_files = [
+                entry["path"]
+                for entry in listing
+                if isinstance(entry, dict)
+                and isinstance(entry.get("path"), str)
+                and re.fullmatch(r"leaderboard_table_\d{8}\.csv", entry["path"])
+            ]
+            if not csv_files:
+                raise RuntimeError("No leaderboard_table_*.csv found in Space")
+
+            def _date_key(fname: str) -> int:
+                return int(re.search(r"leaderboard_table_(\d{8})\.csv", fname).group(1))
+
+            latest_csv = max(csv_files, key=_date_key)
+            csv_url = f"https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/{latest_csv}"
+        except Exception as e:
+            logger.error("Failed to list Space files for LMArena: {}", e)
+            # fallback snapshot to keep pipeline working
+            csv_url = "https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/leaderboard_table_20240326.csv"
+
+        try:
+            cr = requests.get(csv_url, timeout=timeout)
+            cr.raise_for_status()
+            csv_text = cr.text
+        except Exception as e:
+            logger.error("Failed to download LMArena CSV from {}: {}", csv_url, e)
+            csv_text = ""
+
+        # TODO: From here onwards, it must be revisited in isolation (this is just pseudo code)
+        # ---- 3) Parse CSV → arena_alias_to_elo ----
+        arena_alias_to_elo: dict[str, float] = {}
+        rows_parsed = 0
+        if csv_text:
+            reader = csv.DictReader(StringIO(csv_text))
+            headers = [h.lower() for h in (reader.fieldnames or [])]
+            # likely candidates
+            key_col = (
+                "key" if "key" in headers else ("model" if "model" in headers else None)
+            )
+            elo_col = None
+            for candidate in ("arena elo rating", "arena elo", "arena score", "elo"):
+                if candidate in headers:
+                    elo_col = candidate
+                    break
+
+            for row in reader:
+                if not isinstance(row, dict):
+                    continue
+                name = (
+                    row.get("key") or row.get("Model") or row.get("model") or ""
+                ).strip()
+                elo_raw = (
+                    row.get("Arena Elo rating")
+                    or row.get("Arena Elo")
+                    or row.get("arena elo rating")
+                    or row.get("arena elo")
+                    or row.get("Arena Score")
+                    or row.get("arena score")
+                    or row.get("Elo")
+                    or row.get("elo")
+                )
+                elo_val = _parse_float(elo_raw)
+                if not name or elo_val is None:
+                    continue
+                arena_alias_to_elo[_norm(name)] = float(elo_val)
+                rows_parsed += 1
+
+        logger.info("LMArena rows parsed with ELO: {}", rows_parsed)
+
+        # ---- 4) Intersect + populate self.models_iq_scores ----
+        self.models_iq_scores = {}
+        intersection_ids: list[str] = []
+        seen: set[str] = set()
+
+        def _gh_candidates(mid: str) -> list[str]:
+            full = _norm(mid)
+            tail = _norm(mid.split("/", 1)[-1])
+            # try some smart rewrites
+            variants = {
+                full,
+                tail,
+                tail.replace("gpt4", "gpt-4"),
+                tail.replace("gpt-41", "gpt-4.1"),
+                tail.replace("gpt-40", "gpt-4o"),
+                tail.replace("claude37", "claude-3.7"),
+                tail.replace("claude35", "claude-3.5"),
+                tail.replace("llama31", "llama-3.1"),
+                tail.replace("llama33", "llama-3.3"),
+            }
+            return [v for v in variants if v]
+
+        # Prefer using your distilled catalog if present (accurate ID list)
+        model_ids = (
+            list(self.models_catalog.keys())
+            if self.models_catalog
+            else [
+                (m.get("id") or "").strip()
+                for m in gh_text_models
+                if (m.get("id") or "").strip()
+            ]
+        )
+
+        for mid in model_ids:
+            elo: Optional[float] = None
+            for cand in _gh_candidates(mid):
+                if cand in arena_alias_to_elo:
+                    elo = arena_alias_to_elo[cand]
+                    break
+                # also try stripping vendor from candidate against aliases
+                if "-" in cand:
+                    tail = cand.split("-", 1)[-1]
+                    if tail in arena_alias_to_elo:
+                        elo = arena_alias_to_elo[tail]
+                        break
+            if elo is not None:
+                # populate IQ map using raw ELO (as requested)
+                self.models_iq_scores[mid] = float(elo)
+                if mid not in seen:
+                    intersection_ids.append(mid)
+                    seen.add(mid)
+                # also reflect on the LLMModel object if we have it
+                if mid in self.models_catalog:
+                    self.models_catalog[mid].iq_score = float(elo)
+
+        # ---- 5) Store / return intersection set ----
+        ordered_preview = ", ".join(intersection_ids[:10])
+        logger.info("Intersection (first 10 in LMArena order): {}", ordered_preview)
+        self.LLM_ARENA_SCOREBOARD = set(intersection_ids)
+        logger.info("LLM_ARENA_SCOREBOARD size: {}", len(self.LLM_ARENA_SCOREBOARD))
+        logger.info("models_iq_scores filled: {} entries", len(self.models_iq_scores))
+        return self.LLM_ARENA_SCOREBOARD
 
 
 if __name__ == "__main__":
@@ -435,5 +352,9 @@ if __name__ == "__main__":
     )
     # --- Instantiate classifier and build intersection scoreboard ---
     mc = ModelClassifier(github_api_key=github_api_keys[0])
-
-    mc.populate_models_catalog()
+    mc._build_llm_arena_scoreboard_intersection()
+    # mc.populate_models_catalog()
+    # from dataclasses import asdict
+    # logger.info("Models catalog size: {}", len(mc.models_catalog))
+    # for model_id, model in mc.models_catalog.items():
+    #     logger.info("Model id={} -> {}", model_id, asdict(model))
