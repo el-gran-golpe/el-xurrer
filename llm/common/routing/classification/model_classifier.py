@@ -1,4 +1,5 @@
 import csv
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ class LLMModel:
     identifier: str
     supports_json_format: bool
     is_censored: bool
-    iq_score: float  # Hypothetical IQ score for ranking purposes
+    elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
     quota_exhausted_datetime: str = ""  # Timestamp of when quota was exhausted
     max_input_tokens: int = 0
@@ -53,7 +54,7 @@ class ModelClassifier:
         self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[LLMModel] = {}
-        self.models_iq_scores: dict[LLMModel.identifier, LLMModel.iq_score] = {}
+        self.models_iq_scores: dict[LLMModel.identifier, LLMModel.elo] = {}
 
     # Probably this method and the self.models_catalog will be the main entry points
     # of this class
@@ -80,7 +81,7 @@ class ModelClassifier:
                 identifier=model_id,
                 supports_json_format=self._supports_json_response_format(model_id),
                 is_censored=self._is_model_censored(model_id),
-                iq_score=self._get_model_iq_score(model_id),
+                elo=self._get_model_elo(model_id),
                 is_quota_exhausted=False,
                 quota_exhausted_datetime="",
                 max_input_tokens=max_input_tokens,
@@ -123,7 +124,7 @@ class ModelClassifier:
 
     def _get_models_sorted_by_iq(self) -> list[LLMModel]:
         return sorted(
-            self.models_catalog.values(), key=lambda m: m.iq_score, reverse=True
+            self.models_catalog.values(), key=lambda m: m.elo, reverse=True
         )
 
     def _is_model_censored(self, model_id: str) -> bool:
@@ -191,7 +192,7 @@ class ModelClassifier:
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
-    def _get_model_iq_score(self, model_id: str) -> float:
+    def _get_model_elo(self, model_id: str) -> float:
         pass
 
     def _build_llm_arena_scoreboard_intersection(self) -> set[str]:
@@ -199,7 +200,7 @@ class ModelClassifier:
         1) Download latest LMArena leaderboard_table_YYYYMMDD.csv
         2) Parse ELO per model
         3) Match against our GitHub model IDs
-        4) Populate self.models_iq_scores with ELO (no normalization)
+        4) Populate self.models_elo_scores with ELO (no normalization)
         5) Return the intersection as a set[str] of matched GitHub model IDs
         """
 
@@ -222,23 +223,26 @@ class ModelClassifier:
             def _date_key(fname: str) -> int:
                 return int(re.search(r"leaderboard_table_(\d{8})\.csv", fname).group(1))
 
+            # INFO: This retrieves the latest csv_file because the naming of the files that
+            # HuggingFace uses is name_of_the_file+YYYY/MM/DD
+            # https://huggingface.co/api/resolve-cache/spaces/lmarena-ai/lmarena-leaderboard/33c75f8630496ee975ff4c53ea94d8159363fcc8/leaderboard_table_20250804.csv?/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/leaderboard_table_20250804.csv=&etag="9142feda572ccb0ad6dd1ed4dbeb839c8b0b983a"
             latest_csv = max(csv_files, key=_date_key)
             csv_url = f"https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/{latest_csv}"
         except Exception as e:
             logger.error("Failed to list Space files for LMArena: {}", e)
-            # fallback snapshot to keep pipeline working
-            csv_url = "https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/leaderboard_table_20240326.csv"
+            # TODO: maybe use older csvfiles
+            return
 
         try:
-            cr = requests.get(csv_url, timeout=timeout)
+            cr = requests.get(csv_url)
             cr.raise_for_status()
             csv_text = cr.text
         except Exception as e:
             logger.error("Failed to download LMArena CSV from {}: {}", csv_url, e)
-            csv_text = ""
+            return
 
         # TODO: From here onwards, it must be revisited in isolation (this is just pseudo code)
-        # ---- 3) Parse CSV → arena_alias_to_elo ----
+        # ---- 2) Parse CSV → arena_alias_to_elo ----
         arena_alias_to_elo: dict[str, float] = {}
         rows_parsed = 0
         if csv_text:
@@ -331,7 +335,7 @@ class ModelClassifier:
                     seen.add(mid)
                 # also reflect on the LLMModel object if we have it
                 if mid in self.models_catalog:
-                    self.models_catalog[mid].iq_score = float(elo)
+                    self.models_catalog[mid].elo = float(elo)
 
         # ---- 5) Store / return intersection set ----
         ordered_preview = ", ".join(intersection_ids[:10])
@@ -346,7 +350,8 @@ if __name__ == "__main__":
     github_api_keys = api_keys.extract_github_keys()
     prompt_items: list[PromptItem] = load_and_prepare_prompts(
         prompt_json_template_path=Path(
-            r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
+            # r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
+            "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/fanvue/inputs/laura_vigne.json"
         ),
         previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
     )
