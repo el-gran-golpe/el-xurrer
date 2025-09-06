@@ -1,18 +1,6 @@
-import time
-import requests
-from loguru import logger
-
-from llm.utils import load_and_prepare_prompts
+from llm.common.routing.classification.model_classifier import ModelClassifier, LLMModel
 from main_components.common.types import PromptItem
-from pathlib import Path
-from llm.common.api_keys import api_keys
-from typing import Mapping, Any
-
-
-GITHUB_MODELS_BASE = "https://models.github.ai"
-CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
-CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
-API_VERSION = "2022-11-28"
+from loguru import logger
 
 
 class ModelRouter:
@@ -23,18 +11,42 @@ class ModelRouter:
     ):
         self.github_api_keys = github_api_keys
         self.openai_api_keys = openai_api_keys
-        self._model_classifier = ModelClassifier(
-            github_api_key=github_api_keys[0]
-        )  # TODO: Handle multiple model classifiers for multiple keys
+        # Multiple classifiers (one per GitHub key)
+        self.github_classifiers: list[ModelClassifier] = [
+            ModelClassifier(k) for k in self.github_api_keys
+        ]
 
-    def initialize_classifier(self):
-        self._model_classifier.populate_models_catalog()
+    def _initialize_classifier(self) -> None:
+        for classifier in self.github_classifiers:
+            classifier.populate_models_catalog()
 
-    def get_best_available_model(self, prompt_item: PromptItem) -> str:
-        return self._model_classifier.get_best_model(prompt_item)
+    def get_best_available_model(self, prompt_item: PromptItem) -> LLMModel:
+        for classifier in self.github_classifiers:
+            try:
+                model = classifier.get_best_model(prompt_item)
+                return model
 
-    def mark_model_as_quota_exhausted(self, model: str):
-        self._model_classifier.mark_model_as_quota_exhausted(model)
+            except Exception as e:
+                logger.warning("ModelClassifier failed with error: {}", e)
+                raise
+
+        # If we reach here, no classifier returned a model — fail explicitly.
+        logger.error("No available Github model found after trying all classifiers.")
+        # Try OpenAI classifiers as a fallback
+        for classifier in self.openai_classifiers:
+            try:
+                model = classifier.get_best_model(prompt_item)
+                return model
+
+            except Exception as e:
+                logger.warning("OpenAI ModelClassifier failed with error: {}", e)
+                continue
+
+        raise RuntimeError("No available model found.")
+
+    def mark_model_as_quota_exhausted(self, model: LLMModel) -> None:
+        for classifier in self.github_classifiers:
+            classifier.mark_model_as_quota_exhausted(model)
 
 
 if __name__ == "__main__":
