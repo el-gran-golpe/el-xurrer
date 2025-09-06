@@ -26,6 +26,7 @@ class LLMModel:
     identifier: str
     supports_json_format: bool
     is_censored: bool
+    # TODO: Does this 1.0 makes sense since I already implemented a default in get_iq_score?
     elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
     quota_exhausted_datetime: str = ""  # Timestamp of when quota was exhausted
@@ -33,7 +34,7 @@ class LLMModel:
     max_output_tokens: int = 0
 
 
-UNCENSORED_MODEL_GUESSES: list[str] = ["deepsek", "grok"]
+UNCENSORED_MODEL_GUESSES: list[str] = ["deepseek", "grok"]
 
 
 class ModelClassifier:
@@ -133,11 +134,10 @@ class ModelClassifier:
         return not any(
             keyword.lower() in model_id.lower() for keyword in UNCENSORED_MODEL_GUESSES
         )
-    
-    # def _get_model_elo(self, model_id: str) -> float:
-    #     self._build_llm_arena_scoreboard_intersection()
-    #     return self.models_iq_scores.get(model_id, 0.0)
-    
+
+    def _get_model_elo(self, model_id: str) -> float:
+        return self._build_llm_arena_scoreboard_intersection().get(model_id, 1.0)
+
     def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
             self.models_catalog[model_id].is_quota_exhausted = True
@@ -198,17 +198,18 @@ class ModelClassifier:
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
-    def _build_llm_arena_scoreboard_intersection(self) -> set[str]:
+    def _build_llm_arena_scoreboard_intersection(
+        self,
+    ) -> dict[str, float]:
         """
         1) Download latest LMArena leaderboard_table_YYYYMMDD.csv
         2) Parse ELO per model
-        # TODO: Not sure for the steps 3, 4 and 5
         3) Match against our GitHub model IDs
         4) Populate self.models_elo_scores with ELO (no normalization)
-        5) Return the intersection as a set[str] of matched GitHub model IDs
+        5) Return the intersection as a dict of matched GitHub model IDs
         """
 
-        # ---- 1) Find & download latest LMArena CSV ----
+         # ---------------- 1) Download latest leaderboard CSV ----------------
         tree_url = "https://huggingface.co/api/spaces/lmarena-ai/lmarena-leaderboard/tree/main?recursive=1"
         try:
             response = requests.get(tree_url, timeout=10)
@@ -243,6 +244,7 @@ class ModelClassifier:
             csv_response = requests.get(csv_url)
             csv_response.raise_for_status()
             csv_text = csv_response.text
+            print(csv_text)
         except Exception as e:
             logger.error("Failed to download LMArena CSV from {}: {}", csv_url, e)
             raise RuntimeError("Failed to download LMArena CSV") from e
@@ -265,7 +267,7 @@ class ModelClassifier:
         arena_alias_to_elo: dict[str, float] = {}
         reader = csv.DictReader(StringIO(csv_text))
         for row in reader:
-            row_lc = {(k or "").lower(): v for k, v in row.items()}
+            row_lc = {k.lower(): v for k, v in row.items()}
             name = (row_lc.get("key") or row_lc.get("model") or "").strip()
             elo_raw = None
             for col in ("arena elo rating", "arena elo", "elo", "arena score"):
@@ -276,11 +278,26 @@ class ModelClassifier:
             if name and val is not None:
                 arena_alias_to_elo[_norm(name)] = float(val)
 
-        # ---- 4) Intersect + populate self.models_iq_scores ----
-        self.models_iq_scores = {
-            model_id: arena_alias_to_elo.get(_norm(model_id), 0.0)
-            for model_id in self.models_catalog.keys()
-        }
+
+        # TODO: ignore the below code, focus on  making work the above code
+        # ---- 3) Intersect: self.github_free_catalog.model & arena scoreboard elos ----
+        for m in self.github_free_catalog:
+            model_id = m.get("id")
+            norm_model_id = _norm(model_id)
+            if norm_model_id in arena_alias_to_elo:
+                elo = arena_alias_to_elo[norm_model_id]
+                logger.debug(
+                    "Matched GitHub model ID '{}' to LMArena alias '{}' with ELO {}",
+                    model_id,
+                    norm_model_id,
+                    elo,
+                )
+            else:
+                logger.debug(
+                    "No LMArena alias match for GitHub model ID '{}'", model_id
+                )
+
+        self.models_elo_scores = {model_id: elo}
 
         # ---- 5) Store / return intersection set ----
         return set(arena_alias_to_elo.keys())
@@ -298,4 +315,3 @@ if __name__ == "__main__":
     # --- Instantiate classifier and build intersection scoreboard ---
     mc = ModelClassifier(github_api_key=github_api_keys[0])
     mc._build_llm_arena_scoreboard_intersection()
-    
