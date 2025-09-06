@@ -1,14 +1,20 @@
 import csv
-import json
 import re
+import sys
 import time
 from dataclasses import dataclass
 from io import StringIO
-from typing import Optional
+from typing import Optional, Match, cast
 
 import requests
 from pathlib import Path
 from loguru import logger
+
+# --- Ensure project root (containing 'llm') is on sys.path when run as a script ---
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+# --- end sys.path setup ---
 
 from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
@@ -54,7 +60,6 @@ class ModelClassifier:
         self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[LLMModel] = {}
-        self.models_iq_scores: dict[LLMModel.identifier, LLMModel.elo] = {}
 
     # Probably this method and the self.models_catalog will be the main entry points
     # of this class
@@ -88,7 +93,6 @@ class ModelClassifier:
                 max_output_tokens=max_output_tokens,
             )
 
-    # --- Private helpers ---
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
             "Accept": "application/vnd.github+json",
@@ -123,15 +127,17 @@ class ModelClassifier:
         return models
 
     def _get_models_sorted_by_iq(self) -> list[LLMModel]:
-        return sorted(
-            self.models_catalog.values(), key=lambda m: m.elo, reverse=True
-        )
+        return sorted(self.models_catalog.values(), key=lambda m: m.elo, reverse=True)
 
     def _is_model_censored(self, model_id: str) -> bool:
         return not any(
             keyword.lower() in model_id.lower() for keyword in UNCENSORED_MODEL_GUESSES
         )
-
+    
+    # def _get_model_elo(self, model_id: str) -> float:
+    #     self._build_llm_arena_scoreboard_intersection()
+    #     return self.models_iq_scores.get(model_id, 0.0)
+    
     def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
             self.models_catalog[model_id].is_quota_exhausted = True
@@ -192,13 +198,11 @@ class ModelClassifier:
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
-    def _get_model_elo(self, model_id: str) -> float:
-        pass
-
     def _build_llm_arena_scoreboard_intersection(self) -> set[str]:
         """
         1) Download latest LMArena leaderboard_table_YYYYMMDD.csv
         2) Parse ELO per model
+        # TODO: Not sure for the steps 3, 4 and 5
         3) Match against our GitHub model IDs
         4) Populate self.models_elo_scores with ELO (no normalization)
         5) Return the intersection as a set[str] of matched GitHub model IDs
@@ -220,146 +224,78 @@ class ModelClassifier:
             if not csv_files:
                 raise RuntimeError("No leaderboard_table_*.csv found in Space")
 
-            def _date_key(fname: str) -> int:
-                return int(re.search(r"leaderboard_table_(\d{8})\.csv", fname).group(1))
-
-            # INFO: This retrieves the latest csv_file because the naming of the files that
-            # HuggingFace uses is name_of_the_file+YYYY/MM/DD
+            # INFO: Code below retrieves the latest csv_file because naming is leaderboard_table_YYYYMMDD.csv
+            # Example of a URL of a specific dated CSV:
             # https://huggingface.co/api/resolve-cache/spaces/lmarena-ai/lmarena-leaderboard/33c75f8630496ee975ff4c53ea94d8159363fcc8/leaderboard_table_20250804.csv?/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/leaderboard_table_20250804.csv=&etag="9142feda572ccb0ad6dd1ed4dbeb839c8b0b983a"
-            latest_csv = max(csv_files, key=_date_key)
+
+            pattern = re.compile(r"leaderboard_table_(\d{8})\.csv")
+            latest_csv = max(
+                csv_files,
+                key=lambda f: int(cast(Match[str], pattern.fullmatch(f)).group(1)),
+            )
             csv_url = f"https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/{latest_csv}"
+            logger.info("Latest LMArena CSV URL: {}", csv_url)
         except Exception as e:
             logger.error("Failed to list Space files for LMArena: {}", e)
-            # TODO: maybe use older csvfiles
-            return
+            raise RuntimeError("Failed to list Space files for LMArena") from e
 
         try:
-            cr = requests.get(csv_url)
-            cr.raise_for_status()
-            csv_text = cr.text
+            csv_response = requests.get(csv_url)
+            csv_response.raise_for_status()
+            csv_text = csv_response.text
         except Exception as e:
             logger.error("Failed to download LMArena CSV from {}: {}", csv_url, e)
-            return
+            raise RuntimeError("Failed to download LMArena CSV") from e
 
-        # TODO: From here onwards, it must be revisited in isolation (this is just pseudo code)
         # ---- 2) Parse CSV → arena_alias_to_elo ----
+        def _norm(s: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+        def _parse_float(x) -> Optional[float]:
+            if x is None:
+                return None
+            s = str(x).strip()
+            if not s or s == "-":
+                return None
+            try:
+                return float(s.rstrip("%").replace(",", ""))
+            except ValueError:
+                return None
+
         arena_alias_to_elo: dict[str, float] = {}
-        rows_parsed = 0
-        if csv_text:
-            reader = csv.DictReader(StringIO(csv_text))
-            headers = [h.lower() for h in (reader.fieldnames or [])]
-            # likely candidates
-            key_col = (
-                "key" if "key" in headers else ("model" if "model" in headers else None)
-            )
-            elo_col = None
-            for candidate in ("arena elo rating", "arena elo", "arena score", "elo"):
-                if candidate in headers:
-                    elo_col = candidate
+        reader = csv.DictReader(StringIO(csv_text))
+        for row in reader:
+            row_lc = {(k or "").lower(): v for k, v in row.items()}
+            name = (row_lc.get("key") or row_lc.get("model") or "").strip()
+            elo_raw = None
+            for col in ("arena elo rating", "arena elo", "elo", "arena score"):
+                if col in row_lc:
+                    elo_raw = row_lc[col]
                     break
-
-            for row in reader:
-                if not isinstance(row, dict):
-                    continue
-                name = (
-                    row.get("key") or row.get("Model") or row.get("model") or ""
-                ).strip()
-                elo_raw = (
-                    row.get("Arena Elo rating")
-                    or row.get("Arena Elo")
-                    or row.get("arena elo rating")
-                    or row.get("arena elo")
-                    or row.get("Arena Score")
-                    or row.get("arena score")
-                    or row.get("Elo")
-                    or row.get("elo")
-                )
-                elo_val = _parse_float(elo_raw)
-                if not name or elo_val is None:
-                    continue
-                arena_alias_to_elo[_norm(name)] = float(elo_val)
-                rows_parsed += 1
-
-        logger.info("LMArena rows parsed with ELO: {}", rows_parsed)
+            val = _parse_float(elo_raw)
+            if name and val is not None:
+                arena_alias_to_elo[_norm(name)] = float(val)
 
         # ---- 4) Intersect + populate self.models_iq_scores ----
-        self.models_iq_scores = {}
-        intersection_ids: list[str] = []
-        seen: set[str] = set()
-
-        def _gh_candidates(mid: str) -> list[str]:
-            full = _norm(mid)
-            tail = _norm(mid.split("/", 1)[-1])
-            # try some smart rewrites
-            variants = {
-                full,
-                tail,
-                tail.replace("gpt4", "gpt-4"),
-                tail.replace("gpt-41", "gpt-4.1"),
-                tail.replace("gpt-40", "gpt-4o"),
-                tail.replace("claude37", "claude-3.7"),
-                tail.replace("claude35", "claude-3.5"),
-                tail.replace("llama31", "llama-3.1"),
-                tail.replace("llama33", "llama-3.3"),
-            }
-            return [v for v in variants if v]
-
-        # Prefer using your distilled catalog if present (accurate ID list)
-        model_ids = (
-            list(self.models_catalog.keys())
-            if self.models_catalog
-            else [
-                (m.get("id") or "").strip()
-                for m in gh_text_models
-                if (m.get("id") or "").strip()
-            ]
-        )
-
-        for mid in model_ids:
-            elo: Optional[float] = None
-            for cand in _gh_candidates(mid):
-                if cand in arena_alias_to_elo:
-                    elo = arena_alias_to_elo[cand]
-                    break
-                # also try stripping vendor from candidate against aliases
-                if "-" in cand:
-                    tail = cand.split("-", 1)[-1]
-                    if tail in arena_alias_to_elo:
-                        elo = arena_alias_to_elo[tail]
-                        break
-            if elo is not None:
-                # populate IQ map using raw ELO (as requested)
-                self.models_iq_scores[mid] = float(elo)
-                if mid not in seen:
-                    intersection_ids.append(mid)
-                    seen.add(mid)
-                # also reflect on the LLMModel object if we have it
-                if mid in self.models_catalog:
-                    self.models_catalog[mid].elo = float(elo)
+        self.models_iq_scores = {
+            model_id: arena_alias_to_elo.get(_norm(model_id), 0.0)
+            for model_id in self.models_catalog.keys()
+        }
 
         # ---- 5) Store / return intersection set ----
-        ordered_preview = ", ".join(intersection_ids[:10])
-        logger.info("Intersection (first 10 in LMArena order): {}", ordered_preview)
-        self.LLM_ARENA_SCOREBOARD = set(intersection_ids)
-        logger.info("LLM_ARENA_SCOREBOARD size: {}", len(self.LLM_ARENA_SCOREBOARD))
-        logger.info("models_iq_scores filled: {} entries", len(self.models_iq_scores))
-        return self.LLM_ARENA_SCOREBOARD
+        return set(arena_alias_to_elo.keys())
 
 
 if __name__ == "__main__":
     github_api_keys = api_keys.extract_github_keys()
     prompt_items: list[PromptItem] = load_and_prepare_prompts(
         prompt_json_template_path=Path(
-            # r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
-            "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/fanvue/inputs/laura_vigne.json"
+            r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
+            # "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/fanvue/inputs/laura_vigne.json"
         ),
         previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
     )
     # --- Instantiate classifier and build intersection scoreboard ---
     mc = ModelClassifier(github_api_key=github_api_keys[0])
     mc._build_llm_arena_scoreboard_intersection()
-    # mc.populate_models_catalog()
-    # from dataclasses import asdict
-    # logger.info("Models catalog size: {}", len(mc.models_catalog))
-    # for model_id, model in mc.models_catalog.items():
-    #     logger.info("Model id={} -> {}", model_id, asdict(model))
+    
