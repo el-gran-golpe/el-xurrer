@@ -1,38 +1,27 @@
-
-*.env
-
-*.pyc
-
-youtube_channels/
-
-venv
-
-.idea
-
-
+# === OS ===
 .DS_Store
 
-*.jpg
+# === Environment files / virtualenvs ===
+*.env
+venv
 
-uploading_apis/youtube/youtube-api-secret.json
+# === Python ===
+*.pyc
 
-uploading_apis/youtube/token.json
-
-generation_tools/voice_generator/xtts/voice_test/
-
-generation_tools/voice_generator/xtts/voice_test_english/
-
-generation_tools/image_generator/flux/kaggle.json
-
-instagram_profiles/laura_vigne/
-
+# === IDEs / Editors ===
+.idea
 .vs/
-
-
-/resources
-/resources_back
-
-.qodo
 *.code-workspace
 .vscode/extensions.json
 .vscode/settings.json
+
+# === Media ===
+*.jpg
+*.jpeg
+*.png
+
+# === Project-specific ===
+/resources
+
+# === Misc / tooling ===
+.qodo
