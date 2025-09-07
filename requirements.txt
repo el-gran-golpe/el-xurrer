@@ -35,6 +35,7 @@ pynput
 pydantic-settings
 google-api-python-client
 google-auth-oauthlib
+plotly
 
 # Only for Windows
 ftfy; sys_platform == 'win32'

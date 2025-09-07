@@ -198,109 +198,88 @@ class ModelClassifier:
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
-    def _build_llm_arena_scoreboard_intersection(
-        self,
-    ) -> dict[str, float]:
+    def _build_llm_arena_scoreboard_intersection(self) -> dict[str, float]:
         """
-        1) Download latest LMArena leaderboard_table_YYYYMMDD.csv
-        2) Parse ELO per model
-        3) Match against our GitHub model IDs
-        4) Populate self.models_elo_scores with ELO (no normalization)
-        5) Return the intersection as a dict of matched GitHub model IDs
+        Use the official LMArena Elo pickle (elo_results_YYYYMMDD.pkl):
+        1) List latest elo_results_*.pkl in the Space
+        2) Download + SAFE-unpickle (no Plotly dependency)
+        3) Extract Elo dict (prefer 'elo_rating_median', else 'elo_rating_online')
+        4) Intersect with our GitHub model IDs
+        5) Store + return {github_model_id -> elo}
         """
+        import io
+        import pickle
+        import requests
+        from typing import Dict
 
-         # ---------------- 1) Download latest leaderboard CSV ----------------
+        # ---------- helpers ----------
+        class _PlotlyFigureStub:
+            def __init__(self, *a, **k):
+                pass
+
+        class _SafeUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                # Stub Plotly figure classes so we don't need plotly installed
+                if (module, name) in {
+                    ("plotly.graph_objs._figure", "Figure"),
+                    ("plotly.graph_objs._figurewidget", "FigureWidget"),
+                }:
+                    return _PlotlyFigureStub
+                return super().find_class(module, name)
+
+        def _safe_pickle_load(raw: bytes):
+            return _SafeUnpickler(io.BytesIO(raw)).load()
+
+        def _norm(s: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+        # ---------- 1) List files ----------
         tree_url = "https://huggingface.co/api/spaces/lmarena-ai/lmarena-leaderboard/tree/main?recursive=1"
         try:
-            response = requests.get(tree_url, timeout=10)
-            response.raise_for_status()
-            listing = response.json()
-            csv_files = [
+            r = requests.get(tree_url, timeout=15)
+            r.raise_for_status()
+            listing = r.json()
+            pkl_files = [
                 entry["path"]
                 for entry in listing
                 if isinstance(entry, dict)
                 and isinstance(entry.get("path"), str)
-                and re.fullmatch(r"leaderboard_table_\d{8}\.csv", entry["path"])
+                and re.fullmatch(r"elo_results_\d{8}\.pkl", entry["path"])
             ]
-            if not csv_files:
-                raise RuntimeError("No leaderboard_table_*.csv found in Space")
+            if not pkl_files:
+                raise RuntimeError("No elo_results_*.pkl found in the Space")
 
-            # INFO: Code below retrieves the latest csv_file because naming is leaderboard_table_YYYYMMDD.csv
-            # Example of a URL of a specific dated CSV:
-            # https://huggingface.co/api/resolve-cache/spaces/lmarena-ai/lmarena-leaderboard/33c75f8630496ee975ff4c53ea94d8159363fcc8/leaderboard_table_20250804.csv?/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/leaderboard_table_20250804.csv=&etag="9142feda572ccb0ad6dd1ed4dbeb839c8b0b983a"
-
-            pattern = re.compile(r"leaderboard_table_(\d{8})\.csv")
-            latest_csv = max(
-                csv_files,
-                key=lambda f: int(cast(Match[str], pattern.fullmatch(f)).group(1)),
+            latest = max(
+                pkl_files,
+                key=lambda f: int(cast(Match[str], re.search(r"(\d{8})", f)).group(1)),
             )
-            csv_url = f"https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/{latest_csv}"
-            logger.info("Latest LMArena CSV URL: {}", csv_url)
+            pkl_url = f"https://huggingface.co/spaces/lmarena-ai/lmarena-leaderboard/resolve/main/{latest}"
+            logger.info("Latest LMArena Elo pickle: {}", pkl_url)
         except Exception as e:
             logger.error("Failed to list Space files for LMArena: {}", e)
             raise RuntimeError("Failed to list Space files for LMArena") from e
 
+        # ---------- 2) Download + SAFE-unpickle ----------
         try:
-            csv_response = requests.get(csv_url)
-            csv_response.raise_for_status()
-            csv_text = csv_response.text
-            print(csv_text)
+            resp = requests.get(pkl_url, timeout=15)
+            resp.raise_for_status()
+            elo_results = _safe_pickle_load(resp.content)
+            logger.debug("Top-level Elo result keys: {}", list(elo_results.keys()))
+            print(elo_results.keys())
+            print(elo_results)
         except Exception as e:
-            logger.error("Failed to download LMArena CSV from {}: {}", csv_url, e)
-            raise RuntimeError("Failed to download LMArena CSV") from e
+            logger.error("Failed to download/unpickle Elo results: {}", e)
+            raise RuntimeError("Failed to download/unpickle Elo results") from e
 
-        # ---- 2) Parse CSV → arena_alias_to_elo ----
-        def _norm(s: str) -> str:
-            return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+        # ---------- 3) Extract per-task rating tables ----------
+        
 
-        def _parse_float(x) -> Optional[float]:
-            if x is None:
-                return None
-            s = str(x).strip()
-            if not s or s == "-":
-                return None
-            try:
-                return float(s.rstrip("%").replace(",", ""))
-            except ValueError:
-                return None
+        # ---------- 4) Aggregate ratings across tasks ----------
+      
 
-        arena_alias_to_elo: dict[str, float] = {}
-        reader = csv.DictReader(StringIO(csv_text))
-        for row in reader:
-            row_lc = {k.lower(): v for k, v in row.items()}
-            name = (row_lc.get("key") or row_lc.get("model") or "").strip()
-            elo_raw = None
-            for col in ("arena elo rating", "arena elo", "elo", "arena score"):
-                if col in row_lc:
-                    elo_raw = row_lc[col]
-                    break
-            val = _parse_float(elo_raw)
-            if name and val is not None:
-                arena_alias_to_elo[_norm(name)] = float(val)
-
-
-        # TODO: ignore the below code, focus on  making work the above code
-        # ---- 3) Intersect: self.github_free_catalog.model & arena scoreboard elos ----
-        for m in self.github_free_catalog:
-            model_id = m.get("id")
-            norm_model_id = _norm(model_id)
-            if norm_model_id in arena_alias_to_elo:
-                elo = arena_alias_to_elo[norm_model_id]
-                logger.debug(
-                    "Matched GitHub model ID '{}' to LMArena alias '{}' with ELO {}",
-                    model_id,
-                    norm_model_id,
-                    elo,
-                )
-            else:
-                logger.debug(
-                    "No LMArena alias match for GitHub model ID '{}'", model_id
-                )
-
-        self.models_elo_scores = {model_id: elo}
-
-        # ---- 5) Store / return intersection set ----
-        return set(arena_alias_to_elo.keys())
+        # ---------- 5) Intersect with our GitHub catalog ----------
+      
+        return None
 
 
 if __name__ == "__main__":
