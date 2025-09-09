@@ -60,7 +60,7 @@ class ModelClassifier:
         self.github_api_key: str = github_api_key
         self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
         # This is the distilled catalog of models we will use for routing
-        self.models_catalog: dict[LLMModel] = {}
+        self.models_catalog: dict[str, LLMModel] = {}
 
     # Probably this method and the self.models_catalog will be the main entry points
     # of this class
@@ -87,12 +87,12 @@ class ModelClassifier:
                 identifier=model_id,
                 supports_json_format=self._supports_json_response_format(model_id),
                 is_censored=self._is_model_censored(model_id),
-                elo=self._get_model_elo(model_id),
                 is_quota_exhausted=False,
                 quota_exhausted_datetime="",
                 max_input_tokens=max_input_tokens,
                 max_output_tokens=max_output_tokens,
             )
+        self._build_llm_arena_scoreboard_intersection() # TODO: this method should get the elos for the models in the leaderboard and update the model catalog with the current elo
 
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
@@ -136,7 +136,7 @@ class ModelClassifier:
         )
 
     def _get_model_elo(self, model_id: str) -> float:
-        return self._build_llm_arena_scoreboard_intersection().get(model_id, 1.0)
+        return self.models_catalog[model_id].elo
 
     def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
@@ -198,14 +198,14 @@ class ModelClassifier:
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
-    def _build_llm_arena_scoreboard_intersection(self) -> dict[str, float]:
+    def _build_llm_arena_scoreboard_intersection(self) -> None:
         """
         Use the official LMArena Elo pickle (elo_results_YYYYMMDD.pkl):
         1) List latest elo_results_*.pkl in the Space
         2) Download + SAFE-unpickle (no Plotly dependency)
         3) Extract Elo dict (prefer 'elo_rating_median', else 'elo_rating_online')
         4) Intersect with our GitHub model IDs
-        5) Store + return {github_model_id -> elo}
+        5) Update our model catalog
         """
         import io
         import pickle
@@ -277,7 +277,7 @@ class ModelClassifier:
         # ---------- 4) Aggregate ratings across tasks ----------
       
 
-        # ---------- 5) Intersect with our GitHub catalog ----------
+        # ---------- 5) Intersect with our GitHub catalog and update it ----------
       
         return None
 
