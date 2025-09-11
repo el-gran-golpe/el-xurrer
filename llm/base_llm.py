@@ -5,10 +5,12 @@ from typing import Iterable, Union, Optional, Literal, Any
 
 from loguru import logger
 from tqdm import tqdm
+from urllib3.exceptions import ResponseNotChunked
 
 from llm.common.api_keys import api_keys
-from llm.common.backend_invoker import invoke_backend
+from llm.common.backend_invoker import invoke_backend, ResponseChunk
 from llm.common.clients import LLMClientManager
+from llm.common.routing.classification.model_classifier import LLMModel
 
 from llm.constants import (
     DEFAULT_PREFERRED_MODELS,
@@ -25,8 +27,6 @@ from llm.common.routing.model_router import ModelRouter
 from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 
-ResponseChunk = Any  # upstream unioned types are defined in backend_invoker
-
 
 class BaseLLM:
     def __init__(
@@ -34,7 +34,6 @@ class BaseLLM:
         prompt_json_template_path: Path,
         previous_storyline: str,
         platform_name: Platform,
-        preferred_models: Union[list[str], str] = DEFAULT_PREFERRED_MODELS,
     ):
         # Main input variables
         self.prompt_json_template_path = prompt_json_template_path
@@ -52,7 +51,6 @@ class BaseLLM:
         self.model_router = ModelRouter(
             github_api_keys=self.github_api_keys,
             openai_api_keys=self.openai_api_keys,
-            platform_name=self.platform_name,
         )
 
         # config = LLMConfig(
@@ -62,7 +60,6 @@ class BaseLLM:
         # )
         # self.preferred_models = config.preferred_models
 
-        self.exhausted_models: list[str] = []
         self.active_backend: Optional[Literal["openai", "azure"]] = None
         self.using_paid_api = False
 
@@ -86,7 +83,7 @@ class BaseLLM:
             prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
             # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
-            # model_router.get_models(content_type=content_type, prompt_spec=prompt_items[0])
+            model = self.model_router.get_best_available_model(prompt_item=prompt_items[0])
 
             # TODO: Use ModelRouter
             conversation = [
@@ -95,6 +92,9 @@ class BaseLLM:
             ]
 
             options = RequestOptions(as_json=prompt_item.output_as_json)
+
+            updated_conversation = model.get_model_response(conversation=conversation,
+                                                            options=options)
 
             assistant_reply, finish_reason = self._get_model_response(
                 conversation=conversation,
@@ -129,9 +129,9 @@ class BaseLLM:
     def _get_model_response(
         self,
         conversation: list[dict],
+        preferred_models: list[LLMModel],
         options: Optional[RequestOptions] = None,
         verbose: bool = True,
-        preferred_models: Optional[list[str]] = None,
     ) -> tuple[str, str]:
         if options is None:
             options = RequestOptions()
@@ -156,9 +156,6 @@ class BaseLLM:
             model = selected_models[0]
             logger.info("Using model: {}", model)
 
-            additional_params: dict[str, Any] = {}
-            if options.as_json:
-                additional_params["response_format"] = {"type": "json_object"}
 
             try:
                 stream = self.__get_response_stream(
@@ -277,7 +274,7 @@ class BaseLLM:
 
     def __get_response_stream(
         self,
-        conversation: list[dict],
+        conversation: list[dict[str, str]],
         preferred_models: list[str],
         use_paid_api: bool = False,
         options: Optional[RequestOptions] = None,

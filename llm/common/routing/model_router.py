@@ -1,4 +1,9 @@
+from pathlib import Path
+from typing import Optional
+
+from llm.common.api_keys import api_keys
 from llm.common.routing.classification.model_classifier import ModelClassifier, LLMModel
+from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from loguru import logger
 
@@ -16,9 +21,9 @@ class ModelRouter:
             ModelClassifier(k) for k in self.github_api_keys
         ]
 
-    def _initialize_classifier(self) -> None:
+    def initialize_model_classifiers(self, models_to_scan: Optional[int]) -> None:
         for classifier in self.github_classifiers:
-            classifier.populate_models_catalog()
+            classifier.populate_models_catalog(models_to_scan=models_to_scan)
 
     def get_best_available_model(self, prompt_item: PromptItem) -> LLMModel:
         for classifier in self.github_classifiers:
@@ -51,18 +56,22 @@ class ModelRouter:
 
 if __name__ == "__main__":
     pass
-    # github_api_keys = api_keys.extract_github_keys()
-    # openai_api_keys = api_keys.extract_openai_keys()
-    # prompt_items: list[PromptItem] = load_and_prepare_prompts(
-    #     prompt_json_template_path=Path(
-    #         r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
-    #     ),
-    #     previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
-    # )
-    # router = ModelRouter(github_api_keys, openai_api_keys)
-    # # catalog = router.fetch_github_models_catalog()
-    # best = router.get_best_available_model(prompt_items[0])
-    # logger.success("BEST MODEL: {}", best)
-    #
-    # quota = router.check_github_models_quota(best)
-    # logger.info("Quota snapshot: {}", quota)
+    github_api_keys = api_keys.extract_github_keys()
+    openai_api_keys = api_keys.extract_openai_keys()
+    prompt_items: list[PromptItem] = load_and_prepare_prompts(
+        # prompt_json_template_path=Path(
+        #     r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\meta\inputs\laura_vigne.json"
+        # ),
+        prompt_json_template_path=Path(
+            "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/meta/inputs/laura_vigne.json"
+        ),
+        previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
+    )
+    router = ModelRouter(github_api_keys, openai_api_keys)
+    router.initialize_model_classifiers(models_to_scan=5)  # TODO make sure this ends if we scan everything
+    # catalog = router.fetch_github_models_catalog()
+    best = router.get_best_available_model(prompt_items[0])
+    logger.success("BEST MODEL: {}", best)
+
+    quota = router.check_github_models_quota(best)
+    logger.info("Quota snapshot: {}", quota)

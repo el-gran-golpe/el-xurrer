@@ -10,6 +10,8 @@ import requests
 from pathlib import Path
 from loguru import logger
 
+from llm.common.request_options import RequestOptions
+
 # --- Ensure project root (containing 'llm') is on sys.path when run as a script ---
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
@@ -26,12 +28,14 @@ class LLMModel:
     identifier: str
     supports_json_format: bool
     is_censored: bool
-    # TODO: Does this 1.0 makes sense since I already implemented a default in get_iq_score?
     elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
     quota_exhausted_datetime: str = ""  # Timestamp of when quota was exhausted
     max_input_tokens: int = 0
     max_output_tokens: int = 0
+
+    def get_model_response(self, conversation: list[dict[str, str]], options: RequestOptions):
+        pass
 
 
 UNCENSORED_MODEL_GUESSES: list[str] = ["deepseek", "grok"]
@@ -70,19 +74,19 @@ class ModelClassifier:
         sorted_model = self._get_models_sorted_by_iq()
         for model in sorted_model:
             if (
-                model.supports_json_format == output_json
-                and model.is_censored == censored
+                model.is_censored == censored
                 and not model.is_quota_exhausted
             ):
-                return model
+                if not output_json or model.supports_json_format:
+                    return model
         raise RuntimeError("No suitable model found for the given prompt item.")
 
-    def populate_models_catalog(self):
+    def populate_models_catalog(self, models_to_scan: Optional[int]):
         models = self.github_free_catalog
-        for m in models:
-            model_id = m.get("id")
-            max_input_tokens = m.get("limits", {}).get("max_input_tokens", 0)
-            max_output_tokens = m.get("limits", {}).get("max_output_tokens", 0)
+        for model in models[0:models_to_scan]:
+            model_id = model.get("id")
+            max_input_tokens = model.get("limits", {}).get("max_input_tokens", 0)
+            max_output_tokens = model.get("limits", {}).get("max_output_tokens", 0)
             self.models_catalog[model_id] = LLMModel(
                 identifier=model_id,
                 supports_json_format=self._supports_json_response_format(model_id),
@@ -92,7 +96,8 @@ class ModelClassifier:
                 max_input_tokens=max_input_tokens,
                 max_output_tokens=max_output_tokens,
             )
-        self._build_llm_arena_scoreboard_intersection() # TODO: this method should get the elos for the models in the leaderboard and update the model catalog with the current elo
+        # self._build_llm_arena_scoreboard_intersection() # TODO: this method should get the elos for the models in the leaderboard and update the model catalog with the current elo
+
 
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
@@ -267,17 +272,23 @@ class ModelClassifier:
             logger.debug("Top-level Elo result keys: {}", list(elo_results.keys()))
             print(elo_results.keys())
             print(elo_results)
+            print("Fin")
         except Exception as e:
             logger.error("Failed to download/unpickle Elo results: {}", e)
             raise RuntimeError("Failed to download/unpickle Elo results") from e
 
         # ---------- 3) Extract per-task rating tables ----------
-        
+        # ModelName = str, Ranking = float
+        # ordered_models: list[tuple[ModelName, Ranking]] = elo_results["test"]["overall" or "creative_writing"]...[]
 
-        # ---------- 4) Aggregate ratings across tasks ----------
       
 
-        # ---------- 5) Intersect with our GitHub catalog and update it ----------
+        # ---------- 4) Intersect with our GitHub catalog and update it ----------
+        # for model in self.models_catalog:
+        #     elo = get_elo_for_model(model, ordered_models)
+        #     if elo is not None:
+        #         self.models_catalog[model].elo = elo
+
       
         return None
 
@@ -286,8 +297,8 @@ if __name__ == "__main__":
     github_api_keys = api_keys.extract_github_keys()
     prompt_items: list[PromptItem] = load_and_prepare_prompts(
         prompt_json_template_path=Path(
-            r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
-            # "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/fanvue/inputs/laura_vigne.json"
+            # r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
+            "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/fanvue/inputs/laura_vigne.json"
         ),
         previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
     )

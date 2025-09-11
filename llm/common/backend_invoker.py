@@ -2,6 +2,8 @@ from typing import Iterable, Union, Any, cast
 
 from azure.ai.inference.models import StreamingChatCompletionsUpdate, ChatCompletions
 from openai.types.chat import ChatCompletionChunk, ChatCompletion
+
+from llm.common.clients import LLMClientManager
 from llm.common.conversation_format import (
     conversation_to_openai_format,
     conversation_to_azure_format,
@@ -23,7 +25,7 @@ ResponseChunk = Union[
 
 
 def invoke_backend(
-    client_manager: Any,
+    client_manager: LLMClientManager,
     conversation: list[dict],
     model: str,
     stream_response: bool,
