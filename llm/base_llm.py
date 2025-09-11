@@ -13,7 +13,6 @@ from llm.common.clients import LLMClientManager
 from llm.common.routing.classification.model_classifier import LLMModel
 
 from llm.constants import (
-    DEFAULT_PREFERRED_MODELS,
     CANNOT_ASSIST_PHRASES,
     MODELS_INCLUDING_CHAIN_THOUGHT,
     MODEL_BY_BACKEND,
@@ -52,13 +51,8 @@ class BaseLLM:
             github_api_keys=self.github_api_keys,
             openai_api_keys=self.openai_api_keys,
         )
+        self.model_router.initialize_model_classifiers(models_to_scan=5)
 
-        # config = LLMConfig(
-        #     preferred_models=[preferred_models]
-        #     if isinstance(preferred_models, str)
-        #     else preferred_models
-        # )
-        # self.preferred_models = config.preferred_models
 
         self.active_backend: Optional[Literal["openai", "azure"]] = None
         self.using_paid_api = False
@@ -83,6 +77,7 @@ class BaseLLM:
             prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
             # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
+            # TODO: at some point, I would like to tell modelrouter to use api instead of free github models (just in case)
             model = self.model_router.get_best_available_model(prompt_item=prompt_items[0])
 
             # TODO: Use ModelRouter
@@ -93,182 +88,131 @@ class BaseLLM:
 
             options = RequestOptions(as_json=prompt_item.output_as_json)
 
-            updated_conversation = model.get_model_response(conversation=conversation,
-                                                            options=options)
 
             assistant_reply, finish_reason = self._get_model_response(
                 conversation=conversation,
                 options=options,
-                preferred_models=models_override,
-                verbose=False,
+                model=model
             )
-
-            if any(
-                phrase.lower() in assistant_reply.lower()
-                for phrase in CANNOT_ASSIST_PHRASES
-            ):
-                if len(models_override) <= 1:
-                    raise RuntimeError(
-                        f"No models can assist with prompt: {prompt_item.prompt}"
-                    )
-                logger.warning(
-                    "Assistant refusal detected; retrying with next models: {}",
-                    models_override[1:],
-                )
-                models_override = models_override[1:]
-                assistant_reply, finish_reason = self._get_model_response(
-                    conversation=conversation,
-                    options=options,
-                    preferred_models=models_override,
-                    verbose=False,
-                )
-
-        output = decode_json_from_message(message=last_reply)
-        return output
+        return decode_json_from_message(message=last_reply)
 
     def _get_model_response(
         self,
         conversation: list[dict],
-        preferred_models: list[LLMModel],
-        options: Optional[RequestOptions] = None,
-        verbose: bool = True,
+        options: RequestOptions,
+        model: LLMModel
     ) -> tuple[str, str]:
-        if options is None:
-            options = RequestOptions()
 
-        # TODO: Use ModelRouter
-        models = (
-            list(preferred_models)
-            if preferred_models is not None
-            else list(self.preferred_models)
-        )
         assistant_reply = ""
         finish_reason: Optional[str] = None
+
         convo = conversation
         # TODO: Use ModelRouter
-        while models:
-            selected_models = select_models(
-                base_models=models,
-                exhausted_models=self.exhausted_models,
+
+        logger.info("Using model: {}", model.identifier)
+
+        try:
+            stream = self.__get_response_stream(
+                conversation=convo,
+                model=model,
                 options=options,
-                use_paid_api=False,
+                stream_response=True,
             )
-            model = selected_models[0]
-            logger.info("Using model: {}", model)
+        except Exception as e:
+            # Here it was use handle_api_error, but we want to handle those errors using the Model router somehow
+            raise
 
 
+        assistant_reply = ""
+        finish_reason = None
+
+        for chunk in stream:
+            if not hasattr(chunk, "choices") or len(chunk.choices) == 0:
+                continue
+            choice = chunk.choices[0]
+            current_finish_reason = getattr(choice, "finish_reason", None)
+            if hasattr(choice, "delta"):
+                new_content = getattr(choice.delta, "content", None)
+            else:
+                new_content = getattr(choice.message, "content", None)
+
+            if new_content:
+                assistant_reply += new_content
+
+            if current_finish_reason is not None:
+                finish_reason = current_finish_reason
+
+        # TODO: Use ModelRouter
+        non_exhausted = [
+            m for m in selected_models if m not in self.exhausted_models
+        ]
+        used_model = non_exhausted[0] if non_exhausted else selected_models[0]
+        # TODO: Use ModelRouter
+        if (
+            not (used_model.startswith("gpt-") or used_model.startswith("o1"))
+            and finish_reason is None
+        ):
+            logger.debug(
+                "Model {} did not return finish reason. Assuming stop", used_model
+            )
+            finish_reason = "stop"
+
+        assistant_reply = self._clean_chain_of_thought(
+            model=used_model, assistant_reply=assistant_reply
+        )
+
+        if finish_reason == "stop" and options.validate:
             try:
-                stream = self.__get_response_stream(
-                    conversation=convo,
-                    preferred_models=selected_models,
-                    use_paid_api=False,
-                    options=options,
-                    stream_response=True,
+                finish_reason, assistant_reply = recalculate_finish_reason(
+                    assistant_reply=assistant_reply,
+                    get_model_response_callable=lambda **k: self._get_model_response(
+                        **k
+                    ),
+                    preferred_validation_models=self.preferred_validation_models,
                 )
-            except Exception as e:
-                stream = handle_api_error(
-                    e=e,
-                    conversation=convo,
-                    preferred_models=selected_models,
-                    exhausted_models=self.exhausted_models,
-                    use_paid_api=False,
-                    options=options,
-                    stream_response=True,
-                    get_stream_callable=self.__get_response_stream,
-                )
-
-            assistant_reply = ""
-            finish_reason = None
-
-            for chunk in stream:
-                if not hasattr(chunk, "choices") or len(chunk.choices) == 0:
-                    continue
-                choice = chunk.choices[0]
-                current_finish_reason = getattr(choice, "finish_reason", None)
-                if hasattr(choice, "delta"):
-                    new_content = getattr(choice.delta, "content", None)
-                else:
-                    new_content = getattr(choice.message, "content", None)
-
-                if new_content:
-                    assistant_reply += new_content
-                    if verbose:
-                        logger.info("{}", new_content)
-
-                if current_finish_reason is not None:
-                    finish_reason = current_finish_reason
-
-            # TODO: Use ModelRouter
-            non_exhausted = [
-                m for m in selected_models if m not in self.exhausted_models
-            ]
-            used_model = non_exhausted[0] if non_exhausted else selected_models[0]
-            # TODO: Use ModelRouter
-            if (
-                not (used_model.startswith("gpt-") or used_model.startswith("o1"))
-                and finish_reason is None
-            ):
-                logger.debug(
-                    "Model {} did not return finish reason. Assuming stop", used_model
-                )
-                finish_reason = "stop"
-
-            assistant_reply = self._clean_chain_of_thought(
-                model=used_model, assistant_reply=assistant_reply
-            )
-
-            if finish_reason == "stop" and options.validate:
-                try:
-                    finish_reason, assistant_reply = recalculate_finish_reason(
-                        assistant_reply=assistant_reply,
-                        get_model_response_callable=lambda **k: self._get_model_response(
-                            **k
-                        ),
-                        preferred_validation_models=self.preferred_validation_models,
-                    )
-                except Exception:
-                    logger.warning(
-                        "Validation finish_reason failed; proceeding with current reply"
-                    )
-
-            if finish_reason is None:
-                raise RuntimeError("Finish reason not found for model response")
-
-            if any(
-                cant_assist.lower() in assistant_reply.lower()
-                for cant_assist in CANNOT_ASSIST_PHRASES
-            ):
-                if len(models) <= 1:
-                    raise RuntimeError("No models left to assist with prompt.")
+            except Exception:
                 logger.warning(
-                    "Assistant cannot assist; trying next model(s): {}", models[1:]
+                    "Validation finish_reason failed; proceeding with current reply"
                 )
-                models = models[1:]
-                continue
 
-            if finish_reason == "length":
-                logger.info(
-                    "Finish reason 'length' encountered; continuing conversation"
+        if finish_reason is None:
+            raise RuntimeError("Finish reason not found for model response")
+
+        if any(
+            cant_assist.lower() in assistant_reply.lower()
+            for cant_assist in CANNOT_ASSIST_PHRASES
+        ):
+            if len(models) <= 1:
+                raise RuntimeError("No models left to assist with prompt.")
+            logger.warning(
+                "Assistant cannot assist; trying next model(s): {}", models[1:]
+            )
+            models = models[1:]
+            # continue
+
+        if finish_reason == "length":
+            logger.info(
+                "Finish reason 'length' encountered; continuing conversation"
+            )
+            convo = deepcopy(convo)
+            convo.append({"role": "assistant", "content": assistant_reply})
+            convo.append(
+                {"role": "user", "content": "Continue EXACTLY where we left off"}
+            )
+            # continue
+        # TODO: Use ModelRouter
+        if finish_reason == "content_filter":
+            if len(models) <= 1:
+                raise RuntimeError(
+                    "No more models to retry after content_filter finish reason"
                 )
-                convo = deepcopy(convo)
-                convo.append({"role": "assistant", "content": assistant_reply})
-                convo.append(
-                    {"role": "user", "content": "Continue EXACTLY where we left off"}
-                )
-                continue
-            # TODO: Use ModelRouter
-            if finish_reason == "content_filter":
-                if len(models) <= 1:
-                    raise RuntimeError(
-                        "No more models to retry after content_filter finish reason"
-                    )
-                models = models[1:]
-                continue
+            models = models[1:]
+            # continue
 
-            if finish_reason != "stop":
-                raise AssertionError(f"Unexpected finish reason: {finish_reason}")
+        if finish_reason != "stop":
+            raise AssertionError(f"Unexpected finish reason: {finish_reason}")
 
-            return assistant_reply, finish_reason
+        return assistant_reply, finish_reason
 
         raise RuntimeError("Exhausted all preferred models without successful response")
 
