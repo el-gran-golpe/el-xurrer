@@ -1,15 +1,24 @@
 from pathlib import Path
+
+import sys
+
+import requests
+
+# Add the project root to sys.path to make modules importable
+project_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(project_root))
+
 import re
 from copy import deepcopy
 from typing import Iterable, Union, Optional, Literal, Any
 
+
 from loguru import logger
 from tqdm import tqdm
-from urllib3.exceptions import ResponseNotChunked
+
 
 from llm.common.api_keys import api_keys
 from llm.common.backend_invoker import invoke_backend, ResponseChunk
-from llm.common.clients import LLMClientManager
 from llm.common.routing.classification.model_classifier import LLMModel
 
 from llm.constants import (
@@ -18,7 +27,6 @@ from llm.constants import (
     MODEL_BY_BACKEND,
 )
 from llm.common.error_handler import handle_api_error
-from llm.common.model_selector import select_models
 from llm.common.request_options import RequestOptions
 from llm.common.response import decode_json_from_message, recalculate_finish_reason
 from main_components.common.types import Platform
@@ -43,16 +51,12 @@ class BaseLLM:
         self.github_api_keys: list[str] = api_keys.extract_github_keys()
         self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
 
-        self.client_manager = LLMClientManager(
-            github_api_keys=self.github_api_keys, openai_api_keys=self.openai_api_keys
-        )
-
+        # Model Router, returns 1 model at a time
         self.model_router = ModelRouter(
             github_api_keys=self.github_api_keys,
             openai_api_keys=self.openai_api_keys,
         )
-        self.model_router.initialize_model_classifiers(models_to_scan=5)
-
+        self.model_router.initialize_model_classifiers(models_to_scan=2)
 
         self.active_backend: Optional[Literal["openai", "azure"]] = None
         self.using_paid_api = False
@@ -72,56 +76,39 @@ class BaseLLM:
 
         last_reply: Union[str, dict] = ""
 
-        # For each model in the ordered list: then we do this
         for prompt_item in tqdm(
             prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
-            # TODO: Assume model router is implemented and see where do I need it in the base llm (smart)
             # TODO: at some point, I would like to tell modelrouter to use api instead of free github models (just in case)
-            model = self.model_router.get_best_available_model(prompt_item=prompt_items[0])
-
-            # TODO: Use ModelRouter
+            model = self.model_router.get_best_available_model(prompt_item=prompt_item)
             conversation = [
                 {"role": "system", "content": prompt_item.system_prompt},
                 {"role": "user", "content": prompt_item.prompt},
             ]
-
-            options = RequestOptions(as_json=prompt_item.output_as_json)
-
+            output_as_json = prompt_item.output_as_json
+            # options = RequestOptions(as_json=prompt_item.output_as_json)
 
             assistant_reply, finish_reason = self._get_model_response(
+                model=model,
                 conversation=conversation,
-                options=options,
-                model=model
+                options=RequestOptions(as_json=output_as_json),
             )
         return decode_json_from_message(message=last_reply)
 
     def _get_model_response(
-        self,
-        conversation: list[dict],
-        options: RequestOptions,
-        model: LLMModel
+        self, conversation: list[dict], options: RequestOptions, model: LLMModel
     ) -> tuple[str, str]:
-
-        assistant_reply = ""
-        finish_reason: Optional[str] = None
-
-        convo = conversation
-        # TODO: Use ModelRouter
-
         logger.info("Using model: {}", model.identifier)
 
         try:
-            stream = self.__get_response_stream(
-                conversation=convo,
-                model=model,
+            stream = model.get_model_response(
+                conversation=conversation,
                 options=options,
-                stream_response=True,
             )
+
         except Exception as e:
             # Here it was use handle_api_error, but we want to handle those errors using the Model router somehow
             raise
-
 
         assistant_reply = ""
         finish_reason = None
@@ -143,9 +130,7 @@ class BaseLLM:
                 finish_reason = current_finish_reason
 
         # TODO: Use ModelRouter
-        non_exhausted = [
-            m for m in selected_models if m not in self.exhausted_models
-        ]
+        non_exhausted = [m for m in selected_models if m not in self.exhausted_models]
         used_model = non_exhausted[0] if non_exhausted else selected_models[0]
         # TODO: Use ModelRouter
         if (
@@ -191,12 +176,10 @@ class BaseLLM:
             # continue
 
         if finish_reason == "length":
-            logger.info(
-                "Finish reason 'length' encountered; continuing conversation"
-            )
-            convo = deepcopy(convo)
-            convo.append({"role": "assistant", "content": assistant_reply})
-            convo.append(
+            logger.info("Finish reason 'length' encountered; continuing conversation")
+            conversation = deepcopy(conversation)
+            conversation.append({"role": "assistant", "content": assistant_reply})
+            conversation.append(
                 {"role": "user", "content": "Continue EXACTLY where we left off"}
             )
             # continue
@@ -216,50 +199,61 @@ class BaseLLM:
 
         raise RuntimeError("Exhausted all preferred models without successful response")
 
-    def __get_response_stream(
-        self,
-        conversation: list[dict[str, str]],
-        preferred_models: list[str],
-        use_paid_api: bool = False,
-        options: Optional[RequestOptions] = None,
-        stream_response: bool = True,
-    ) -> Iterable[ResponseChunk]:
-        if options is None:
-            options = RequestOptions()
-        # TODO: Use ModelRouter
-        selected = select_models(
-            base_models=preferred_models,
-            exhausted_models=self.exhausted_models,
-            options=options,
-            use_paid_api=use_paid_api,
-        )
-        model = selected[0]
-        logger.info("Attempting stream with model: {}", model)
+    # def _get_response_stream(
+    #     self,
+    #     conversation: list[dict[str, str]],
+    #     model: LLMModel,
+    #     options: RequestOptions,
+    #     use_paid_api: bool = False,
+    #     stream_response: bool = True,
+    # ) -> Iterable[ResponseChunk]:
+    # additional_params: dict[str, Any] = {}
+    # if options.as_json:
+    #     additional_params["response_format"] = {"type": "json_object"}
+    # try:
+    #     stream = invoke_backend(
+    #         conversation=conversation,
+    #         model=model.identifier,
+    #         use_paid_api=use_paid_api,
+    #         stream_response=stream_response,
+    #         additional_params=additional_params,
+    #         github_api_keys=self.github_api_keys,
+    #         openai_api_keys=self.openai_api_keys,
+    #     )
+    # except Exception as e:
+    #     logger.warning("API error encountered: {}. Delegating to handler.", e)
+    #     stream = handle_api_error(
+    #         e=e,
+    #         conversation=conversation,
+    #         model=model,
+    #         use_paid_api=use_paid_api,
+    #         stream_response=stream_response,
+    #         options=options,
+    #         get_stream_callable=self._get_response_stream,
+    #     )
+    # return stream
 
-        additional_params: dict[str, Any] = {}
-        if options.as_json:
-            additional_params["response_format"] = {"type": "json_object"}
 
-        try:
-            stream = invoke_backend(
-                client_manager=self.client_manager,
-                conversation=conversation,
-                model=model,
-                stream_response=stream_response,
-                additional_params=additional_params,
-                use_paid_api=use_paid_api,
-                MODEL_BY_BACKEND=MODEL_BY_BACKEND,
-            )
-        except Exception as e:
-            logger.warning("API error encountered: {}. Delegating to handler.", e)
-            stream = handle_api_error(
-                e=e,
-                conversation=conversation,
-                preferred_models=selected,
-                exhausted_models=self.exhausted_models,
-                use_paid_api=use_paid_api,
-                options=options,
-                stream_response=stream_response,
-                get_stream_callable=self.__get_response_stream,
-            )
-        return stream
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    from main_components.common.types import Platform
+
+    # Add the project root to sys.path to make modules importable
+    project_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(project_root))
+
+    # Example usage: Replace with your actual paths and values
+    prompt_path = Path(
+        r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\meta\inputs\laura_vigne.json"
+    )  # Update to a valid prompt JSON file path
+    storyline = "Once upon a time..."
+    platform = Platform.META  # Update to the desired platform
+
+    llm = BaseLLM(
+        prompt_json_template_path=prompt_path,
+        previous_storyline=storyline,
+        platform_name=platform,
+    )
+    result = llm.generate_dict_from_prompts()
+    print("Generated result:", result)

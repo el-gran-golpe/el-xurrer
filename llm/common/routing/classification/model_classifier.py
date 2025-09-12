@@ -1,9 +1,7 @@
-import csv
 import re
 import sys
 import time
 from dataclasses import dataclass
-from io import StringIO
 from typing import Optional, Match, cast
 
 import requests
@@ -22,23 +20,76 @@ from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from llm.common.api_keys import api_keys
 
+GITHUB_MODELS_BASE = "https://models.github.ai"
+CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
+CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
+API_VERSION = "2024-08-01-preview"  # TODO: not sure if this is correct or should I use 2022-11-28 version
+
+UNCENSORED_MODEL_GUESSES: list[str] = ["deepseek", "grok"]
+
 
 @dataclass
 class LLMModel:
     identifier: str
     supports_json_format: bool
     is_censored: bool
+    api_key: str
     elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
     quota_exhausted_datetime: str = ""  # Timestamp of when quota was exhausted
     max_input_tokens: int = 0
     max_output_tokens: int = 0
 
-    def get_model_response(self, conversation: list[dict[str, str]], options: RequestOptions):
-        pass
+    def get_model_response(
+        self,
+        conversation: list[dict[str, str]],
+        options: RequestOptions,
+    ):
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": API_VERSION,
+        }
+        print(conversation)
 
-
-UNCENSORED_MODEL_GUESSES: list[str] = ["deepseek", "grok"]
+        if supports_json_format:
+            payload = {
+                "model": self.identifier,
+                "messages": conversation,
+                "response_format": {"type": "json_object"},
+                #"stream": True,
+            }
+        else:
+            payload = {
+                "model": self.identifier,
+                "messages": conversation,
+                #"stream": True,
+            }
+            
+        # payload = {
+        #     "model": self.identifier,  # e.g. "openai/gpt-4.1" or "deepseek/deepseek-chat"
+        #     "messages": [
+        #         {
+        #             "role": "system",
+        #             "content": "You are an expert storytelling assistant. Reply in JSON with keys: day and outline.",
+        #         },
+        #         {
+        #             "role": "user",
+        #             "content": "Your task is to develop a new 7-day storyline... (rest of your prompt)",
+        #         },
+        #     ],
+        #     # Optional: keep only if you truly want JSON mode
+        #     "response_format": {"type": "json_object"},
+        #     # Optional: set max_tokens, temperature, etc.
+        # }
+        r = requests.post(
+            CHAT_COMPLETIONS_URL,
+            headers=headers,
+            json=payload,
+        )
+        r.raise_for_status()
+        print(r.json())
 
 
 class ModelClassifier:
@@ -49,14 +100,6 @@ class ModelClassifier:
     if it is censored or uncensored.
     """
 
-    GITHUB_MODELS_BASE = "https://models.github.ai"
-    CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
-    CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
-    API_VERSION = "2024-08-01-preview"  # TODO: not sure if this is correct
-
-    # NEW: where we’ll keep the intersection (GitHub model IDs), ordered via LMArena then deduped into a set
-    LLM_ARENA_SCOREBOARD: set[str] = set()
-
     def __init__(
         self,
         github_api_key: str,
@@ -66,19 +109,25 @@ class ModelClassifier:
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[str, LLMModel] = {}
 
-    # Probably this method and the self.models_catalog will be the main entry points
-    # of this class
     def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
-        output_json = prompt_item.output_as_json
-        censored = prompt_item.is_sensitive_content
-        sorted_model = self._get_models_sorted_by_iq()
-        for model in sorted_model:
-            if (
-                model.is_censored == censored
-                and not model.is_quota_exhausted
-            ):
-                if not output_json or model.supports_json_format:
-                    return model
+        output_as_json = prompt_item.output_as_json
+        is_sensitive_content = prompt_item.is_sensitive_content
+        sorted_models = self._get_models_sorted_by_iq()
+
+        for model in sorted_models:
+            if model.is_quota_exhausted:
+                continue
+
+            # If content is sensitive, skip censored models
+            if is_sensitive_content and model.is_censored:
+                continue
+
+            # If JSON required, ensure support
+            if output_as_json and not model.supports_json_format:
+                continue
+
+            return model
+
         raise RuntimeError("No suitable model found for the given prompt item.")
 
     def populate_models_catalog(self, models_to_scan: Optional[int]):
@@ -91,6 +140,7 @@ class ModelClassifier:
                 identifier=model_id,
                 supports_json_format=self._supports_json_response_format(model_id),
                 is_censored=self._is_model_censored(model_id),
+                api_key=self.github_api_key,
                 is_quota_exhausted=False,
                 quota_exhausted_datetime="",
                 max_input_tokens=max_input_tokens,
@@ -98,15 +148,14 @@ class ModelClassifier:
             )
         # self._build_llm_arena_scoreboard_intersection() # TODO: this method should get the elos for the models in the leaderboard and update the model catalog with the current elo
 
-
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
             "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": self.API_VERSION,
+            "X-GitHub-Api-Version": API_VERSION,
             "Authorization": f"Bearer {self.github_api_key}",
         }
 
-        resp = requests.get(self.CATALOG_URL, headers=headers, timeout=30)
+        resp = requests.get(CATALOG_URL, headers=headers, timeout=30)
         resp.raise_for_status()
         models = resp.json()
 
@@ -167,7 +216,7 @@ class ModelClassifier:
             "Authorization": f"Bearer {self.github_api_key}",
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "X-GitHub-Api-Version": self.API_VERSION,
+            "X-GitHub-Api-Version": API_VERSION,
         }
         payload = {
             "model": model_id,
@@ -179,7 +228,7 @@ class ModelClassifier:
         }
 
         r = requests.post(
-            self.CHAT_COMPLETIONS_URL,
+            CHAT_COMPLETIONS_URL,
             headers=headers,
             json=payload,
         )
@@ -281,15 +330,12 @@ class ModelClassifier:
         # ModelName = str, Ranking = float
         # ordered_models: list[tuple[ModelName, Ranking]] = elo_results["test"]["overall" or "creative_writing"]...[]
 
-      
-
         # ---------- 4) Intersect with our GitHub catalog and update it ----------
         # for model in self.models_catalog:
         #     elo = get_elo_for_model(model, ordered_models)
         #     if elo is not None:
         #         self.models_catalog[model].elo = elo
 
-      
         return None
 
 
