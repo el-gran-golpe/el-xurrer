@@ -49,14 +49,11 @@ class LLMModel:
             "Content-Type": "application/json",
             "X-GitHub-Api-Version": API_VERSION,
         }
-
         payload = {
             "model": self.identifier,
             "messages": conversation,
+            **({"response_format": {"type": "json_object"}} if output_as_json else {}),
         }
-        if output_as_json:
-            payload["response_format"] = {"type": "json_object"}
-
         r = requests.post(
             CHAT_COMPLETIONS_URL, headers=headers, stream=True, json=payload
         )
