@@ -54,10 +54,39 @@ class LLMModel:
             "messages": conversation,
             **({"response_format": {"type": "json_object"}} if output_as_json else {}),
         }
-        r = requests.post(
-            CHAT_COMPLETIONS_URL, headers=headers, stream=True, json=payload
-        )
-        r.raise_for_status()
+        try:
+            r = requests.post(
+                CHAT_COMPLETIONS_URL, headers=headers, stream=True, json=payload
+            )
+            r.raise_for_status()
+        except requests.HTTPError as http_err:
+            # INFO: 429 is the status code for rate limit exceeded.
+            # This probably means that I have exceeded the UserByModelByQuota and I have to wait
+            # around 2.5 hours for this particular model to be reset.
+            if (
+                r.status_code == 429
+            ):
+                self.is_quota_exhausted = True
+                self.quota_exhausted_datetime = time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.gmtime()
+                )
+                logger.warning(
+                    "Model {} quota exhausted at {}.",
+                    self.identifier,
+                    self.quota_exhausted_datetime,
+                )
+            else:
+                # TODO: what the hell copilot?
+                logger.error(
+                    "HTTP error occurred for model {}: {} - {}",
+                    self.identifier,
+                    r.status_code,
+                    r.text,
+                )
+            raise http_err
+
+
+
         data = r.json()
 
         # TODO: implement the case for ["response_format"] = {"type": "json_object"}
