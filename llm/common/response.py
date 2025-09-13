@@ -7,6 +7,7 @@ from llm.constants import VALIDATION_SYSTEM_PROMPT
 
 
 def decode_json_from_message(message: str) -> dict:
+    """Decodes a json from a str that is the response from a model"""
     cleaned = message.strip()
     if cleaned.startswith("```json"):
         cleaned = cleaned[len("```json") :]

@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 # --- end sys.path setup ---
 
-from llm.utils import load_and_prepare_prompts
+from llm.utils import _clean_chain_of_thought, load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from llm.common.api_keys import api_keys
 from llm.common.routing.classification.constants import UNCENSORED_MODEL_GUESSES
@@ -42,7 +42,94 @@ class LLMModel:
         self,
         conversation: list[dict[str, str]],
         output_as_json: bool,
-    ):
+    ) -> tuple[str, str]:
+        logger.info("Using model: {}", self.identifier)
+
+        try:
+            assistant_reply = self.get_response_from_github_models(
+                conversation=conversation,
+                output_as_json=output_as_json,
+            )
+
+        except Exception:
+            # Here it was use handle_api_error, but we want to handle those errors using the Model router somehow
+            raise
+
+        finish_reason = None
+
+        # TODO: Use ModelRouter
+        # non_exhausted = [m for m in selected_models if m not in self.exhausted_models]
+        # used_model = non_exhausted[0] if non_exhausted else selected_models[0]
+        # # TODO: Use ModelRouter
+        # if (
+        #     not (used_model.startswith("gpt-") or used_model.startswith("o1"))
+        #     and finish_reason is None
+        # ):
+        #     logger.debug(
+        #         "Model {} did not return finish reason. Assuming stop", used_model
+        #     )
+        #     finish_reason = "stop"
+
+        assistant_reply = _clean_chain_of_thought(
+            model=self.identifier, assistant_reply=assistant_reply
+        )
+
+        # if finish_reason == "stop" and options.validate:
+        #     try:
+        #         finish_reason, assistant_reply = recalculate_finish_reason(
+        #             assistant_reply=assistant_reply,
+        #             get_model_response_callable=lambda **k: self._get_model_response(
+        #                 **k
+        #             ),
+        #             preferred_validation_models=self.preferred_validation_models,
+        #         )
+        #     except Exception:
+        #         logger.warning(
+        #             "Validation finish_reason failed; proceeding with current reply"
+        #         )
+        #
+        # if finish_reason is None:
+        #     raise RuntimeError("Finish reason not found for model response")
+        #
+        # if any(
+        #     cant_assist.lower() in assistant_reply.lower()
+        #     for cant_assist in CANNOT_ASSIST_PHRASES
+        # ):
+        #     if len(models) <= 1:
+        #         raise RuntimeError("No models left to assist with prompt.")
+        #     logger.warning(
+        #         "Assistant cannot assist; trying next model(s): {}", models[1:]
+        #     )
+        #     models = models[1:]
+        #     # continue
+        #
+        # if finish_reason == "length":
+        #     logger.info("Finish reason 'length' encountered; continuing conversation")
+        #     conversation = deepcopy(conversation)
+        #     conversation.append({"role": "assistant", "content": assistant_reply})
+        #     conversation.append(
+        #         {"role": "user", "content": "Continue EXACTLY where we left off"}
+        #     )
+        #     # continue
+        # # TODO: Use ModelRouter
+        # if finish_reason == "content_filter":
+        #     if len(models) <= 1:
+        #         raise RuntimeError(
+        #             "No more models to retry after content_filter finish reason"
+        #         )
+        #     models = models[1:]
+        #     # continue
+        #
+        # if finish_reason != "stop":
+        #     raise AssertionError(f"Unexpected finish reason: {finish_reason}")
+
+        return assistant_reply, finish_reason
+
+    def get_response_from_github_models(
+        self,
+        conversation: list[dict[str, str]],
+        output_as_json: bool,
+    ) -> str:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
@@ -55,17 +142,13 @@ class LLMModel:
             **({"response_format": {"type": "json_object"}} if output_as_json else {}),
         }
         try:
-            r = requests.post(
-                CHAT_COMPLETIONS_URL, headers=headers, stream=True, json=payload
-            )
+            r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
             r.raise_for_status()
         except requests.HTTPError as http_err:
             # INFO: 429 is the status code for rate limit exceeded.
             # This probably means that I have exceeded the UserByModelByQuota and I have to wait
             # around 2.5 hours for this particular model to be reset.
-            if (
-                r.status_code == 429
-            ):
+            if r.status_code == 429:
                 self.is_quota_exhausted = True
                 self.quota_exhausted_datetime = time.strftime(
                     "%Y-%m-%d %H:%M:%S", time.gmtime()
@@ -84,8 +167,6 @@ class LLMModel:
                     r.text,
                 )
             raise http_err
-
-
 
         data = r.json()
 
