@@ -2,7 +2,6 @@ from pathlib import Path
 
 import sys
 
-import requests
 
 # Add the project root to sys.path to make modules importable
 project_root = Path(__file__).resolve().parents[1]
@@ -10,7 +9,7 @@ sys.path.insert(0, str(project_root))
 
 import re
 from copy import deepcopy
-from typing import Iterable, Union, Optional, Literal, Any
+from typing import Union, Optional, Literal
 
 
 from loguru import logger
@@ -18,16 +17,12 @@ from tqdm import tqdm
 
 
 from llm.common.api_keys import api_keys
-from llm.common.backend_invoker import invoke_backend, ResponseChunk
 from llm.common.routing.classification.model_classifier import LLMModel
 
 from llm.constants import (
     CANNOT_ASSIST_PHRASES,
     MODELS_INCLUDING_CHAIN_THOUGHT,
-    MODEL_BY_BACKEND,
 )
-from llm.common.error_handler import handle_api_error
-from llm.common.request_options import RequestOptions
 from llm.common.response import decode_json_from_message, recalculate_finish_reason
 from main_components.common.types import Platform
 from llm.common.routing.model_router import ModelRouter
@@ -86,27 +81,27 @@ class BaseLLM:
                 {"role": "user", "content": prompt_item.prompt},
             ]
             output_as_json = prompt_item.output_as_json
-            # options = RequestOptions(as_json=prompt_item.output_as_json)
 
             assistant_reply, finish_reason = self._get_model_response(
-                model=model,
-                conversation=conversation,
-                options=RequestOptions(as_json=output_as_json),
+                model=model, conversation=conversation, output_as_json=output_as_json
             )
         return decode_json_from_message(message=last_reply)
 
     def _get_model_response(
-        self, conversation: list[dict], options: RequestOptions, model: LLMModel
+        self,
+        model: LLMModel,
+        conversation: list[dict[str, str]],
+        output_as_json: bool,
     ) -> tuple[str, str]:
         logger.info("Using model: {}", model.identifier)
 
         try:
             stream = model.get_model_response(
                 conversation=conversation,
-                options=options,
+                output_as_json=output_as_json,
             )
 
-        except Exception as e:
+        except Exception:
             # Here it was use handle_api_error, but we want to handle those errors using the Model router somehow
             raise
 

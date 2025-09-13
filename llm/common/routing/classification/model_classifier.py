@@ -8,7 +8,6 @@ import requests
 from pathlib import Path
 from loguru import logger
 
-from llm.common.request_options import RequestOptions
 
 # --- Ensure project root (containing 'llm') is on sys.path when run as a script ---
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -43,7 +42,7 @@ class LLMModel:
     def get_model_response(
         self,
         conversation: list[dict[str, str]],
-        options: RequestOptions,
+        output_as_json: bool,
     ):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -53,20 +52,20 @@ class LLMModel:
         }
         print(conversation)
 
-        if supports_json_format:
+        if output_as_json:
             payload = {
                 "model": self.identifier,
                 "messages": conversation,
                 "response_format": {"type": "json_object"},
-                #"stream": True,
+                "stream": True,  # INFO: if this is true, it will return chunks
             }
         else:
             payload = {
                 "model": self.identifier,
                 "messages": conversation,
-                #"stream": True,
+                "stream": True,
             }
-            
+
         # payload = {
         #     "model": self.identifier,  # e.g. "openai/gpt-4.1" or "deepseek/deepseek-chat"
         #     "messages": [
@@ -84,9 +83,7 @@ class LLMModel:
         #     # Optional: set max_tokens, temperature, etc.
         # }
         r = requests.post(
-            CHAT_COMPLETIONS_URL,
-            headers=headers,
-            json=payload,
+            CHAT_COMPLETIONS_URL, headers=headers, stream=True, json=payload
         )
         r.raise_for_status()
         print(r.json())
@@ -264,7 +261,6 @@ class ModelClassifier:
         import io
         import pickle
         import requests
-        from typing import Dict
 
         # ---------- helpers ----------
         class _PlotlyFigureStub:
