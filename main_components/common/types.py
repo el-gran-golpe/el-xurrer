@@ -71,6 +71,26 @@ class PromptItem(BaseModel):
             raise ValueError("system_prompt must include '{day}'")
         return v
 
+    def replace_prompt_placeholders(
+        self, cache: dict[str, str], accept_unfilled: bool = False
+    ) -> None:
+        """
+        Replace the placeholders in the prompt with the values in the cache
+        :param prompt: The prompt to replace the placeholders
+        :param cache: The cache with the values to replace
+        :return: The prompt with the placeholders replaced
+        """
+        for prompt in [self.prompt, self.system_prompt]:
+            placeholders = re.findall(r"{(\w+)}", prompt)
+            for placeholder in placeholders:
+                if not accept_unfilled:
+                    assert placeholder in cache, (
+                        f"Placeholder '{placeholder}' not found in the cache"
+                    )
+                    prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
+                elif placeholder in cache:
+                    prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
+
 
 # --- Profile ---
 

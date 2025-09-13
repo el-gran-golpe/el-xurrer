@@ -36,6 +36,7 @@ class ModelRouter:
                 raise
 
         # If we reach here, no classifier returned a model — fail explicitly.
+        # TODO: at some point, I would like to tell modelrouter to use api instead of free github models (just in case)
         logger.error("No available Github model found after trying all classifiers.")
         # Try OpenAI classifiers as a fallback
         for classifier in self.openai_classifiers:
@@ -52,6 +53,23 @@ class ModelRouter:
     def mark_model_as_quota_exhausted(self, model: LLMModel) -> None:
         for classifier in self.github_classifiers:
             classifier.mark_model_as_quota_exhausted(model)
+
+
+    def get_response(self, prompt_item: PromptItem) -> str:
+        model = self.get_best_available_model(prompt_item=prompt_item)
+        conversation = [
+            {"role": "system", "content": prompt_item.system_prompt},
+            {"role": "user", "content": prompt_item.prompt},
+        ]
+        output_as_json = prompt_item.output_as_json
+        
+        # TODO: get_model_response should return a response or raise an exception that the model router can handle
+        assistant_reply, finish_reason = model.get_model_response(conversation, output_as_json)
+
+        
+        return assistant_reply
+
+
 
 
 if __name__ == "__main__":

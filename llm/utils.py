@@ -41,7 +41,7 @@ def load_and_prepare_prompts(
 
     prompts_data = payload.get("prompts", [])
     # 1. Validate raw items while placeholders still present
-    raw_items = [PromptItem.model_validate(p) for p in prompts_data]
+    raw_items = [PromptItem(**p) for p in prompts_data]
 
     # 2. Format copies (do not mutate originals)
     day_str = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
@@ -94,23 +94,3 @@ def _clean_chain_of_thought(model: str, assistant_reply: str) -> str:
             r"<think>.*?</think>", "", assistant_reply, flags=re.DOTALL
         ).strip()
     return assistant_reply
-
-def _replace_prompt_placeholders(
-        prompt: str, cache: dict[str, str], accept_unfilled: bool = False
-) -> str:
-    """
-    Replace the placeholders in the prompt with the values in the cache
-    :param prompt: The prompt to replace the placeholders
-    :param cache: The cache with the values to replace
-    :return: The prompt with the placeholders replaced
-    """
-    placeholders = re.findall(r"{(\w+)}", prompt)
-    for placeholder in placeholders:
-        if not accept_unfilled:
-            assert placeholder in cache, (
-                f"Placeholder '{placeholder}' not found in the cache"
-            )
-            prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
-        elif placeholder in cache:
-            prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
-    return prompt

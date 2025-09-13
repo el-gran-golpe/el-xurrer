@@ -59,26 +59,23 @@ class BaseLLM:
             prompt_json_template_path=self.prompt_json_template_path,
             previous_storyline=self.previous_storyline,
         )
+        cache: dict[str, str] = {}
 
         last_reply: str = ""
 
         for prompt_item in tqdm(
             prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
-            # TODO: at some point, I would like to tell modelrouter to use api instead of free github models (just in case)
-            model = self.model_router.get_best_available_model(prompt_item=prompt_item)
-            conversation = [
-                {"role": "system", "content": prompt_item.system_prompt},
-                {"role": "user", "content": prompt_item.prompt},
-            ]
-            output_as_json = prompt_item.output_as_json
-
-            assistant_reply, finish_reason = model.get_model_response(
-                conversation=conversation, output_as_json=output_as_json
+            prompt_item.replace_prompt_placeholders(cache=cache)
+            
+            assistant_reply = self.model_router.get_response(
+                prompt_item=prompt_item
             )
+            if prompt_item.cache_key:
+                cache[prompt_item.cache_key] = assistant_reply
             last_reply = assistant_reply
+
             # If the model was exhausted, mark it as such
-            # TODO: handle finish_reason properly
         return decode_json_from_message(message=last_reply)
 
     # def _get_response_stream(
