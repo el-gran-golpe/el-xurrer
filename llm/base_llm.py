@@ -7,7 +7,6 @@ import sys
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
-import re
 from copy import deepcopy
 from typing import Union, Optional, Literal
 
@@ -21,12 +20,11 @@ from llm.common.routing.classification.model_classifier import LLMModel
 
 from llm.constants import (
     CANNOT_ASSIST_PHRASES,
-    MODELS_INCLUDING_CHAIN_THOUGHT,
 )
 from llm.common.response import decode_json_from_message, recalculate_finish_reason
 from main_components.common.types import Platform
 from llm.common.routing.model_router import ModelRouter
-from llm.utils import load_and_prepare_prompts
+from llm.utils import load_and_prepare_prompts, _clean_chain_of_thought
 from main_components.common.types import PromptItem
 
 
@@ -55,13 +53,6 @@ class BaseLLM:
 
         self.active_backend: Optional[Literal["openai", "azure"]] = None
         self.using_paid_api = False
-
-    def _clean_chain_of_thought(self, model: str, assistant_reply: str) -> str:
-        if model in MODELS_INCLUDING_CHAIN_THOUGHT:
-            return re.sub(
-                r"<think>.*?</think>", "", assistant_reply, flags=re.DOTALL
-            ).strip()
-        return assistant_reply
 
     def generate_dict_from_prompts(self) -> dict:
         prompt_items: list[PromptItem] = load_and_prepare_prompts(

@@ -1,7 +1,9 @@
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from llm.constants import MODELS_INCLUDING_CHAIN_THOUGHT
 from main_components.common.types import PromptItem
 
 
@@ -84,3 +86,11 @@ def load_and_prepare_prompts(
     # # Convert to PromptItem models
     # prompt_items = [PromptItem.model_validate(p) for p in prompts]
     # return prompt_items
+
+
+def _clean_chain_of_thought(model: str, assistant_reply: str) -> str:
+    if model in MODELS_INCLUDING_CHAIN_THOUGHT:
+        return re.sub(
+            r"<think>.*?</think>", "", assistant_reply, flags=re.DOTALL
+        ).strip()
+    return assistant_reply
