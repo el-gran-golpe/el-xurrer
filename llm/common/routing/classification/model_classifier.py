@@ -18,13 +18,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from llm.common.api_keys import api_keys
+from llm.common.routing.classification.constants import UNCENSORED_MODEL_GUESSES
 
 GITHUB_MODELS_BASE = "https://models.github.ai"
 CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
 CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
 API_VERSION = "2024-08-01-preview"  # TODO: not sure if this is correct or should I use 2022-11-28 version
-
-UNCENSORED_MODEL_GUESSES: list[str] = ["deepseek", "grok"]
 
 
 @dataclass
@@ -50,43 +49,27 @@ class LLMModel:
             "Content-Type": "application/json",
             "X-GitHub-Api-Version": API_VERSION,
         }
-        print(conversation)
 
+        payload = {
+            "model": self.identifier,
+            "messages": conversation,
+        }
         if output_as_json:
-            payload = {
-                "model": self.identifier,
-                "messages": conversation,
-                "response_format": {"type": "json_object"},
-                "stream": True,  # INFO: if this is true, it will return chunks
-            }
-        else:
-            payload = {
-                "model": self.identifier,
-                "messages": conversation,
-                "stream": True,
-            }
+            payload["response_format"] = {"type": "json_object"}
 
-        # payload = {
-        #     "model": self.identifier,  # e.g. "openai/gpt-4.1" or "deepseek/deepseek-chat"
-        #     "messages": [
-        #         {
-        #             "role": "system",
-        #             "content": "You are an expert storytelling assistant. Reply in JSON with keys: day and outline.",
-        #         },
-        #         {
-        #             "role": "user",
-        #             "content": "Your task is to develop a new 7-day storyline... (rest of your prompt)",
-        #         },
-        #     ],
-        #     # Optional: keep only if you truly want JSON mode
-        #     "response_format": {"type": "json_object"},
-        #     # Optional: set max_tokens, temperature, etc.
-        # }
         r = requests.post(
             CHAT_COMPLETIONS_URL, headers=headers, stream=True, json=payload
         )
         r.raise_for_status()
-        print(r.json())
+        data = r.json()
+
+        # TODO: implement the case for ["response_format"] = {"type": "json_object"}
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            return ""
+
+        return content
 
 
 class ModelClassifier:
