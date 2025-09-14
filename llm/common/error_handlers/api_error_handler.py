@@ -3,7 +3,7 @@ from requests import Response
 
 
 class ApiErrorHandler:
-    # TODO: It would be nice that here I could update the model object directly
+    # TODO: FOR MOI - It would be nice that here I could update the model object directly
     # but I don't have access to it here since when this method is called, it is literally
     # in the (middle of the) process of creating the LLMModel object
     def handle_json_probing_error(self, response: Response, model_id: str) -> bool:
