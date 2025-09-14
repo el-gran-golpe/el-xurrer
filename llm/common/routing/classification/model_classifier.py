@@ -1,6 +1,8 @@
+import json
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Match, cast
 
@@ -8,6 +10,7 @@ import requests
 from loguru import logger
 
 from llm.common.api_keys import api_keys
+from llm.common.error_handlers.api_error_handler import ApiErrorHandler
 from llm.common.routing.classification.constants import UNCENSORED_MODEL_GUESSES
 from llm.utils import _clean_chain_of_thought, load_and_prepare_prompts
 from main_components.common.types import PromptItem
@@ -27,6 +30,7 @@ class LLMModel:
     elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
     quota_exhausted_datetime: str = ""  # Timestamp of when quota was exhausted
+    cooldown_quota_seconds: float
     max_input_tokens: int = 0
     max_output_tokens: int = 0
 
@@ -222,6 +226,7 @@ class ModelClassifier:
                 api_key=self.github_api_key,
                 is_quota_exhausted=False,
                 quota_exhausted_datetime="",
+                cooldown_quota_seconds=quota_exhausted_datetime - datetime.now,
                 max_input_tokens=max_input_tokens,
                 max_output_tokens=max_output_tokens,
             )
@@ -231,7 +236,7 @@ class ModelClassifier:
         headers = {
             "Authorization": f"Bearer {self.github_api_key}",
             "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": API_VERSION
+            "X-GitHub-Api-Version": API_VERSION,
         }
 
         resp = requests.get(CATALOG_URL, headers=headers, timeout=30)
@@ -277,9 +282,9 @@ class ModelClassifier:
             self.models_catalog[model_id].quota_exhausted_datetime = time.strftime(
                 "%Y-%m-%d %H:%M:%S", time.gmtime()
             )
-            logger.info("Model {} marked as quota exhausted.", model_id)
+            logger.debug("Model {} marked as quota exhausted.", model_id)
         else:
-            logger.warning(
+            logger.error(
                 "Model {} not found in catalog to mark as quota exhausted.", model_id
             )
 
@@ -306,23 +311,38 @@ class ModelClassifier:
             "response_format": {"type": "json_object"},
         }
 
-        r = requests.post(
-            CHAT_COMPLETIONS_URL,
-            headers=headers,
-            json=payload,
-        )
+        try:
+            r = requests.post(
+                CHAT_COMPLETIONS_URL,
+                headers=headers,
+                json=payload,
+                timeout=10,
+            )
 
-        if r.status_code == 200:
-            logger.debug("Model {} supports JSON response format.", model_id)
-            logger.debug("Response body: {}", r.text)
-            return True
+            if r.status_code == 200:
+                try:
+                    content = r.json()["choices"][0]["message"]["content"]
+                    ok = json.loads(content) == {
+                        "ok": True
+                    }  # exact match keeps it strict
+                    logger.debug("Model {} supports JSON response format.", model_id)
+                    return ok
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        "JSON decode error for model {}: {}. Assuming no JSON support.",
+                        model_id,
+                        e,
+                    )
+                    return False
+            else:
+                error_handler = ApiErrorHandler()
+                return error_handler.handle_json_probing_error(r, model_id)
 
-        else:
-            logger.debug(
-                "Model {} does NOT support JSON response format (status {}).",
+        except requests.exceptions.ReadTimeout as e:
+            logger.error(
+                "Timeout while checking JSON support for model {}: {}. Assuming no JSON support.",
                 model_id,
-                r.status_code,
-                r.text,
+                e,
             )
             return False
 

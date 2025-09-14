@@ -57,14 +57,6 @@ class BaseLLM:
 
 
 if __name__ == "__main__":
-    import sys
-    from pathlib import Path
-    from main_components.common.types import Platform
-
-    # Add the project root to sys.path to make modules importable
-    project_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(project_root))
-
     # Example usage: Replace with your actual paths and values
     prompt_path = Path(
         r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\meta\inputs\laura_vigne.json"
