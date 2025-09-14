@@ -1,30 +1,12 @@
 from pathlib import Path
-
-import sys
-
-
-# Add the project root to sys.path to make modules importable
-project_root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(project_root))
-
-from copy import deepcopy
-from typing import Union, Optional, Literal
-
-
-from loguru import logger
 from tqdm import tqdm
-
+from loguru import logger
 
 from llm.common.api_keys import api_keys
-from llm.common.routing.classification.model_classifier import LLMModel
-
-from llm.constants import (
-    CANNOT_ASSIST_PHRASES,
-)
-from llm.common.response import decode_json_from_message, recalculate_finish_reason
+from llm.common.response import decode_json_from_message
 from main_components.common.types import Platform
 from llm.common.routing.model_router import ModelRouter
-from llm.utils import load_and_prepare_prompts, _clean_chain_of_thought
+from llm.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 
 
@@ -40,7 +22,7 @@ class BaseLLM:
         self.previous_storyline = previous_storyline
         self.platform_name = platform_name
 
-        # Github models and OpenAI API keys
+        # GitHub models and OpenAI API keys
         self.github_api_keys: list[str] = api_keys.extract_github_keys()
         self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
 
@@ -49,10 +31,7 @@ class BaseLLM:
             github_api_keys=self.github_api_keys,
             openai_api_keys=self.openai_api_keys,
         )
-        self.model_router.initialize_model_classifiers(models_to_scan=5)
-
-        self.active_backend: Optional[Literal["openai", "azure"]] = None
-        self.using_paid_api = False
+        self.model_router.initialize_model_classifiers(models_to_scan=None)
 
     def generate_dict_from_prompts(self) -> dict:
         prompt_items: list[PromptItem] = load_and_prepare_prompts(
@@ -60,57 +39,21 @@ class BaseLLM:
             previous_storyline=self.previous_storyline,
         )
         cache: dict[str, str] = {}
-
         last_reply: str = ""
 
-        for prompt_item in tqdm(
-            prompt_items, desc="Generating text with AI", total=len(prompt_items)
+        for i, prompt_item in enumerate(
+            tqdm(prompt_items, desc="Generating text with AI", total=len(prompt_items))
         ):
             prompt_item.replace_prompt_placeholders(cache=cache)
-            
-            assistant_reply = self.model_router.get_response(
-                prompt_item=prompt_item
-            )
+
+            assistant_reply = self.model_router.get_response(prompt_item=prompt_item)
+            logger.info("Assistant reply (iteration {}): {}", i + 1, assistant_reply)
+
             if prompt_item.cache_key:
                 cache[prompt_item.cache_key] = assistant_reply
             last_reply = assistant_reply
 
-            # If the model was exhausted, mark it as such
         return decode_json_from_message(message=last_reply)
-
-    # def _get_response_stream(
-    #     self,
-    #     conversation: list[dict[str, str]],
-    #     model: LLMModel,
-    #     options: RequestOptions,
-    #     use_paid_api: bool = False,
-    #     stream_response: bool = True,
-    # ) -> Iterable[ResponseChunk]:
-    # additional_params: dict[str, Any] = {}
-    # if options.as_json:
-    #     additional_params["response_format"] = {"type": "json_object"}
-    # try:
-    #     stream = invoke_backend(
-    #         conversation=conversation,
-    #         model=model.identifier,
-    #         use_paid_api=use_paid_api,
-    #         stream_response=stream_response,
-    #         additional_params=additional_params,
-    #         github_api_keys=self.github_api_keys,
-    #         openai_api_keys=self.openai_api_keys,
-    #     )
-    # except Exception as e:
-    #     logger.warning("API error encountered: {}. Delegating to handler.", e)
-    #     stream = handle_api_error(
-    #         e=e,
-    #         conversation=conversation,
-    #         model=model,
-    #         use_paid_api=use_paid_api,
-    #         stream_response=stream_response,
-    #         options=options,
-    #         get_stream_callable=self._get_response_stream,
-    #     )
-    # return stream
 
 
 if __name__ == "__main__":

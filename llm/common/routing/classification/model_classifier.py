@@ -1,24 +1,16 @@
 import re
-import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Match, cast
 
 import requests
-from pathlib import Path
 from loguru import logger
 
-
-# --- Ensure project root (containing 'llm') is on sys.path when run as a script ---
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-# --- end sys.path setup ---
-
-from llm.utils import _clean_chain_of_thought, load_and_prepare_prompts
-from main_components.common.types import PromptItem
 from llm.common.api_keys import api_keys
 from llm.common.routing.classification.constants import UNCENSORED_MODEL_GUESSES
+from llm.utils import _clean_chain_of_thought, load_and_prepare_prompts
+from main_components.common.types import PromptItem
 
 GITHUB_MODELS_BASE = "https://models.github.ai"
 CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
@@ -320,8 +312,6 @@ class ModelClassifier:
             json=payload,
         )
 
-        # TODO: I have the suspicion that this is wrong and I should call the Github api through ChatCompletionsClient
-
         if r.status_code == 200:
             logger.debug("Model {} supports JSON response format.", model_id)
             logger.debug("Response body: {}", r.text)
@@ -334,7 +324,6 @@ class ModelClassifier:
                 r.status_code,
                 r.text,
             )
-
             return False
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---

@@ -21,7 +21,10 @@ class ModelRouter:
             ModelClassifier(k) for k in self.github_api_keys
         ]
 
-    def initialize_model_classifiers(self, models_to_scan: Optional[int]) -> None:
+    def initialize_model_classifiers(
+        self,
+        models_to_scan: Optional[int] = None,  # None means scan all
+    ) -> None:
         for classifier in self.github_classifiers:
             classifier.populate_models_catalog(models_to_scan=models_to_scan)
 
@@ -54,7 +57,6 @@ class ModelRouter:
         for classifier in self.github_classifiers:
             classifier.mark_model_as_quota_exhausted(model)
 
-
     def get_response(self, prompt_item: PromptItem) -> str:
         model = self.get_best_available_model(prompt_item=prompt_item)
         conversation = [
@@ -62,14 +64,13 @@ class ModelRouter:
             {"role": "user", "content": prompt_item.prompt},
         ]
         output_as_json = prompt_item.output_as_json
-        
+
         # TODO: get_model_response should return a response or raise an exception that the model router can handle
-        assistant_reply, finish_reason = model.get_model_response(conversation, output_as_json)
+        assistant_reply, finish_reason = model.get_model_response(
+            conversation, output_as_json
+        )
 
-        
         return assistant_reply
-
-
 
 
 if __name__ == "__main__":
@@ -86,7 +87,9 @@ if __name__ == "__main__":
         previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
     )
     router = ModelRouter(github_api_keys, openai_api_keys)
-    router.initialize_model_classifiers(models_to_scan=5)  # TODO make sure this ends if we scan everything
+    router.initialize_model_classifiers(
+        models_to_scan=5
+    )  # TODO make sure this ends if we scan everything
     # catalog = router.fetch_github_models_catalog()
     best = router.get_best_available_model(prompt_items[0])
     logger.success("BEST MODEL: {}", best)
