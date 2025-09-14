@@ -124,7 +124,7 @@ class LLMModel:
     ) -> str:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/json",
+            "Accept": "application/vnd.github+json",
             "Content-Type": "application/json",
             "X-GitHub-Api-Version": API_VERSION,
         }
@@ -229,9 +229,9 @@ class ModelClassifier:
 
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": API_VERSION,
             "Authorization": f"Bearer {self.github_api_key}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": API_VERSION
         }
 
         resp = requests.get(CATALOG_URL, headers=headers, timeout=30)
@@ -293,7 +293,7 @@ class ModelClassifier:
         # INFO: API_VERSION might be a mandatory parameter in order to use response_format feature
         headers = {
             "Authorization": f"Bearer {self.github_api_key}",
-            "Accept": "application/json",
+            "Accept": "application/vnd.github+json",
             "Content-Type": "application/json",
             "X-GitHub-Api-Version": API_VERSION,
         }
