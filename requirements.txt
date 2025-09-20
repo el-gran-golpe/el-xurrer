@@ -1,35 +1,11 @@
-
 loguru
-diffusers
-accelerate
-sentencepiece
 tqdm
-openai-whisper
-#wave
-pytorch-lightning
-pedalboard
-pesq
-wand
-wandb
-kaiser
-gradio_client
-proxy-spinner
-python-slugify
-moviepy==1.0.3
-pysrt
-openai
 python-dotenv
-pydub
-azure-ai-inference
-numpy
-nltk
 seleniumbase
 cloudscraper
 requests
 typer
 pydantic
-httpx[socks]
-python-socks[asyncio]
 websocket-client
 pynput
 pydantic-settings
@@ -38,7 +14,7 @@ google-auth-oauthlib
 plotly
 
 # Only for Windows
-ftfy; sys_platform == 'win32'
+#ftfy; sys_platform == 'win32'
 
 # Pre-commit hooks
 pre-commit
