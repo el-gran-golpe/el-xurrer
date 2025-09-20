@@ -2,18 +2,21 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Match, cast
 
 import requests
+from requests import HTTPError
 from loguru import logger
+from time import sleep
 
 from llm.common.api_keys import api_keys
 from llm.common.error_handlers.api_error_handler import ApiErrorHandler
 from llm.common.routing.classification.constants import UNCENSORED_MODEL_GUESSES
 from llm.utils import _clean_chain_of_thought, load_and_prepare_prompts
 from main_components.common.types import PromptItem
+from llm.common.error_handlers.exceptions import RateLimitError
 
 GITHUB_MODELS_BASE = "https://models.github.ai"
 CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
@@ -27,10 +30,10 @@ class LLMModel:
     supports_json_format: bool
     is_censored: bool
     api_key: str
+    exhausted_until_datetime: datetime
+    quota_exhausted_cooldown_seconds: int
     elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
-    quota_exhausted_datetime: str = ""  # Timestamp of when quota was exhausted
-    cooldown_quota_seconds: float
     max_input_tokens: int = 0
     max_output_tokens: int = 0
 
@@ -137,34 +140,27 @@ class LLMModel:
             "messages": conversation,
             **({"response_format": {"type": "json_object"}} if output_as_json else {}),
         }
-        try:
-            r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
-            r.raise_for_status()
-        except requests.HTTPError as http_err:
-            # INFO: 429 is the status code for rate limit exceeded.
-            # This probably means that I have exceeded the UserByModelByQuota and I have to wait
-            # around 2.5 hours for this particular model to be reset.
-            if r.status_code == 429:
-                self.is_quota_exhausted = True
-                self.quota_exhausted_datetime = time.strftime(
-                    "%Y-%m-%d %H:%M:%S", time.gmtime()
-                )
-                logger.warning(
-                    "Model {} quota exhausted at {}.",
-                    self.identifier,
-                    self.quota_exhausted_datetime,
-                )
-            else:
-                # TODO: what the hell copilot?
-                logger.error(
-                    "HTTP error occurred for model {}: {} - {}",
-                    self.identifier,
-                    r.status_code,
-                    r.text,
-                )
-            raise http_err
 
-        data = r.json()
+        data = None
+        for attempt in range(3):
+            try:
+                r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
+                data = r.json()
+                if r.status_code != 200:
+                    raise ApiErrorHandler().transform_json_probing_error_to_exception(
+                        r, self.identifier
+                    )
+            except RateLimitError as e:
+                cooldown_seconds = e.cooldown_seconds
+                logger.warning(
+                    "Model {} quota exhausted. Sleeping for Cooldown seconds: {}",
+                    self.identifier,
+                    cooldown_seconds,
+                )
+                sleep(cooldown_seconds)
+                if attempt == 2:
+                    raise
+                continue
 
         # TODO: implement the case for ["response_format"] = {"type": "json_object"}
         try:
@@ -191,6 +187,7 @@ class ModelClassifier:
         self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[str, LLMModel] = {}
+        self.error_handler = ApiErrorHandler()
 
     def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
         output_as_json = prompt_item.output_as_json
@@ -217,18 +214,57 @@ class ModelClassifier:
         models = self.github_free_catalog
         for model in models[0:models_to_scan]:
             model_id = model.get("id")
+            if model_id is None:
+                continue
+
             max_input_tokens = model.get("limits", {}).get("max_input_tokens", 0)
             max_output_tokens = model.get("limits", {}).get("max_output_tokens", 0)
+
+            llm_model_params = {
+                "supports_json_format": False,
+                "is_censored": self._is_model_censored(model_id),
+                "api_key": self.github_api_key,
+                "exhausted_until_datetime": None,
+                "quota_exhausted_cooldown_seconds": 20,  # Who knows??
+                "elo": 1.0,
+                "is_quota_exhausted": False,  # To track rate limit exhaustion
+                "max_input_tokens": max_input_tokens,
+                "max_output_tokens": max_output_tokens,
+            }
+            try:
+                llm_model_params["supports_json_format"] = (
+                    self._supports_json_response_format(model_id)
+                )
+            except RateLimitError as e:
+                # TODO: handle this errors on the job that will check for new models or models that are not in our catalog
+                logger.warning(
+                    "Model {} quota exhausted while probing JSON support. Cooldown seconds: {}",
+                    model_id,
+                    e.cooldown_seconds,
+                )
+                continue
+                # llm_model_params["is_quota_exhausted"] = True
+                # llm_model_params["quota_exhausted_cooldown_seconds"] = e.cooldown_seconds
+                # llm_model_params["exhausted_until_datetime"] = datetime.now() + timedelta(seconds=e.cooldown_seconds)
+                # logger.warning("Model {} quota exhausted while probing JSON support. Cooldown seconds: {}", model_id, e.cooldown_seconds)
+            except HTTPError as e:
+                logger.error(
+                    "HTTP error while probing JSON support for model {}: {}",
+                    model_id,
+                    e,
+                )
+                # TODO: If it's a 400 try to merge system prompt and prompt together.
+                continue
+            except Exception as e:
+                logger.error(
+                    "Error while probing JSON support for model {}: {}", model_id, e
+                )
+                # TODO: Study those errors
+                continue
+
             self.models_catalog[model_id] = LLMModel(
                 identifier=model_id,
-                supports_json_format=self._supports_json_response_format(model_id),
-                is_censored=self._is_model_censored(model_id),
-                api_key=self.github_api_key,
-                is_quota_exhausted=False,
-                quota_exhausted_datetime="",
-                cooldown_quota_seconds=quota_exhausted_datetime - datetime.now,
-                max_input_tokens=max_input_tokens,
-                max_output_tokens=max_output_tokens,
+                **llm_model_params,
             )
         # self._build_llm_arena_scoreboard_intersection() # TODO: this method should get the elos for the models in the leaderboard and update the model catalog with the current elo
 
@@ -279,7 +315,7 @@ class ModelClassifier:
     def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
             self.models_catalog[model_id].is_quota_exhausted = True
-            self.models_catalog[model_id].quota_exhausted_datetime = time.strftime(
+            self.models_catalog[model_id].quota_exhausted_timestamp = time.strftime(
                 "%Y-%m-%d %H:%M:%S", time.gmtime()
             )
             logger.debug("Model {} marked as quota exhausted.", model_id)
@@ -311,40 +347,57 @@ class ModelClassifier:
             "response_format": {"type": "json_object"},
         }
 
-        try:
-            r = requests.post(
-                CHAT_COMPLETIONS_URL,
-                headers=headers,
-                json=payload,
-                timeout=10,
-            )
+        for attempt in range(3):
+            try:
+                r = requests.post(
+                    CHAT_COMPLETIONS_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=20,
+                )
 
-            if r.status_code == 200:
-                try:
-                    content = r.json()["choices"][0]["message"]["content"]
-                    ok = json.loads(content) == {
-                        "ok": True
-                    }  # exact match keeps it strict
-                    logger.debug("Model {} supports JSON response format.", model_id)
-                    return ok
-                except json.JSONDecodeError as e:
-                    logger.error(
-                        "JSON decode error for model {}: {}. Assuming no JSON support.",
-                        model_id,
-                        e,
+                if r.status_code == 200:
+                    try:
+                        content = r.json()["choices"][0]["message"]["content"]
+                        ok = json.loads(content) == {
+                            "ok": True
+                        }  # exact match keeps it strict
+                        logger.debug(
+                            "Model {} supports JSON response format.", model_id
+                        )
+                        return ok
+                    except json.JSONDecodeError as e:
+                        logger.error(
+                            "JSON decode error for model {}: {}. Assuming no JSON support.",
+                            model_id,
+                            e,
+                        )
+                        return False
+                else:
+                    raise self.error_handler.transform_json_probing_error_to_exception(
+                        r, model_id
                     )
-                    return False
-            else:
-                error_handler = ApiErrorHandler()
-                return error_handler.handle_json_probing_error(r, model_id)
 
-        except requests.exceptions.ReadTimeout as e:
-            logger.error(
-                "Timeout while checking JSON support for model {}: {}. Assuming no JSON support.",
-                model_id,
-                e,
-            )
-            return False
+            except requests.exceptions.ReadTimeout:
+                raise
+            except RateLimitError as e:
+                cooldown_seconds = e.cooldown_seconds
+                if cooldown_seconds < 30:
+                    sleep(cooldown_seconds)
+                    continue
+                else:
+                    logger.error(
+                        "Model {} quota exhausted while probing JSON support. Cooldown seconds: {}",
+                        model_id,
+                        cooldown_seconds,
+                    )
+                    raise
+
+        logger.error(
+            "Model {} JSON support probing failed after 3 attempts. Assuming no JSON support.",
+            model_id,
+        )
+        return False
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
 
