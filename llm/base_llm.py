@@ -32,6 +32,7 @@ class BaseLLM:
             github_api_keys=self.github_api_keys,
             openai_api_keys=self.openai_api_keys,
         )
+        # None means scan all available models
         self.model_router.initialize_model_classifiers(models_to_scan=None)
 
     def generate_dict_from_prompts(self) -> dict:

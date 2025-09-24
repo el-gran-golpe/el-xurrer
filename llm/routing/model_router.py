@@ -1,9 +1,6 @@
-from pathlib import Path
 from typing import Optional
 
-from llm import api_keys
 from llm.routing.classification.model_classifier import ModelClassifier, LLMModel
-from llm.utils.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from loguru import logger
 
@@ -16,7 +13,7 @@ class ModelRouter:
     ):
         self.github_api_keys = github_api_keys
         self.openai_api_keys = openai_api_keys
-        # Multiple classifiers (one per GitHub key)
+        # Each ModelsClassifier is tied to a specific GitHub API key
         self.github_classifiers: list[ModelClassifier] = [
             ModelClassifier(k) for k in self.github_api_keys
         ]

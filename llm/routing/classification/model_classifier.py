@@ -31,6 +31,9 @@ class LLMModel:
     is_censored: bool
     api_key: str
     exhausted_until_datetime: datetime
+    # cooldown_until: datetime
+    # last_error: str
+    # last_checked_at: datetime
     quota_exhausted_cooldown_seconds: int
     elo: float = 1.0  # Hypothetical IQ score for ranking purposes
     is_quota_exhausted: bool = False  # To track rate limit exhaustion
@@ -183,10 +186,7 @@ class ModelClassifier:
                     e.cooldown_seconds,
                 )
                 continue
-                # llm_model_params["is_quota_exhausted"] = True
-                # llm_model_params["quota_exhausted_cooldown_seconds"] = e.cooldown_seconds
-                # llm_model_params["exhausted_until_datetime"] = datetime.now() + timedelta(seconds=e.cooldown_seconds)
-                # logger.warning("Model {} quota exhausted while probing JSON support. Cooldown seconds: {}", model_id, e.cooldown_seconds)
+
             except HTTPError as e:
                 logger.error(
                     "HTTP error while probing JSON support for model {}: {}",
