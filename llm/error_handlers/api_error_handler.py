@@ -1,7 +1,7 @@
 from loguru import logger
 from requests import Response, HTTPError
 
-from llm.common.error_handlers.exceptions import RateLimitError
+from llm.error_handlers.exceptions import RateLimitError
 
 
 class ApiErrorHandler:

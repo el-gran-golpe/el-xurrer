@@ -2,7 +2,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Match, cast
 
@@ -11,12 +11,12 @@ from requests import HTTPError
 from loguru import logger
 from time import sleep
 
-from llm.common.api_keys import api_keys
-from llm.common.error_handlers.api_error_handler import ApiErrorHandler
-from llm.common.routing.classification.constants import UNCENSORED_MODEL_GUESSES
-from llm.utils import _clean_chain_of_thought, load_and_prepare_prompts
+from llm import api_keys
+from llm.error_handlers.api_error_handler import ApiErrorHandler
+from llm.routing.classification.constants import UNCENSORED_MODEL_GUESSES
+from llm.utils.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
-from llm.common.error_handlers.exceptions import RateLimitError
+from llm.error_handlers.exceptions import RateLimitError
 
 GITHUB_MODELS_BASE = "https://models.github.ai"
 CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
@@ -56,71 +56,9 @@ class LLMModel:
 
         finish_reason = None
 
-        # TODO: Use ModelRouter
-        # non_exhausted = [m for m in selected_models if m not in self.exhausted_models]
-        # used_model = non_exhausted[0] if non_exhausted else selected_models[0]
-        # # TODO: Use ModelRouter
-        # if (
-        #     not (used_model.startswith("gpt-") or used_model.startswith("o1"))
-        #     and finish_reason is None
-        # ):
-        #     logger.debug(
-        #         "Model {} did not return finish reason. Assuming stop", used_model
-        #     )
-        #     finish_reason = "stop"
-
-        assistant_reply = _clean_chain_of_thought(
-            model=self.identifier, assistant_reply=assistant_reply
-        )
-
-        # if finish_reason == "stop" and options.validate:
-        #     try:
-        #         finish_reason, assistant_reply = recalculate_finish_reason(
-        #             assistant_reply=assistant_reply,
-        #             get_model_response_callable=lambda **k: self._get_model_response(
-        #                 **k
-        #             ),
-        #             preferred_validation_models=self.preferred_validation_models,
-        #         )
-        #     except Exception:
-        #         logger.warning(
-        #             "Validation finish_reason failed; proceeding with current reply"
-        #         )
-        #
-        # if finish_reason is None:
-        #     raise RuntimeError("Finish reason not found for model response")
-        #
-        # if any(
-        #     cant_assist.lower() in assistant_reply.lower()
-        #     for cant_assist in CANNOT_ASSIST_PHRASES
-        # ):
-        #     if len(models) <= 1:
-        #         raise RuntimeError("No models left to assist with prompt.")
-        #     logger.warning(
-        #         "Assistant cannot assist; trying next model(s): {}", models[1:]
-        #     )
-        #     models = models[1:]
-        #     # continue
-        #
-        # if finish_reason == "length":
-        #     logger.info("Finish reason 'length' encountered; continuing conversation")
-        #     conversation = deepcopy(conversation)
-        #     conversation.append({"role": "assistant", "content": assistant_reply})
-        #     conversation.append(
-        #         {"role": "user", "content": "Continue EXACTLY where we left off"}
-        #     )
-        #     # continue
-        # # TODO: Use ModelRouter
-        # if finish_reason == "content_filter":
-        #     if len(models) <= 1:
-        #         raise RuntimeError(
-        #             "No more models to retry after content_filter finish reason"
-        #         )
-        #     models = models[1:]
-        #     # continue
-        #
-        # if finish_reason != "stop":
-        #     raise AssertionError(f"Unexpected finish reason: {finish_reason}")
+        # assistant_reply = _clean_chain_of_thought(
+        #     model=self.identifier, assistant_reply=assistant_reply
+        # )
 
         return assistant_reply, finish_reason
 
@@ -212,6 +150,7 @@ class ModelClassifier:
 
     def populate_models_catalog(self, models_to_scan: Optional[int]):
         models = self.github_free_catalog
+
         for model in models[0:models_to_scan]:
             model_id = model.get("id")
             if model_id is None:
@@ -231,6 +170,7 @@ class ModelClassifier:
                 "max_input_tokens": max_input_tokens,
                 "max_output_tokens": max_output_tokens,
             }
+
             try:
                 llm_model_params["supports_json_format"] = (
                     self._supports_json_response_format(model_id)

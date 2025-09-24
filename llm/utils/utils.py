@@ -1,9 +1,7 @@
 import json
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from llm.constants import MODELS_INCLUDING_CHAIN_THOUGHT
 from main_components.common.types import PromptItem
 
 
@@ -68,29 +66,10 @@ def load_and_prepare_prompts(
 
     return formatted_items
 
-    # # Load as dicts
-    # prompts = payload["prompts"]
-    # day = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
-    #
-    # # TODO: this previous_storyline in the first one should be checked in profile.py
-    # if prompts and previous_storyline:
-    #     if "{previous_storyline}" in prompts[0].get("prompt", ""):
-    #         prompts[0]["prompt"] = prompts[0]["prompt"].format(
-    #             previous_storyline=previous_storyline
-    #         )
-    #
-    # for p in prompts:
-    #     if "system_prompt" in p and "{day}" in p["system_prompt"]:
-    #         p["system_prompt"] = p["system_prompt"].format(day=day)
-    #
-    # # Convert to PromptItem models
-    # prompt_items = [PromptItem.model_validate(p) for p in prompts]
-    # return prompt_items
 
-
-def _clean_chain_of_thought(model: str, assistant_reply: str) -> str:
-    if model in MODELS_INCLUDING_CHAIN_THOUGHT:
-        return re.sub(
-            r"<think>.*?</think>", "", assistant_reply, flags=re.DOTALL
-        ).strip()
-    return assistant_reply
+# def _clean_chain_of_thought(model: str, assistant_reply: str) -> str:
+#     if model in MODELS_INCLUDING_CHAIN_THOUGHT:
+#         return re.sub(
+#             r"<think>.*?</think>", "", assistant_reply, flags=re.DOTALL
+#         ).strip()
+#     return assistant_reply

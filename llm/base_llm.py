@@ -2,12 +2,13 @@ from pathlib import Path
 from tqdm import tqdm
 from loguru import logger
 
-from llm.common.api_keys import api_keys
-from llm.common.response import decode_json_from_message
+from llm.api_keys import api_keys
+from llm.utils.response import decode_json_from_message
 from main_components.common.types import Platform
-from llm.common.routing.model_router import ModelRouter
-from llm.utils import load_and_prepare_prompts
+from llm.routing.model_router import ModelRouter
+from llm.utils.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
+
 
 
 class BaseLLM:
@@ -41,13 +42,13 @@ class BaseLLM:
         cache: dict[str, str] = {}
         last_reply: str = ""
 
-        for i, prompt_item in enumerate(
-            tqdm(prompt_items, desc="Generating text with AI", total=len(prompt_items))
+        for prompt_item in tqdm(
+            prompt_items, desc="Generating text with AI", total=len(prompt_items)
         ):
             prompt_item.replace_prompt_placeholders(cache=cache)
 
             assistant_reply = self.model_router.get_response(prompt_item=prompt_item)
-            logger.info("Assistant reply (iteration {}): {}", i + 1, assistant_reply)
+            logger.info("Assistant reply: {}", assistant_reply)
 
             if prompt_item.cache_key:
                 cache[prompt_item.cache_key] = assistant_reply
