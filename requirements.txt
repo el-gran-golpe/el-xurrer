@@ -12,6 +12,7 @@ pydantic-settings
 google-api-python-client
 google-auth-oauthlib
 plotly
+python-slugify
 
 # Only for Windows
 #ftfy; sys_platform == 'win32'
