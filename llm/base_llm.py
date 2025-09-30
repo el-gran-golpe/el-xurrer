@@ -61,7 +61,8 @@ class BaseLLM:
 if __name__ == "__main__":
     # Example usage: Replace with your actual paths and values
     prompt_path = Path(
-        r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\meta\inputs\laura_vigne.json"
+        # r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\meta\inputs\laura_vigne.json"
+        "/home/yoncarlosmaria/Desktop/repos/el-xurrer/resources/laura_vigne/meta/inputs/laura_vigne.json"
     )  # Update to a valid prompt JSON file path
     storyline = "Once upon a time..."
     platform = Platform.META  # Update to the desired platform

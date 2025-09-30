@@ -13,15 +13,15 @@ from time import sleep
 
 from llm import api_keys
 from llm.error_handlers.api_error_handler import ApiErrorHandler
-from llm.routing.classification.constants import UNCENSORED_MODEL_GUESSES
+from llm.routing.classification.constants import (
+    UNCENSORED_MODEL_GUESSES,
+    API_VERSION,
+    CATALOG_URL,
+    CHAT_COMPLETIONS_URL,
+)
 from llm.utils.utils import load_and_prepare_prompts
 from main_components.common.types import PromptItem
 from llm.error_handlers.exceptions import RateLimitError
-
-GITHUB_MODELS_BASE = "https://models.github.ai"
-CATALOG_URL = f"{GITHUB_MODELS_BASE}/catalog/models"
-CHAT_COMPLETIONS_URL = f"{GITHUB_MODELS_BASE}/inference/chat/completions"
-API_VERSION = "2024-08-01-preview"  # TODO: not sure if this is correct or should I use 2022-11-28 version
 
 
 @dataclass
@@ -44,26 +44,16 @@ class LLMModel:
         self,
         conversation: list[dict[str, str]],
         output_as_json: bool,
-    ) -> tuple[str, str]:
+    ) -> str:
         logger.info("Using model: {}", self.identifier)
-
-        try:
-            assistant_reply = self.get_response_from_github_models(
-                conversation=conversation,
-                output_as_json=output_as_json,
-            )
-
-        except Exception:
-            # Here it was use handle_api_error, but we want to handle those errors using the Model router somehow
-            raise
-
-        finish_reason = None
-
+        assistant_reply = self.get_response_from_github_models(
+            conversation=conversation,
+            output_as_json=output_as_json,
+        )
         # assistant_reply = _clean_chain_of_thought(
         #     model=self.identifier, assistant_reply=assistant_reply
         # )
-
-        return assistant_reply, finish_reason
+        return assistant_reply
 
     def get_response_from_github_models(
         self,
@@ -128,7 +118,7 @@ class ModelClassifier:
         self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[str, LLMModel] = {}
-        self.error_handler = ApiErrorHandler()
+        self.api_error_handler = ApiErrorHandler()
 
     def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
         output_as_json = prompt_item.output_as_json
@@ -156,11 +146,12 @@ class ModelClassifier:
 
         for model in models[0:models_to_scan]:
             model_id = model.get("id")
-            if model_id is None:
-                continue
 
-            max_input_tokens = model.get("limits", {}).get("max_input_tokens", 0)
-            max_output_tokens = model.get("limits", {}).get("max_output_tokens", 0)
+            if model_id is None:
+                 continue
+
+            max_input_tokens = model.get("limits", {}).get("max_input_tokens")
+            max_output_tokens = model.get("limits", {}).get("max_output_tokens")
 
             llm_model_params = {
                 "supports_json_format": False,
@@ -178,8 +169,10 @@ class ModelClassifier:
                 llm_model_params["supports_json_format"] = (
                     self._supports_json_response_format(model_id)
                 )
+
+            # INFO: I want to encapsulate the exceptions on its own class handler, but I think is going to
+            # be harder, so I will leave it like this for now.
             except RateLimitError as e:
-                # TODO: handle this errors on the job that will check for new models or models that are not in our catalog
                 logger.warning(
                     "Model {} quota exhausted while probing JSON support. Cooldown seconds: {}",
                     model_id,
@@ -187,19 +180,20 @@ class ModelClassifier:
                 )
                 continue
 
+            # TODO: If it's a 400 try to merge system prompt and prompt together
             except HTTPError as e:
                 logger.error(
                     "HTTP error while probing JSON support for model {}: {}",
                     model_id,
                     e,
                 )
-                # TODO: If it's a 400 try to merge system prompt and prompt together.
                 continue
+
+            # TODO: Study those errors
             except Exception as e:
                 logger.error(
                     "Error while probing JSON support for model {}: {}", model_id, e
                 )
-                # TODO: Study those errors
                 continue
 
             self.models_catalog[model_id] = LLMModel(
@@ -314,7 +308,7 @@ class ModelClassifier:
                         )
                         return False
                 else:
-                    raise self.error_handler.transform_json_probing_error_to_exception(
+                    raise self.api_error_handler.transform_json_probing_error_to_exception(
                         r, model_id
                     )
 

@@ -61,13 +61,9 @@ class ModelRouter:
             {"role": "user", "content": prompt_item.prompt},
         ]
         output_as_json = prompt_item.output_as_json
-
         # TODO: get_model_response should return a response or raise an exception that the model router can handle
-        assistant_reply, finish_reason = model.get_model_response(
-            conversation, output_as_json
-        )
+        return model.get_model_response(conversation, output_as_json)
 
-        return assistant_reply
 
 
 # if __name__ == "__main__":
