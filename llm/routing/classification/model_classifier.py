@@ -1,9 +1,6 @@
 import json
 import re
 import time
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
 from typing import Optional, Match, cast
 
 import requests
@@ -11,7 +8,6 @@ from requests import HTTPError
 from loguru import logger
 from time import sleep
 
-from llm import api_keys
 from llm.error_handlers.api_error_handler import ApiErrorHandler
 from llm.routing.classification.constants import (
     UNCENSORED_MODEL_GUESSES,
@@ -19,94 +15,16 @@ from llm.routing.classification.constants import (
     CATALOG_URL,
     CHAT_COMPLETIONS_URL,
 )
-from llm.utils.utils import load_and_prepare_prompts
+from llm.routing.classification.llm_model import LLMModel
 from main_components.common.types import PromptItem
 from llm.error_handlers.exceptions import RateLimitError
 
 
-@dataclass
-class LLMModel:
-    identifier: str
-    supports_json_format: bool
-    is_censored: bool
-    api_key: str
-    exhausted_until_datetime: datetime
-    # cooldown_until: datetime
-    # last_error: str
-    # last_checked_at: datetime
-    quota_exhausted_cooldown_seconds: int
-    elo: float = 1.0  # Hypothetical IQ score for ranking purposes
-    is_quota_exhausted: bool = False  # To track rate limit exhaustion
-    max_input_tokens: int = 0
-    max_output_tokens: int = 0
-
-    def get_model_response(
-        self,
-        conversation: list[dict[str, str]],
-        output_as_json: bool,
-    ) -> str:
-        logger.info("Using model: {}", self.identifier)
-        assistant_reply = self.get_response_from_github_models(
-            conversation=conversation,
-            output_as_json=output_as_json,
-        )
-        # assistant_reply = _clean_chain_of_thought(
-        #     model=self.identifier, assistant_reply=assistant_reply
-        # )
-        return assistant_reply
-
-    def get_response_from_github_models(
-        self,
-        conversation: list[dict[str, str]],
-        output_as_json: bool,
-    ) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": API_VERSION,
-        }
-        payload = {
-            "model": self.identifier,
-            "messages": conversation,
-            **({"response_format": {"type": "json_object"}} if output_as_json else {}),
-        }
-
-        data = None
-        for attempt in range(3):
-            try:
-                r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
-                data = r.json()
-                if r.status_code != 200:
-                    raise ApiErrorHandler().transform_json_probing_error_to_exception(
-                        r, self.identifier
-                    )
-            except RateLimitError as e:
-                cooldown_seconds = e.cooldown_seconds
-                logger.warning(
-                    "Model {} quota exhausted. Sleeping for Cooldown seconds: {}",
-                    self.identifier,
-                    cooldown_seconds,
-                )
-                sleep(cooldown_seconds)
-                if attempt == 2:
-                    raise
-                continue
-
-        # TODO: implement the case for ["response_format"] = {"type": "json_object"}
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError):
-            return ""
-
-        return content
-
-
 class ModelClassifier:
     """
-    This class classifies models based on: IQ, json schema.
+    This class classifies models based on: elo, json schema and censorship.
     This class should return a ranking of models available for a particular GitHub API key:
-    that is, it should return a dict of models, where the keys of this dict is IQ, json schema and
+    that is, it should return a dict of models, where the keys of this dict is elo, json schema and
     if it is censored or uncensored.
     """
 
@@ -153,6 +71,7 @@ class ModelClassifier:
             max_input_tokens = model.get("limits", {}).get("max_input_tokens")
             max_output_tokens = model.get("limits", {}).get("max_output_tokens")
 
+            # Default values if not provided for a LLMModel
             llm_model_params = {
                 "supports_json_format": False,
                 "is_censored": self._is_model_censored(model_id),
@@ -312,8 +231,6 @@ class ModelClassifier:
                         r, model_id
                     )
 
-            except requests.exceptions.ReadTimeout:
-                raise
             except RateLimitError as e:
                 cooldown_seconds = e.cooldown_seconds
                 if cooldown_seconds < 30:
@@ -327,10 +244,7 @@ class ModelClassifier:
                     )
                     raise
 
-        logger.error(
-            "Model {} JSON support probing failed after 3 attempts. Assuming no JSON support.",
-            model_id,
-        )
+        # Fallback: if both attempts failed without raising, assume no JSON support
         return False
 
     # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
@@ -420,16 +334,3 @@ class ModelClassifier:
 
         return None
 
-
-if __name__ == "__main__":
-    github_api_keys = api_keys.extract_github_keys()
-    prompt_items: list[PromptItem] = load_and_prepare_prompts(
-        prompt_json_template_path=Path(
-            # r"C:\Users\Usuario\source\repos\shared-with-haru\el-xurrer\resources\laura_vigne\fanvue\inputs\laura_vigne.json"
-            "/home/moises/repos/gg2/el-xurrer/resources/laura_vigne/fanvue/inputs/laura_vigne.json"
-        ),
-        previous_storyline="Laura Vigne commited taux fraud and moved to Switzerland.",
-    )
-    # --- Instantiate classifier and build intersection scoreboard ---
-    mc = ModelClassifier(github_api_key=github_api_keys[0])
-    mc._build_llm_arena_scoreboard_intersection()
