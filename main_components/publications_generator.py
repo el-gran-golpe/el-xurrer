@@ -56,7 +56,7 @@ class DirectoryManager:
                     caption_text = post.get("caption", "").strip()
                     hashtags = post.get("hashtags", [])
                     if hashtags:
-                        caption_text = f"{caption_text}\n{' '.join(hashtags)}"
+                        caption_text = f"{caption_text}\n{''.join(hashtags)}"
                     captions.append(caption_text)
                 (day_folder / "captions.txt").write_text(
                     "\n\n".join(captions), encoding="utf-8"

@@ -12,6 +12,9 @@ from loguru import logger
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 
+from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
+
 
 class GDriveSettings(BaseSettings):
     client_id: str
@@ -63,33 +66,52 @@ class GoogleDriveSync:
         self._upload_folder(service, src, self.folder_id)
         logger.success("Local → Google Drive sync complete: {}", src)
 
+    # TODO: check that this has no vulnerabilities
     def _get_drive_service(self):
-        """Authenticate (or load cached token) and return Drive v3 client."""
+        """Authenticate (or load cached token), auto-refresh if expired, and return Drive v3 client."""
         creds = None
         try:
+            # Load cached credentials if present
             if self.token_path.exists():
                 with open(self.token_path, "rb") as f:
                     creds = pickle.load(f)
-            else:
-                config = {
-                    "installed": {
-                        "client_id": self.settings.client_id,
-                        "client_secret": self.settings.client_secret,
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token",
-                        "redirect_uris": [
-                            "urn:ietf:wg:oauth2:2.0:oob",
-                            "http://localhost",
-                        ],
+
+            # If no creds or invalid, try to refresh; otherwise do interactive auth
+            if not creds or not creds.valid:
+                if creds and creds.expired and getattr(creds, "refresh_token", None):
+                    try:
+                        creds.refresh(
+                            Request()
+                        )  # auto-renews access token using the refresh token
+                        logger.debug("Refreshed access token")
+                    except RefreshError:
+                        logger.warning("Token refresh failed; falling back to re-auth")
+                        creds = None  # force re-auth below
+
+                if not creds or not creds.valid:
+                    # Build an InstalledApp flow (OOB is deprecated—use localhost redirect)
+                    config = {
+                        "installed": {
+                            "client_id": self.settings.client_id,
+                            "client_secret": self.settings.client_secret,
+                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "redirect_uris": [
+                                "http://localhost"
+                            ],  # no 'urn:ietf:wg:oauth2:2.0:oob'
+                        }
                     }
-                }
-                flow = InstalledAppFlow.from_client_config(config, self.SCOPES)
-                creds = flow.run_local_server(port=0)
-                self.token_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.token_path, "wb") as f:
-                    pickle.dump(creds, f)
-                logger.debug("Saved new token to {}", self.token_path)
+                    flow = InstalledAppFlow.from_client_config(config, self.SCOPES)
+                    # This opens a browser once; tokens (incl. refresh_token) are saved to disk
+                    creds = flow.run_local_server(port=0)
+
+            # Persist (new or refreshed) credentials
+            self.token_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.token_path, "wb") as f:
+                pickle.dump(creds, f)
+
             return build("drive", "v3", credentials=creds)
+
         except Exception:
             logger.exception("Failed to obtain Drive service")
             raise
