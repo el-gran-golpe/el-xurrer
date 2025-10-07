@@ -2,7 +2,7 @@ import typer
 from pathlib import Path
 from typing import Optional
 
-from scripts.sync_resources import GoogleDriveSync, GDriveSettings
+from automation.gdrive.sync_resources import GoogleDriveSync, GDriveSettings
 from main_components.common.profile import ProfileManager, Profile
 
 # project root is three levels up from this file
