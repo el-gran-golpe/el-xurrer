@@ -39,18 +39,18 @@ class ModelRouter:
         # If we reach here, no classifier returned a model — fail explicitly.
         logger.error("No available Github model found after trying all classifiers.")
         # Try OpenAI classifiers as a fallback
-        for classifier in self.openai_classifiers:
-            try:
-                model = classifier.get_best_model(prompt_item)
-                return model
-
-            except Exception as e:
-                logger.warning("OpenAI ModelClassifier failed with error: {}", e)
-                continue
+        # for classifier in self.openai_classifiers:
+        #     try:
+        #         model = classifier.get_best_model(prompt_item)
+        #         return model
+        #
+        #     except Exception as e:
+        #         logger.warning("OpenAI ModelClassifier failed with error: {}", e)
+        #         continue
 
         raise RuntimeError("No available model found.")
 
-    #def mark_model_as_quota_exhausted(self, model: LLMModel) -> None:
+    # def mark_model_as_quota_exhausted(self, model: LLMModel) -> None:
     #    for classifier in self.github_classifiers:
     #        classifier.mark_model_as_quota_exhausted(model)
 
@@ -63,4 +63,3 @@ class ModelRouter:
         output_as_json = prompt_item.output_as_json
         # TODO: get_model_response should return a response or raise an exception that the model router can handle
         return model.get_model_response(conversation, output_as_json)
-

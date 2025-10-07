@@ -58,7 +58,6 @@ class LLMModel:
             **({"response_format": {"type": "json_object"}} if output_as_json else {}),
         }
 
-        data = None
         for attempt in range(3):
             try:
                 r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
@@ -67,19 +66,23 @@ class LLMModel:
                     raise ApiErrorHandler().transform_json_probing_error_to_exception(
                         r, self.identifier
                     )
+                break
             except RateLimitError as e:
                 cooldown_seconds = e.cooldown_seconds
                 logger.warning(
-                    "Model {} quota exhausted. Sleeping for Cooldown seconds: {}",
+                    "Model {} quota exhausted. Sleeping for cooldown seconds: {} "
+                    "(attempt {}/{})",
                     self.identifier,
                     cooldown_seconds,
+                    attempt + 1,
+                    3,
                 )
                 sleep(cooldown_seconds)
-                if attempt == 2:
-                    raise
-                continue
+        else:
+            # Only executed if loop did not break (no success)
+            logger.error("Failed to obtain a successful response after 3 attempts.")
+            return ""
 
-        # TODO: implement the case for ["response_format"] = {"type": "json_object"}
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):

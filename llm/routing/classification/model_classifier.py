@@ -1,6 +1,5 @@
 import json
 import re
-import time
 from typing import Optional, Match, cast
 
 import requests
@@ -66,7 +65,7 @@ class ModelClassifier:
             model_id = model.get("id")
 
             if model_id is None:
-                 continue
+                continue
 
             max_input_tokens = model.get("limits", {}).get("max_input_tokens")
             max_output_tokens = model.get("limits", {}).get("max_output_tokens")
@@ -168,9 +167,10 @@ class ModelClassifier:
     def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
             self.models_catalog[model_id].is_quota_exhausted = True
-            self.models_catalog[model_id].quota_exhausted_timestamp = time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.gmtime()
-            )
+            # TODO: fix this
+            # self.models_catalog[model_id].exhausted_until_datetime = time.strftime(
+            #     "%Y-%m-%d %H:%M:%S", time.gmtime()
+            # )
             logger.debug("Model {} marked as quota exhausted.", model_id)
         else:
             logger.error(
@@ -333,4 +333,3 @@ class ModelClassifier:
         #         self.models_catalog[model].elo = elo
 
         return None
-
