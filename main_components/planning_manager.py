@@ -6,6 +6,7 @@ from loguru import logger
 from llm.base_llm import BaseLLM
 from main_components.common.types import Platform
 from main_components.common.types import Profile
+from main_components.common.storyline_tracker import StorylineTracker
 
 
 def _save_planning(planning: dict[str, Any], output_path: Path) -> None:
@@ -59,3 +60,7 @@ class PlanningManager:
                 planning,
                 outputs_path / f"{output_filename}_planning.json",
             )
+
+            # Update storyline after planning generation
+            storyline_tracker = StorylineTracker(profile, self.platform_name)
+            storyline_tracker.update_storyline()

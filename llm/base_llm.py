@@ -56,6 +56,22 @@ class BaseLLM:
 
         return decode_json_from_message(message=last_reply)
 
+    def generate_simple_text(self, prompt: str) -> str:
+        # TODO: Do we really need all of this info for a simple text generation?
+        prompt_item = PromptItem(
+            system_prompt="You are a helpful assistant for {day} storyline summaries.",
+            prompt=prompt,
+            output_as_json=False,
+            cache_key="storyline_summary",
+            is_sensitive_content=False,
+        )
+        prompt_item.system_prompt = prompt_item.system_prompt.replace(
+            "{day}", "storyline"
+        )
+
+        response = self.model_router.get_response(prompt_item=prompt_item)
+        return response.strip()
+
 
 if __name__ == "__main__":
     # Example usage: Replace with your actual paths and values
