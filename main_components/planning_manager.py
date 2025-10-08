@@ -63,4 +63,4 @@ class PlanningManager:
 
             # Update storyline after planning generation
             storyline_tracker = StorylineTracker(profile, self.platform_name)
-            storyline_tracker.update_storyline()
+            storyline_tracker.update_storyline() # TODO: This should not scan again the whole catalog

@@ -26,7 +26,7 @@ def main_callback(ctx: typer.Context):
         logger.add(sys.stderr, level="INFO")
 
     try:
-        gdrive_sync.pull(profile_manager.resource_path)
+        # gdrive_sync.pull(profile_manager.resource_path)
         pass
     except Exception as e:
         logger.error("Failed to sync resources from Google Drive: {}", e)

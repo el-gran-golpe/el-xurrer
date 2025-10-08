@@ -40,7 +40,7 @@ class ModelClassifier:
     def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
         output_as_json = prompt_item.output_as_json
         is_sensitive_content = prompt_item.is_sensitive_content
-        sorted_models = self._get_models_sorted_by_iq()
+        sorted_models = self._get_models_sorted_by_elo()
 
         for model in sorted_models:
             if model.is_quota_exhausted:
@@ -153,16 +153,16 @@ class ModelClassifier:
             )
         return models
 
-    def _get_models_sorted_by_iq(self) -> list[LLMModel]:
+    def _get_model_elo(self, model_id: str) -> float:
+        return self.models_catalog[model_id].elo
+
+    def _get_models_sorted_by_elo(self) -> list[LLMModel]:
         return sorted(self.models_catalog.values(), key=lambda m: m.elo, reverse=True)
 
     def _is_model_censored(self, model_id: str) -> bool:
         return not any(
             keyword.lower() in model_id.lower() for keyword in UNCENSORED_MODEL_GUESSES
         )
-
-    def _get_model_elo(self, model_id: str) -> float:
-        return self.models_catalog[model_id].elo
 
     def _mark_model_as_quota_exhausted(self, model_id: str):
         if model_id in self.models_catalog:
