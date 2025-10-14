@@ -61,11 +61,11 @@ class LLMModel:
         for attempt in range(3):
             try:
                 r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
-                data = r.json()
                 if r.status_code != 200:
                     raise ApiErrorHandler().transform_json_probing_error_to_exception(
                         r, self.identifier
                     )
+                data = r.json()
                 break
             except RateLimitError as e:
                 cooldown_seconds = e.cooldown_seconds
