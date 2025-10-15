@@ -16,23 +16,14 @@ class BaseLLM:
         prompt_json_template_path: Path,
         previous_storyline: str,
         platform_name: Platform,
+        model_router: ModelRouter,
     ):
         # Main input variables
         self.prompt_json_template_path = prompt_json_template_path
         self.previous_storyline = previous_storyline
         self.platform_name = platform_name
 
-        # GitHub models and OpenAI API keys
-        self.github_api_keys: list[str] = api_keys.extract_github_keys()
-        self.openai_api_keys: list[str] = api_keys.extract_openai_keys()
-
-        # Model Router, returns 1 model at a time
-        self.model_router = ModelRouter(
-            github_api_keys=self.github_api_keys,
-            openai_api_keys=self.openai_api_keys,
-        )
-        # None means scan all available models
-        self.model_router.initialize_model_classifiers(models_to_scan=None)
+        self.model_router = model_router
 
     def generate_dict_from_prompts(self) -> dict:
         prompt_items: list[PromptItem] = load_and_prepare_prompts(
@@ -82,10 +73,21 @@ if __name__ == "__main__":
     storyline = "Once upon a time..."
     platform = Platform.META  # Update to the desired platform
 
+    github_api_keys: list[str] = api_keys.extract_github_keys()
+    openai_api_keys: list[str] = api_keys.extract_openai_keys()
+
+    model_router = ModelRouter(
+        github_api_keys=github_api_keys,
+        openai_api_keys=openai_api_keys,
+    )
+    # None means scan all available models
+    model_router.initialize_model_classifiers(models_to_scan=None)
+
     llm = BaseLLM(
         prompt_json_template_path=prompt_path,
         previous_storyline=storyline,
         platform_name=platform,
+        model_router=model_router,
     )
     result = llm.generate_dict_from_prompts()
     print("Generated result:", result)

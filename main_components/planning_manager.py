@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Any
 from loguru import logger
 
+from llm.api_keys import api_keys
 from llm.base_llm import BaseLLM
+from llm.routing.model_router import ModelRouter
 from main_components.common.types import Platform
 from main_components.common.types import Profile
 from main_components.common.storyline_tracker import StorylineTracker
@@ -33,6 +35,16 @@ class PlanningManager:
         self.use_initial_conditions = use_initial_conditions
 
     def plan(self) -> None:
+        github_api_keys: list[str] = api_keys.extract_github_keys()
+        openai_api_keys: list[str] = api_keys.extract_openai_keys()
+
+        model_router = ModelRouter(
+            github_api_keys=github_api_keys,
+            openai_api_keys=openai_api_keys,
+        )
+        # None means scan all available models
+        model_router.initialize_model_classifiers(models_to_scan=None)
+
         for profile in self.template_profiles:
             inputs_path = profile.platform_info[self.platform_name].inputs_path
             outputs_path = profile.platform_info[self.platform_name].outputs_path
@@ -52,6 +64,7 @@ class PlanningManager:
                 prompt_json_template_path=inputs_path / f"{profile.name}.json",
                 previous_storyline=storyline,
                 platform_name=self.platform_name,
+                model_router=model_router,
             )
             planning = llm.generate_dict_from_prompts()
 
@@ -62,5 +75,5 @@ class PlanningManager:
             )
 
             # Update storyline after planning generation
-            storyline_tracker = StorylineTracker(profile, self.platform_name)
+            storyline_tracker = StorylineTracker(profile, self.platform_name, model_router)
             storyline_tracker.update_storyline() # TODO: This should not scan again the whole catalog

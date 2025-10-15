@@ -4,6 +4,7 @@ from loguru import logger
 import json
 
 from llm.base_llm import BaseLLM
+from llm.routing.model_router import ModelRouter
 from main_components.common.profile import Profile
 from main_components.common.types import Platform
 
@@ -11,9 +12,10 @@ from main_components.common.types import Platform
 class StorylineTracker:
     """Tracks and updates storyline progression for profiles."""
 
-    def __init__(self, profile: Profile, platform: Platform):
+    def __init__(self, profile: Profile, platform: Platform, model_router: ModelRouter):
         self.profile = profile
         self.platform = platform
+        self.model_router = model_router
 
     def update_storyline(self):
         """Main method to update storyline after planning generation."""
@@ -92,6 +94,7 @@ class StorylineTracker:
             prompt_json_template_path=inputs_path / f"{self.profile.name}.json",
             previous_storyline=storyline,
             platform_name=self.platform,
+            model_router=self.model_router,
         )
         return llm.generate_simple_text(prompt)
 
