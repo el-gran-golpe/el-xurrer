@@ -1,11 +1,12 @@
 import json
 import re
+from time import sleep
 from typing import Optional, Match, cast
+from datetime import datetime, timedelta
 
 import requests
 from requests import HTTPError
 from loguru import logger
-from time import sleep
 
 from llm.error_handlers.api_error_handler import ApiErrorHandler
 from llm.routing.classification.constants import (
@@ -17,6 +18,9 @@ from llm.routing.classification.constants import (
 from llm.routing.classification.llm_model import LLMModel
 from main_components.common.types import PromptItem
 from llm.error_handlers.exceptions import RateLimitError
+
+INLINE_WAIT_THRESHOLD_SECONDS = 60
+MAX_PROBE_INLINE_WAIT_RETRIES = 1
 
 
 class ModelClassifier:
@@ -37,26 +41,29 @@ class ModelClassifier:
         self.models_catalog: dict[str, LLMModel] = {}
         self.api_error_handler = ApiErrorHandler()
 
-    def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
+    # NEW: give the router a *list* of candidates, not just one.
+    def get_ranked_models(self, prompt_item: PromptItem) -> list[LLMModel]:
         output_as_json = prompt_item.output_as_json
         is_sensitive_content = prompt_item.is_sensitive_content
-        sorted_models = self._get_models_sorted_by_elo()
 
-        for model in sorted_models:
-            if model.is_quota_exhausted:
+        ranked = []
+        for model in self._get_models_sorted_by_elo():
+            # Skip if exhausted and not recovered
+            if not self._is_quota_recovered(model):
                 continue
-
-            # If content is sensitive, skip censored models
             if is_sensitive_content and model.is_censored:
                 continue
-
-            # If JSON required, ensure support
-            if output_as_json and not model.supports_json_format:
+            if output_as_json and model.supports_json_format is False:
                 continue
+            ranked.append(model)
+        return ranked
 
-            return model
-
-        raise RuntimeError("No suitable model found for the given prompt item.")
+    # Backwards-compat, used nowhere after router change, but fine to keep
+    def get_best_model(self, prompt_item: PromptItem) -> LLMModel:
+        candidates = self.get_ranked_models(prompt_item)
+        if not candidates:
+            raise RuntimeError("No suitable model found for the given prompt item.")
+        return candidates[0]
 
     def populate_models_catalog(self, models_to_scan: Optional[int]):
         models = self.github_free_catalog
@@ -72,22 +79,44 @@ class ModelClassifier:
 
             # Default values if not provided for a LLMModel
             llm_model_params = {
-                "supports_json_format": False,
+                "is_quota_exhausted": False,  # To track rate limit exhaustion
+                "exhausted_until_datetime": None,
+                "supports_json_format": None,  # Unknown until tested
                 "is_censored": self._is_model_censored(model_id),
                 "api_key": self.github_api_key,
-                "exhausted_until_datetime": None,
-                "quota_exhausted_cooldown_seconds": 20,  # Who knows??
                 "elo": 1.0,
-                "is_quota_exhausted": False,  # To track rate limit exhaustion
                 "max_input_tokens": max_input_tokens,
                 "max_output_tokens": max_output_tokens,
             }
 
             try:
+                # Check quota FIRST before any probing
+                self._check_model_quota(model_id)
+            except RateLimitError as e:
+                logger.warning(
+                    "Model {} quota exhausted during initial check. Cooldown seconds: {}",
+                    model_id,
+                    e.cooldown_seconds,
+                )
+                # Mark as exhausted but add to catalog
+                llm_model_params["is_quota_exhausted"] = True
+                llm_model_params["exhausted_until_datetime"] = (
+                    datetime.now() + timedelta(seconds=e.cooldown_seconds)
+                )
+                self.models_catalog[model_id] = LLMModel(
+                    identifier=model_id,
+                    **llm_model_params,
+                )
+                continue
+            except Exception as e:
+                logger.error("Error while checking quota for model {}: {}", model_id, e)
+                continue
+
+            # If quota check passed, NOW probe JSON support
+            try:
                 llm_model_params["supports_json_format"] = (
                     self._supports_json_response_format(model_id)
                 )
-
             # INFO: I want to encapsulate the exceptions on its own class handler, but I think is going to
             # be harder, so I will leave it like this for now.
             except RateLimitError as e:
@@ -97,7 +126,6 @@ class ModelClassifier:
                     e.cooldown_seconds,
                 )
                 continue
-
             # TODO: If it's a 400 try to merge system prompt and prompt together
             except HTTPError as e:
                 logger.error(
@@ -106,7 +134,6 @@ class ModelClassifier:
                     e,
                 )
                 continue
-
             # TODO: Study those errors
             except Exception as e:
                 logger.error(
@@ -118,7 +145,21 @@ class ModelClassifier:
                 identifier=model_id,
                 **llm_model_params,
             )
+
         # self._build_llm_arena_scoreboard_intersection() # TODO: this method should get the elos for the models in the leaderboard and update the model catalog with the current elo
+
+    def mark_model_as_quota_exhausted(
+        self, model: LLMModel, cooldown_seconds: int
+    ) -> None:
+        model.is_quota_exhausted = True
+        model.exhausted_until_datetime = datetime.now() + timedelta(
+            seconds=cooldown_seconds
+        )
+        logger.info(
+            "Marked {} as exhausted until {}",
+            model.identifier,
+            model.exhausted_until_datetime,
+        )
 
     def _fetch_github_models_catalog(self) -> list[dict]:
         headers = {
@@ -126,13 +167,11 @@ class ModelClassifier:
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": API_VERSION,
         }
-
         resp = requests.get(CATALOG_URL, headers=headers, timeout=30)
         resp.raise_for_status()
         models = resp.json()
 
         logger.debug("Fetched {} models with GitHub key", len(models))
-
         for m in models:
             model_id = m.get("id")
             max_input_tokens = m.get("limits", {}).get("max_input_tokens", 0)
@@ -164,27 +203,12 @@ class ModelClassifier:
             keyword.lower() in model_id.lower() for keyword in UNCENSORED_MODEL_GUESSES
         )
 
-    def _mark_model_as_quota_exhausted(self, model_id: str):
-        if model_id in self.models_catalog:
-            self.models_catalog[model_id].is_quota_exhausted = True
-            # TODO: fix this
-            # self.models_catalog[model_id].exhausted_until_datetime = time.strftime(
-            #     "%Y-%m-%d %H:%M:%S", time.gmtime()
-            # )
-            logger.debug("Model {} marked as quota exhausted.", model_id)
-        else:
-            logger.error(
-                "Model {} not found in catalog to mark as quota exhausted.", model_id
-            )
-
-    # --- Helper 1: Does the model support json formatting? ---
-
-    def _supports_json_response_format(self, model_id: str) -> bool:
+    # --- Helper 1: Does the LLMModel has available quota? ---
+    def _check_model_quota(self, model_id: str) -> None:
         """
-        Return True if the model accepts response_format={'type': 'json_object'}.
-        Result is cached per model id.
+        Minimal POST to see if the model is currently usable. It's just a PING.
+        On short cooldown (<=60s), wait inline and retry once.
         """
-        # INFO: API_VERSION might be a mandatory parameter in order to use response_format feature
         headers = {
             "Authorization": f"Bearer {self.github_api_key}",
             "Accept": "application/vnd.github+json",
@@ -194,61 +218,121 @@ class ModelClassifier:
         payload = {
             "model": model_id,
             "messages": [
-                {"role": "system", "content": "Return a minimal JSON object only."},
-                {"role": "user", "content": 'Respond with {"ok": true} only.'},
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant. Follow safety policies and refuse unsafe requests.",
+                },
+                {
+                    "role": "user",
+                    "content": "Connectivity check. Please reply with OK.",
+                },
+            ],
+        }
+
+        attempts = 0
+        while True:
+            attempts += 1
+            r = requests.post(
+                CHAT_COMPLETIONS_URL, headers=headers, json=payload, timeout=20
+            )
+            if r.status_code == 200:
+                return
+
+            exc = self.api_error_handler.transform_api_error_to_exception(r, model_id)
+            if isinstance(exc, RateLimitError):
+                cooldown = max(0, int(exc.cooldown_seconds))
+                if cooldown <= INLINE_WAIT_THRESHOLD_SECONDS and attempts <= (
+                    1 + MAX_PROBE_INLINE_WAIT_RETRIES
+                ):
+                    logger.info(
+                        "Quota check short cooldown {}s for {}, inline waiting then retrying...",
+                        cooldown,
+                        model_id,
+                    )
+                    sleep(cooldown)
+                    continue
+            # not a short cooldown or retries exhausted
+            raise exc
+
+    def _is_quota_recovered(self, model: LLMModel) -> bool:
+        if not model.is_quota_exhausted:
+            return True
+        if model.exhausted_until_datetime is None:
+            return True
+        if datetime.now() >= model.exhausted_until_datetime:
+            model.is_quota_exhausted = False
+            model.exhausted_until_datetime = None
+            logger.info("Model {} quota has recovered", model.identifier)
+            return True
+        logger.debug(
+            "Model {} still exhausted until {}",
+            model.identifier,
+            model.exhausted_until_datetime,
+        )
+        return False
+
+    # --- Helper 2: Does the LLMModel support json formatting? ---
+    def _supports_json_response_format(self, model_id: str) -> Optional[bool]:
+        """
+        True if the model accepts response_format={'type': 'json_object'}.
+        On short cooldown (<=60s), wait inline and retry once.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.github_api_key}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": API_VERSION,
+        }
+        payload = {
+            "model": model_id,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Follow all safety policies. If unsafe, refuse briefly.",
+                },
+                {
+                    "role": "user",
+                    "content": 'Reply with a valid JSON object matching the schema {"ok": true}.',
+                },
             ],
             "response_format": {"type": "json_object"},
         }
 
-        for attempt in range(3):
-            try:
-                r = requests.post(
-                    CHAT_COMPLETIONS_URL,
-                    headers=headers,
-                    json=payload,
-                    timeout=20,
-                )
-
-                if r.status_code == 200:
-                    try:
-                        content = r.json()["choices"][0]["message"]["content"]
-                        ok = json.loads(content) == {
-                            "ok": True
-                        }  # exact match keeps it strict
-                        logger.debug(
-                            "Model {} supports JSON response format.", model_id
-                        )
-                        return ok
-                    except json.JSONDecodeError as e:
-                        logger.error(
-                            "JSON decode error for model {}: {}. Assuming no JSON support.",
-                            model_id,
-                            e,
-                        )
-                        return False
-                else:
-                    raise self.api_error_handler.transform_json_probing_error_to_exception(
-                        r, model_id
+        attempts = 0
+        while True:
+            attempts += 1
+            r = requests.post(
+                CHAT_COMPLETIONS_URL, headers=headers, json=payload, timeout=20
+            )
+            if r.status_code == 200:
+                try:
+                    content = r.json()["choices"][0]["message"][
+                        "content"
+                    ]  # exact match keeps it strict
+                    logger.debug(
+                        "JSON-probe response content for {}: {}", model_id, content
                     )
+                    return json.loads(content) == {"ok": True}
+                except Exception:
+                    return False
 
-            except RateLimitError as e:
-                cooldown_seconds = e.cooldown_seconds
-                if cooldown_seconds < 30:
-                    sleep(cooldown_seconds)
-                    continue
-                else:
-                    logger.error(
-                        "Model {} quota exhausted while probing JSON support. Cooldown seconds: {}",
+            exc = self.api_error_handler.transform_api_error_to_exception(r, model_id)
+            if isinstance(exc, RateLimitError):
+                cooldown = max(0, int(exc.cooldown_seconds))
+                if cooldown <= INLINE_WAIT_THRESHOLD_SECONDS and attempts <= (
+                    1 + MAX_PROBE_INLINE_WAIT_RETRIES
+                ):
+                    logger.info(
+                        "JSON-probe short cooldown {}s for {}, inline waiting then retrying...",
+                        cooldown,
                         model_id,
-                        cooldown_seconds,
                     )
-                    raise
+                    sleep(cooldown)
+                    continue
+            # not a short cooldown or retries exhausted
+            raise exc
 
-        # Fallback: if both attempts failed without raising, assume no JSON support
-        return False
-
-    # --- Helper 2: Build LLM Arena × GitHub Models intersection ---
-
+    # --- Helper 3: Build LLM Arena × GitHub Models intersection ---
     def _build_llm_arena_scoreboard_intersection(self) -> None:
         """
         Use the official LMArena Elo pickle (elo_results_YYYYMMDD.pkl):

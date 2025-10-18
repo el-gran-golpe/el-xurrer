@@ -18,11 +18,9 @@ class BaseLLM:
         platform_name: Platform,
         model_router: ModelRouter,
     ):
-        # Main input variables
         self.prompt_json_template_path = prompt_json_template_path
         self.previous_storyline = previous_storyline
         self.platform_name = platform_name
-
         self.model_router = model_router
 
     def generate_dict_from_prompts(self) -> dict:
@@ -76,18 +74,18 @@ if __name__ == "__main__":
     github_api_keys: list[str] = api_keys.extract_github_keys()
     openai_api_keys: list[str] = api_keys.extract_openai_keys()
 
-    model_router = ModelRouter(
+    router = ModelRouter(
         github_api_keys=github_api_keys,
         openai_api_keys=openai_api_keys,
     )
     # None means scan all available models
-    model_router.initialize_model_classifiers(models_to_scan=None)
+    router.initialize_model_classifiers(models_to_scan=None)
 
     llm = BaseLLM(
         prompt_json_template_path=prompt_path,
         previous_storyline=storyline,
         platform_name=platform,
-        model_router=model_router,
+        model_router=router,
     )
     result = llm.generate_dict_from_prompts()
     print("Generated result:", result)

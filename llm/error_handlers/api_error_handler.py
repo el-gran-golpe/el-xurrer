@@ -5,7 +5,7 @@ from llm.error_handlers.exceptions import RateLimitError
 
 
 class ApiErrorHandler:
-    def transform_json_probing_error_to_exception(
+    def transform_api_error_to_exception(
         self, response: Response, model_id: str
     ) -> Exception:
         # 429: quota exhausted

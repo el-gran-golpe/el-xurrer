@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from time import sleep
+from typing import Optional
 
 import requests
 from loguru import logger
@@ -13,16 +13,12 @@ from llm.routing.classification.constants import API_VERSION, CHAT_COMPLETIONS_U
 @dataclass
 class LLMModel:
     identifier: str
-    supports_json_format: bool
+    supports_json_format: Optional[bool]  # can be unknown until probed
     is_censored: bool
     api_key: str
-    exhausted_until_datetime: datetime
-    # cooldown_until: datetime
-    # last_error: str
-    # last_checked_at: datetime
-    quota_exhausted_cooldown_seconds: int
-    elo: float = 1.0  # Hypothetical IQ score for ranking purposes
-    is_quota_exhausted: bool = False  # To track rate limit exhaustion
+    exhausted_until_datetime: Optional[datetime] = None
+    elo: float = 1.0
+    is_quota_exhausted: bool = False
     max_input_tokens: int = 0
     max_output_tokens: int = 0
 
@@ -32,16 +28,9 @@ class LLMModel:
         output_as_json: bool,
     ) -> str:
         logger.info("Using model: {}", self.identifier)
-        assistant_reply = self.get_response_from_github_models(
-            conversation=conversation,
-            output_as_json=output_as_json,
-        )
-        # assistant_reply = _clean_chain_of_thought(
-        #     model=self.identifier, assistant_reply=assistant_reply
-        # )
-        return assistant_reply
+        return self._request_chat_completion(conversation, output_as_json)
 
-    def get_response_from_github_models(
+    def _request_chat_completion(
         self,
         conversation: list[dict[str, str]],
         output_as_json: bool,
@@ -58,34 +47,20 @@ class LLMModel:
             **({"response_format": {"type": "json_object"}} if output_as_json else {}),
         }
 
-        for attempt in range(3):
-            try:
-                r = requests.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
-                if r.status_code != 200:
-                    raise ApiErrorHandler().transform_json_probing_error_to_exception(
-                        r, self.identifier
-                    )
-                data = r.json()
-                break
-            except RateLimitError as e:
-                cooldown_seconds = e.cooldown_seconds
-                logger.warning(
-                    "Model {} quota exhausted. Sleeping for cooldown seconds: {} "
-                    "(attempt {}/{})",
-                    self.identifier,
-                    cooldown_seconds,
-                    attempt + 1,
-                    3,
-                )
-                sleep(cooldown_seconds)
-        else:
-            # Only executed if loop did not break (no success)
-            logger.error("Failed to obtain a successful response after 3 attempts.")
-            return ""
-
         try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError):
-            return ""
-
-        return content
+            r = requests.post(
+                CHAT_COMPLETIONS_URL, headers=headers, json=payload, timeout=30
+            )
+            if r.status_code != 200:
+                # Let the shared error handler decide if it's RateLimitError, HTTPError, etc.
+                raise ApiErrorHandler().transform_api_error_to_exception(
+                    r, self.identifier
+                )
+            data = r.json()
+            return data["choices"][0]["message"]["content"]
+        except RateLimitError:
+            # Crucial: don't sleep here. Let the router fail over.
+            raise
+        except Exception:
+            # Propagate other errors so the router can decide to try the next model.
+            raise
