@@ -40,7 +40,7 @@ class PlanningManager:
 
         model_router = ModelRouter(
             github_api_keys=github_api_keys,
-            deepseek_api_key=openai_api_keys,
+            openai_api_keys=openai_api_keys,
         )
         # None means scan all available models
         model_router.initialize_model_classifiers(models_to_scan=None)
