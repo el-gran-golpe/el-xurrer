@@ -1,4 +1,6 @@
 from pathlib import Path
+
+from loguru import logger
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator, ValidationError
 
@@ -11,9 +13,8 @@ class LLMApiKeysLoader(BaseSettings):
         env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         extra="allow",
-    )  # This SettingsConfigDict is new in pydantic v2.x
+    )
 
-    # This method runs before model instance is created
     @model_validator(mode="before")
     def check_env_file_not_empty(cls, values) -> dict[str, str]:
         if not ENV_FILE.exists():
@@ -23,12 +24,35 @@ class LLMApiKeysLoader(BaseSettings):
             raise ValueError(f"Env file '{ENV_FILE}' is empty.")
         return values
 
-    @property
-    def openai_keys(self) -> dict[str, str]:
+    @model_validator(mode="after")
+    def ensure_key_groups_exist(self):
         raw = self.model_dump()
-        return {
-            k: v for k, v in raw.items() if k.upper().startswith("OPENAI") and v != ""
+
+        # Validate DeepSeek keys
+        deepseek_keys = {
+            k: v for k, v in raw.items() if k.upper().startswith("DEEPSEEK") and v != ""
         }
+        if len(deepseek_keys) != 1:
+            raise ValueError(
+                f"Expected exactly one DEEPSEEK key, found {len(deepseek_keys)}."
+            )
+
+        # Validate GitHub keys
+        github_keys = {
+            k: v for k, v in raw.items() if k.upper().startswith("GITHUB") and v != ""
+        }
+        if not github_keys:
+            raise ValueError("No GITHUB keys found in env file.")
+
+        return self
+
+    @property
+    def deepseek_key(self) -> str:
+        raw = self.model_dump()
+        keys = {
+            k: v for k, v in raw.items() if k.upper().startswith("DEEPSEEK") and v != ""
+        }
+        return list(keys.values())[0]
 
     @property
     def github_keys(self) -> dict[str, str]:
@@ -37,19 +61,11 @@ class LLMApiKeysLoader(BaseSettings):
             k: v for k, v in raw.items() if k.upper().startswith("GITHUB") and v != ""
         }
 
-    @model_validator(mode="after")
-    def ensure_key_groups_exist(self):
-        if not self.openai_keys:
-            raise ValueError("No OPENAI keys found in env file.")
-        if not self.github_keys:
-            raise ValueError("No GITHUB keys found in env file.")
-        return self
-
     def extract_github_keys(self) -> list[str]:
         return list(self.github_keys.values())
 
-    def extract_openai_keys(self) -> list[str]:
-        return list(self.openai_keys.values())
+    def extract_deepseek_key(self) -> str:
+        return self.deepseek_key
 
 
 # TODO: Ask Moi what does he think about this approach
@@ -57,5 +73,5 @@ class LLMApiKeysLoader(BaseSettings):
 try:
     api_keys = LLMApiKeysLoader()
 except ValidationError as e:
-    print("Validation failed:", e)
+    logger.info("Validation failed:", e)
     raise
