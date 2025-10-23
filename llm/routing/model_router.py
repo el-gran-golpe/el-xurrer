@@ -61,28 +61,20 @@ class ModelRouter:
         ]
         output_as_json = prompt_item.output_as_json
 
+        # ---------- 1) Try all GitHub keys/models first ----------
         reply, soonest, first_error = self._try_github_models(
             conversation, output_as_json, prompt_item
         )
-
         if reply:
             return reply
 
-        try:
-            return self._try_deepseek_fallback(
-                conversation=conversation,
-                output_as_json=output_as_json,
-            )
-        except Exception as e:
-            if soonest:
-                model, eta = soonest
-                raise RuntimeError(
-                    f"All models failed. GitHub soonest recovery: {model.identifier} in ~{int(eta)}s. "
-                    f"DeepSeek fallback also failed: {e}"
-                ) from first_error or e
-            raise RuntimeError(
-                f"All GitHub models exhausted and DeepSeek fallback failed: {e}"
-            ) from first_error or e
+        # ---------- 2) DeepSeek fallback if GitHub fully failed ----------
+        return self._try_deepseek_fallback(
+            conversation=conversation,
+            output_as_json=output_as_json,
+        )
+
+    # ---------------- helpers ----------------
 
     def _try_github_models(
         self,
