@@ -69,6 +69,7 @@ class ComfyLocal:
         width: int = 512,
         height: int = 768,
         seed: Optional[int] = None,
+        timeout_in_seconds: int = 1000,
     ) -> bool:
         """Generate an image based on the provided prompt and save it to output_path."""
         prompt = prompt.strip()
@@ -80,7 +81,7 @@ class ComfyLocal:
 
         logger.debug(f"Generating image: prompt='{prompt[:50]}...', seed={seed}")
         prompt_id = self._enqueue_prompt(prompt, seed)
-        ws_client = self._wait_for_completion(prompt_id)
+        ws_client = self._wait_for_completion(prompt_id, timeout_in_seconds)
         try:
             img_bytes = self._fetch_result(prompt_id)
             output_path.write_bytes(img_bytes)
@@ -112,9 +113,12 @@ class ComfyLocal:
         self._client_id = client_id
         return prompt_id
 
-    def _wait_for_completion(self, prompt_id: str) -> WebSocket:
+    def _wait_for_completion(self, prompt_id: str, timeout_in_seconds) -> WebSocket:
         ws = WebSocket()
-        ws.connect(f"ws://{self.server}/ws?clientId={self._client_id}", timeout=10)
+        ws.connect(
+            f"ws://{self.server}/ws?clientId={self._client_id}",
+            timeout=timeout_in_seconds,
+        )
         logger.debug("WebSocket connection opened.")
 
         while True:
