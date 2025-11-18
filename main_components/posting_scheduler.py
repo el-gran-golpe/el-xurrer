@@ -111,7 +111,11 @@ class PostingScheduler:
                         .replace("Z", "+00:00")
                     )
 
-                    image_paths: List[Path] = list(day_folder.glob("*.[pj][pn]g"))
+                    image_paths: List[Path] = (
+                        list(day_folder.glob("*.png"))
+                        + list(day_folder.glob("*.jpg"))
+                        + list(day_folder.glob("*.jpeg"))
+                    )
 
                     # Let Pydantic handle all validation
                     pub = Publication(
@@ -132,6 +136,7 @@ class PostingScheduler:
                             f"Unsupported platform: {self.platform_name}"
                         )
 
+                # TODO: this error is too broad
                 except (FileNotFoundError, ValueError, ValidationError) as err:
                     logger.error(
                         f"Failed to create publication for {day_folder}: {err}"
@@ -147,7 +152,7 @@ class PostingScheduler:
         client = client_class()
         logger.info(f"Uploading {pub.day_folder.name} via API on {self.platform_name}")
 
-        # self._wait_for_time(pub.upload_time)  # --> Meta's Graph API already has a built-in scheduling
+        self._wait_for_time(pub.upload_time)
 
         try:
             insta_resp = client.upload_instagram_publication(
