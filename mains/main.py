@@ -2,7 +2,7 @@ import sys
 import typer
 from loguru import logger
 
-from mains.commands.utils import profile_manager, gdrive_sync
+from mains.commands.utils import profile_manager
 from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
 from mains.commands.all import app as all_app
@@ -47,8 +47,8 @@ app.add_typer(fanvue_app, name="fanvue", help="FANVUE pipeline commands")
 app.add_typer(all_app, name="all", help="End‑to‑end pipelines (run_all/debug)")
 
 if __name__ == "__main__":
-    # app()
     import sys
 
-    sys.argv = ["main.py", "all", "debug", "-p", "1"]
+    # sys.argv = ["main.py", "all", "debug", "-p", "1"]
+    sys.argv = ["main.py", "meta", "schedule", "-p", "1"]
     app()
