@@ -2,7 +2,6 @@ loguru
 tqdm
 python-dotenv
 seleniumbase
-cloudscraper
 requests
 typer
 pydantic
