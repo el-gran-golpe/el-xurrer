@@ -152,6 +152,7 @@ class PostingScheduler:
         client = client_class()
         logger.info(f"Uploading {pub.day_folder.name} via API on {self.platform_name}")
 
+        # We have to wait anyway since Instagram does not have a built-in api for scheduling
         self._wait_for_time(pub.upload_time)
 
         try:
