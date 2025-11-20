@@ -67,7 +67,9 @@ class ComfyLocal:
         prompt: str,
         output_path: Path,
         width: int = 512,
-        height: int = 768,
+        height: int = 640,
+        format: str = "jpeg",
+        max_size: Optional[int] = None,  # TODO: make this happen
         seed: Optional[int] = None,
         timeout_in_seconds: int = 1000,
     ) -> bool:
