@@ -4,28 +4,17 @@ from pathlib import Path
 from datetime import datetime
 import json
 
-import dotenv
 import requests
 from loguru import logger
 
-META_API_KEY = os.path.join(os.path.dirname(__file__), "api_key_instagram.env")
+from main_components.config import settings
 
 
 class GraphAPI:
     def __init__(self):
-        dotenv.load_dotenv(META_API_KEY)
-        self.account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
-        self.user_access_token = os.getenv("USER_ACCESS_TOKEN")
-        self.app_scoped_user_id = os.getenv("APP_SCOPED_USER_ID")
-        assert self.account_id, "Instagram account ID not found in {}.".format(
-            META_API_KEY
-        )
-        assert self.user_access_token, "Meta user access token not found in {}.".format(
-            META_API_KEY
-        )
-        assert self.app_scoped_user_id, (
-            "Meta app scoped user ID not found in {}.".format(META_API_KEY)
-        )
+        self.account_id = settings.instagram_account_id
+        self.user_access_token = settings.user_access_token
+        self.app_scoped_user_id = settings.app_scoped_user_id
         self.base_url = "https://graph.facebook.com/v21.0"
         self.page_access_token = self._get_page_access_token()
         self.page_id = self._get_page_id()
@@ -220,7 +209,7 @@ class GraphAPI:
             raise ValueError("No page found with the linked Facebook Business Account.")
         except requests.exceptions.RequestException as e:
             logger.info("An error occurred while retrieving the Page ID: {}", e)
-            sys.exit(1)
+            return None  # Return None instead of sys.exit(1)
 
     def _get_page_access_token(self):
         """Retrieve the Page Access Token using the User Access Token."""
@@ -246,7 +235,7 @@ class GraphAPI:
             logger.info(
                 "An error occurred while retrieving the Page Access Token: {}", e
             )
-            sys.exit(1)
+            return None  # Return None instead of sys.exit(1)
 
         # NEW: helper to upload to FB Page and get Meta CDN URL
 
