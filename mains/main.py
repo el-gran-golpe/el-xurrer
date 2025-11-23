@@ -49,6 +49,6 @@ app.add_typer(all_app, name="all", help="End‑to‑end pipelines (run_all/debug
 if __name__ == "__main__":
     import sys
 
-    # sys.argv = ["main.py", "all", "debug", "-p", "1"]
-    sys.argv = ["main.py", "meta", "schedule", "-p", "1"]
+    sys.argv = ["main.py", "all", "debug", "-p", "1"]
+    # sys.argv = ["main.py", "meta", "schedule", "-p", "1"]
     app()
