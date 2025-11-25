@@ -1,9 +1,27 @@
+import platform
 import time
 from pathlib import Path
-from pynput.keyboard import Controller, Key
+
+from loguru import logger
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 from main_components.config import settings
+
+# pynput keyboard automation only works reliably on Windows
+if platform.system() == "Windows":
+    from pynput.keyboard import Controller, Key
+
+    PYNPUT_AVAILABLE = True
+else:
+    Controller = None
+    Key = None
+    PYNPUT_AVAILABLE = False
+    logger.critical(
+        f"FanvuePublisher file upload functionality requires pynput keyboard automation, "
+        f"which is only supported on Windows. Current OS: {platform.system()}. "
+        f"File upload via keyboard will not work.",
+        RuntimeWarning,
+    )
 
 
 class FanvuePublisher:
@@ -19,6 +37,8 @@ class FanvuePublisher:
         self.driver.maximize_window()
 
     def login(self, alias: str) -> None:
+        if not PYNPUT_AVAILABLE:
+            return
         # Validate & load credentials
         creds = settings.get_fanvue_credentials(alias)
 
@@ -32,6 +52,9 @@ class FanvuePublisher:
         self.driver.click("button[type='submit']")
 
     def post_publication(self, file_path: Path, caption: str) -> None:
+        if not PYNPUT_AVAILABLE:
+            return
+
         # Click "New Post" button
         self.driver.click("a[aria-label='New Post']")
         # Click "Upload from device" button
