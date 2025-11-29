@@ -5,7 +5,7 @@ from loguru import logger
 from main_components.common.profile import Profile
 from main_components.common.types import Platform
 
-from mains.commands.utils import resolve_profiles, get_gdrive_sync, RESOURCES_DIR
+from mains.commands.utils import resolve_profiles, gdrive_sync, RESOURCES_DIR
 import mains.commands.pipeline as pipeline
 from automation.meta_api.graph_api import GraphAPI
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
@@ -62,7 +62,7 @@ def run_all(
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
-    get_gdrive_sync().push(RESOURCES_DIR)
+    gdrive_sync.push(RESOURCES_DIR)
 
 
 @app.command("debug")
@@ -85,4 +85,4 @@ def debug(
         return
 
     _execute_all(profiles, overwrite, use_initial_conditions)
-    get_gdrive_sync().push(RESOURCES_DIR)
+    gdrive_sync.push(RESOURCES_DIR)
