@@ -9,11 +9,29 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from loguru import logger
+from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 
-from main_components.config import settings
+
+class GDriveSettings(BaseSettings):
+    client_id: str
+    client_secret: str
+    token_path: Path = Path.home() / ".config/myapp/token.pickle"
+    folder_id: str
+
+    @field_validator("client_id", "client_secret", "folder_id")
+    @classmethod
+    def not_empty(cls, v: str, field) -> str:
+        if not v:
+            raise ValueError(f"{field.name} must not be empty")
+        return v
+
+    class Config:
+        env_file = Path(__file__).parent / "gdrive.env"
+        env_file_encoding = "utf-8"
 
 
 class GoogleDriveSync:
@@ -23,10 +41,9 @@ class GoogleDriveSync:
 
     SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-    def __init__(self):
-        self.settings = settings
-        self.token_path = Path.home() / ".config/myapp/token.pickle"
-
+    def __init__(self, settings: Optional[GDriveSettings] = None):
+        self.settings = settings or GDriveSettings()
+        self.token_path = self.settings.token_path.expanduser()
         self.folder_id = self.settings.folder_id
         logger.info(
             "Initialized {} for Google Drive folder with id {}",

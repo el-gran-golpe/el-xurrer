@@ -1,9 +1,30 @@
+import os
 import time
 from pathlib import Path
+
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field, ValidationError
 from pynput.keyboard import Controller, Key
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
-from main_components.config import settings
+load_dotenv(Path(__file__).parent / "fanvue_keys.env")
+
+
+class FanvueCredentials(BaseModel):
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+    @classmethod
+    def from_env(cls, alias: str) -> "FanvueCredentials":
+        alias_norm = alias.strip().replace(" ", "_").upper()
+        username = os.getenv(f"{alias_norm}_FANVUE_USERNAME")
+        password = os.getenv(f"{alias_norm}_FANVUE_PASSWORD")
+        try:
+            return cls(username=username, password=password)
+        except ValidationError as e:
+            raise EnvironmentError(
+                f"Invalid or missing Fanvue credentials for alias '{alias}': {e}"
+            )
 
 
 class FanvuePublisher:
@@ -20,7 +41,7 @@ class FanvuePublisher:
 
     def login(self, alias: str) -> None:
         # Validate & load credentials
-        creds = settings.get_fanvue_credentials(alias)
+        creds = FanvueCredentials.from_env(alias)
 
         # Open the Fanvue login page and activate CDP mode
         self.driver.activate_cdp_mode("https://www.fanvue.com/signin")

@@ -2,19 +2,15 @@ import typer
 from pathlib import Path
 from typing import Optional
 
-from automation.gdrive.sync_resources import GoogleDriveSync
+from automation.gdrive.sync_resources import GoogleDriveSync, GDriveSettings
 from main_components.common.profile import ProfileManager, Profile
-
 
 # project root is three levels up from this file
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 RESOURCES_DIR = ROOT_DIR / "resources"
 
-
-def get_gdrive_sync() -> GoogleDriveSync:
-    """Returns an instance of GoogleDriveSync."""
-    return GoogleDriveSync()
-
+settings = GDriveSettings()  # type: ignore[call-arg]
+gdrive_sync = GoogleDriveSync(settings)
 
 profile_manager = ProfileManager(RESOURCES_DIR)
 

@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from pydantic import BaseModel, field_validator, ConfigDict, Field
+from pydantic import BaseModel, field_validator, ConfigDict
 from enum import Enum
 
 
@@ -87,13 +87,9 @@ class PromptItem(BaseModel):
                     assert placeholder in cache, (
                         f"Placeholder '{placeholder}' not found in the cache"
                     )
-                    prompt = prompt.replace(
-                        f"{{{placeholder}}}", str(cache[placeholder])
-                    )
+                    prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
                 elif placeholder in cache:
-                    prompt = prompt.replace(
-                        f"{{{placeholder}}}", str(cache[placeholder])
-                    )
+                    prompt = prompt.replace(f"{{{placeholder}}}", str(cache[placeholder]))
 
 
 # --- Profile ---
@@ -142,8 +138,3 @@ class ProfileInput(BaseModel):
                 )
             seen.add(p.cache_key)
         return prompts
-
-
-class FanvueCredentials(BaseModel):
-    username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
