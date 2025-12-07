@@ -1,4 +1,3 @@
-import threading
 from loguru import logger
 
 from main_components.common.types import Platform
@@ -45,13 +44,9 @@ def generate(platform: Platform, profiles: list[Profile]):
 
 def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
     for p in profiles:
-        t = threading.Thread(
-            target=lambda profile=p: PostingScheduler(
-                template_profiles=[profile],
-                platform_name=platform,
-                publisher=publisher_cls,
-            ).upload(),
-            daemon=True,
-        )
-        t.start()
-        logger.success("{} scheduler launched for {}.", platform.name, p.name)
+        PostingScheduler(
+            template_profiles=[p],
+            platform_name=platform,
+            publisher=publisher_cls,
+        ).upload()
+        logger.success("{} posts scheduled for {}.", platform.name, p.name)

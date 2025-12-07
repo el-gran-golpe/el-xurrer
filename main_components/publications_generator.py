@@ -14,7 +14,6 @@ from main_components.common.types import Profile
 # -- Data Models --------------------------------------------------------------
 
 
-# TODO: Here maybe Moi knows how to use Pydantic models instead of dataclasses (ask him)
 @dataclass(frozen=True)
 class ImageSpec:
     description: str
@@ -84,11 +83,11 @@ class ImageGeneratorService:
     ) -> None:
         for pub in publications:
             for spec in pub.images:
-                image_path = output_dir / f"{pub.slug}_{spec.index}.png"
+                image_path = output_dir / f"{pub.slug}_{spec.index}.jpeg"
                 if image_path.exists():
-                    logger.debug(f"Skipping existing image: {image_path}")
+                    logger.info("Skipping existing image: {}", image_path)
                     continue
-                logger.info(f"Generating image '{image_path.name}'")
+                logger.info("Generating image '{}'", image_path.name)
                 success: bool = self._generator.generate_image(
                     prompt=spec.description,
                     output_path=image_path,
@@ -99,7 +98,7 @@ class ImageGeneratorService:
                     raise RuntimeError(f"Image generation failed for '{image_path}'")
 
                 rel_path = str(image_path).split("el-xurrer", 1)[-1]
-                logger.success(f"Image saved at: el-xurrer{rel_path}")
+                logger.success("Image saved at: el-xurrer{}", rel_path)
 
 
 # -- Main Publications Generator ----------------------------------------------
@@ -146,7 +145,7 @@ class PublicationsGenerator:
         self.image_service = ImageGeneratorService(image_generator_tool)
 
     def generate_publications_from_planning(
-        self, profile_name: str, planning_file: Path, output_folder: Path
+        self, planning_file: Path, output_folder: Path
     ) -> None:
         planning = _load_planning(planning_file)
 
@@ -173,7 +172,6 @@ class PublicationsGenerator:
                 / "publications"
             )
             self.generate_publications_from_planning(
-                profile.name,
                 planning_path,
                 publications_folder,
             )

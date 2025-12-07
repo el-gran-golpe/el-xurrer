@@ -1,30 +1,27 @@
-import os
+import platform
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field, ValidationError
-from pynput.keyboard import Controller, Key
+from loguru import logger
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
-load_dotenv(Path(__file__).parent / "fanvue_keys.env")
+from main_components.config import settings
 
+# pynput keyboard automation only works reliably on Windows
+if platform.system() == "Windows":
+    from pynput.keyboard import Controller, Key
 
-class FanvueCredentials(BaseModel):
-    username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
-
-    @classmethod
-    def from_env(cls, alias: str) -> "FanvueCredentials":
-        alias_norm = alias.strip().replace(" ", "_").upper()
-        username = os.getenv(f"{alias_norm}_FANVUE_USERNAME")
-        password = os.getenv(f"{alias_norm}_FANVUE_PASSWORD")
-        try:
-            return cls(username=username, password=password)
-        except ValidationError as e:
-            raise EnvironmentError(
-                f"Invalid or missing Fanvue credentials for alias '{alias}': {e}"
-            )
+    PYNPUT_AVAILABLE = True
+else:
+    Controller = None
+    Key = None
+    PYNPUT_AVAILABLE = False
+    logger.critical(
+        f"FanvuePublisher file upload functionality requires pynput keyboard automation, "
+        f"which is only supported on Windows. Current OS: {platform.system()}. "
+        f"File upload via keyboard will not work.",
+        RuntimeWarning,
+    )
 
 
 class FanvuePublisher:
@@ -40,8 +37,10 @@ class FanvuePublisher:
         self.driver.maximize_window()
 
     def login(self, alias: str) -> None:
+        if not PYNPUT_AVAILABLE:
+            return
         # Validate & load credentials
-        creds = FanvueCredentials.from_env(alias)
+        creds = settings.get_fanvue_credentials(alias)
 
         # Open the Fanvue login page and activate CDP mode
         self.driver.activate_cdp_mode("https://www.fanvue.com/signin")
@@ -53,6 +52,9 @@ class FanvuePublisher:
         self.driver.click("button[type='submit']")
 
     def post_publication(self, file_path: Path, caption: str) -> None:
+        if not PYNPUT_AVAILABLE:
+            return
+
         # Click "New Post" button
         self.driver.click("a[aria-label='New Post']")
         # Click "Upload from device" button

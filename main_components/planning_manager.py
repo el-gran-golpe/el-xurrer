@@ -75,5 +75,5 @@ class PlanningManager:
             )
 
             # Update storyline after planning generation
-            storyline_tracker = StorylineTracker(profile, self.platform_name, model_router)
-            storyline_tracker.update_storyline() # TODO: This should not scan again the whole catalog
+            storyline_tracker = StorylineTracker(profile, self.platform_name, llm)
+            storyline_tracker.update_storyline()
