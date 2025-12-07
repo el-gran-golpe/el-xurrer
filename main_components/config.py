@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -8,21 +6,21 @@ from main_components.common.types import FanvueCredentials
 
 class Settings(BaseSettings):
     # BaseLLM Keys
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
-    deepseek_api_key: str = Field(..., env="DEEPSEEK_API_KEY")
+    openai_api_key: str = Field(validation_alias="OPENAI_API_KEY")
+    deepseek_api_key: str = Field(validation_alias="DEEPSEEK_API_KEY")
 
-    # Note: Github keys are loaded dynamically due to their naming convention
+    # Note: GitHub keys are loaded dynamically due to their naming convention
     # GITHUB_API_KEY_HARU, GITHUB_API_KEY_CHARLY, etc.
 
     # Google Drive OAuth
-    client_id: str = Field(..., env="client_id")
-    client_secret: str = Field(..., env="client_secret")
-    folder_id: str = Field(..., env="folder_id")
+    client_id: str = Field(validation_alias="client_id")
+    client_secret: str = Field(validation_alias="client_secret")
+    folder_id: str = Field(validation_alias="folder_id")
 
     # Meta API
-    instagram_account_id: str = Field(..., env="INSTAGRAM_ACCOUNT_ID")
-    user_access_token: str = Field(..., env="USER_ACCESS_TOKEN")
-    app_scoped_user_id: str = Field(..., env="APP_SCOPED_USER_ID")
+    instagram_account_id: str = Field(validation_alias="INSTAGRAM_ACCOUNT_ID")
+    user_access_token: str = Field(validation_alias="USER_ACCESS_TOKEN")
+    app_scoped_user_id: str = Field(validation_alias="APP_SCOPED_USER_ID")
 
     # Fanvue credentials are loaded dynamically.
     # LAURA_VIGNE_FANVUE_USERNAME, MARIA_LARSEN_FANVUE_PASSWORD, etc.
@@ -34,22 +32,10 @@ class Settings(BaseSettings):
     )
 
     @property
-    def openai_keys(self) -> dict[str, str]:
-        """Returns a dictionary of all non-empty OpenAI keys."""
-        raw = self.model_dump()
-        return {k: v for k, v in raw.items() if k.upper().startswith("OPENAI") and v}
-
-    @property
     def github_keys(self) -> dict[str, str]:
         """Returns a dictionary of all non-empty GitHub keys."""
         raw = self.model_dump()
         return {k: v for k, v in raw.items() if k.upper().startswith("GITHUB") and v}
-
-    @property
-    def deepseek_keys(self) -> dict[str, str]:
-        """Returns a dictionary of all non-empty Deepseek keys."""
-        raw = self.model_dump()
-        return {k: v for k, v in raw.items() if k.upper().startswith("DEEPSEEK") and v}
 
     def get_fanvue_credentials(self, alias: str) -> FanvueCredentials:
         """
@@ -57,8 +43,9 @@ class Settings(BaseSettings):
         """
         alias_norm = alias.strip().replace(" ", "_").upper()
         # Access extra fields via model_extra
-        username = self.model_extra.get(f"{alias_norm}_FANVUE_USERNAME")
-        password = self.model_extra.get(f"{alias_norm}_FANVUE_PASSWORD")
+        extras = self.model_extra or {}
+        username = extras.get(f"{alias_norm}_FANVUE_USERNAME")
+        password = extras.get(f"{alias_norm}_FANVUE_PASSWORD")
 
         if not username or not password:
             raise EnvironmentError(
@@ -73,14 +60,21 @@ class Settings(BaseSettings):
                 f"Invalid Fanvue credentials for alias '{alias}': {e}"
             )
 
-    def extract_github_keys(self) -> List[str]:
+    # ---------------- Extraction Methods ----------------
+
+    def extract_github_keys(self) -> list[str]:
         """Extracts all GitHub API key values."""
         return list(self.github_keys.values())
 
-    def extract_openai_keys(self) -> List[str]:
-        """Extracts all OpenAI API key values."""
-        return list(self.openai_keys.values())
+    # This key is not being used currently
+    def extract_openai_key(self) -> str:
+        """Returns the single OpenAI API key."""
+        return self.openai_api_key
+
+    def extract_deepseek_key(self) -> str:
+        """Returns the single DeepSeek API key."""
+        return self.deepseek_api_key
 
 
 # Instantiate once (singleton) for the entire application
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]
