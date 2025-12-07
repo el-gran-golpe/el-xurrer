@@ -12,6 +12,7 @@ google-api-python-client
 google-auth-oauthlib
 plotly
 python-slugify
+openai
 
 # Pre-commit hooks
 pre-commit
