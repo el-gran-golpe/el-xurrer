@@ -20,12 +20,10 @@ class ModelRouter:
     def __init__(self, github_api_keys: list[str], deepseek_api_key: str):
         self.github_api_keys = github_api_keys
         self.deepseek_api_key = deepseek_api_key
-
         # One classifier per GitHub API key
         self.github_classifiers: list[ModelClassifier] = [
             ModelClassifier(k) for k in self.github_api_keys
         ]
-
         # Cursor to remember which key worked last; we start at 0 and rotate on shortages
         self._github_key_cursor: int = 0
 
@@ -213,10 +211,10 @@ class ModelRouter:
                 else {"type": "text"},
                 stream=False,
             )
+            return response.choices[0].message.content or ""
         except Exception as e:
             logger.error("DeepSeek API fallback failed with error: {}", e)
-            raise e
-        return response.choices[0].message.content
+            raise
 
     @staticmethod
     def _pick_soonest(
