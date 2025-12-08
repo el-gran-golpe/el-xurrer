@@ -1,8 +1,7 @@
-import sys
-import os
-from pathlib import Path
-from datetime import datetime
 import json
+import time
+from datetime import datetime
+from pathlib import Path
 
 import requests
 from loguru import logger
@@ -27,7 +26,7 @@ class GraphAPI:
                 "Caption exceeds the maximum allowed length of 2,200 characters."
             )
 
-        media_ids = []
+        media_ids: list[str] = []
 
         for img_path in img_paths:
             # --- Meta CDN step instead of ImgHippo ---
@@ -37,7 +36,7 @@ class GraphAPI:
                 image_url = self._upload_photo_to_facebook_and_get_cdn_url(img_path)
 
                 url = f"{self.base_url}/{self.account_id}/media"
-                payload = {
+                payload: dict[str, str] = {
                     "image_url": image_url,
                     "access_token": self.page_access_token,
                 }
@@ -80,12 +79,12 @@ class GraphAPI:
                 )
                 return None
 
-        # --- Carousel or single media publish ---
+        # --- Carousel or single media container creation ---
         if len(media_ids) == 1:
             creation_id = media_ids[0]
         else:
             try:
-                carousel_url = "{}/{}/media".format(self.base_url, self.account_id)
+                carousel_url = f"{self.base_url}/{self.account_id}/media"
                 carousel_payload = {
                     "media_type": "CAROUSEL",
                     "children": ",".join(media_ids),
@@ -113,9 +112,16 @@ class GraphAPI:
                 )
                 return None
 
+        # --- Wait until media is ready before publishing ---
+        if not self._wait_for_ig_media_ready(creation_id):
+            logger.error(
+                "Aborting publish: IG media container {} is not ready.", creation_id
+            )
+            return None
+
         # --- Publish the media (or carousel) ---
         try:
-            publish_url = "{}/{}/media_publish".format(self.base_url, self.account_id)
+            publish_url = f"{self.base_url}/{self.account_id}/media_publish"
             publish_payload = {
                 "creation_id": creation_id,
                 "access_token": self.page_access_token,
@@ -185,7 +191,7 @@ class GraphAPI:
         try:
             post_response = requests.post(post_url, data=post_data, timeout=30)
             post_response.raise_for_status()
-            logger.info("Post created successfully:", post_response.json())
+            logger.info("Post created successfully: {}", post_response.json())
             return post_response.json()
         except requests.exceptions.RequestException as e:
             logger.error("An error occurred while creating the post: {}", e)
@@ -237,8 +243,6 @@ class GraphAPI:
             )
             return None  # Return None instead of sys.exit(1)
 
-        # NEW: helper to upload to FB Page and get Meta CDN URL
-
     def _upload_photo_to_facebook_and_get_cdn_url(self, img_path: Path) -> str:
         """
         Uploads img_path to the Facebook Page as an unpublished photo,
@@ -287,3 +291,62 @@ class GraphAPI:
 
         logger.info("Using FB CDN URL for Instagram upload: {}", cdn_url)
         return cdn_url
+
+    def _wait_for_ig_media_ready(
+        self,
+        creation_id: str,
+        max_attempts: int = 10,
+        delay_seconds: int = 5,
+    ) -> bool:
+        """
+        Polls the IG media container until it's ready (status_code == 'FINISHED')
+        or an error/timeout happens.
+        """
+        url = f"{self.base_url}/{creation_id}"
+        params = {
+            "fields": "status_code",
+            "access_token": self.page_access_token,
+        }
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = requests.get(url, params=params, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                status = data.get("status_code")
+
+                logger.info(
+                    "IG media container {} status: {} (attempt {}/{})",
+                    creation_id,
+                    status,
+                    attempt,
+                    max_attempts,
+                )
+
+                if status == "FINISHED":
+                    return True
+                if status == "ERROR":
+                    logger.error(
+                        "IG media container {} entered ERROR state: {}",
+                        creation_id,
+                        data,
+                    )
+                    return False
+
+                # IN_PROGRESS or other → wait and retry
+                time.sleep(delay_seconds)
+
+            except requests.exceptions.RequestException as e:
+                logger.error(
+                    "Error while polling IG media container {} status: {}",
+                    creation_id,
+                    e,
+                )
+                time.sleep(delay_seconds)
+
+        logger.error(
+            "IG media container {} was not ready after {} attempts",
+            creation_id,
+            max_attempts,
+        )
+        return False
