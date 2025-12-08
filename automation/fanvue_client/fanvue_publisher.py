@@ -1,27 +1,8 @@
-import platform
 import time
 from pathlib import Path
 
-from loguru import logger
 from selenium.common.exceptions import TimeoutException, WebDriverException
-
 from main_components.config import settings
-
-# pynput keyboard automation only works reliably on Windows
-if platform.system() == "Windows":
-    from pynput.keyboard import Controller, Key
-
-    PYNPUT_AVAILABLE = True
-else:
-    Controller = None
-    Key = None
-    PYNPUT_AVAILABLE = False
-    logger.critical(
-        f"FanvuePublisher file upload functionality requires pynput keyboard automation, "
-        f"which is only supported on Windows. Current OS: {platform.system()}. "
-        f"File upload via keyboard will not work.",
-        RuntimeWarning,
-    )
 
 
 class FanvuePublisher:
@@ -37,8 +18,6 @@ class FanvuePublisher:
         self.driver.maximize_window()
 
     def login(self, alias: str) -> None:
-        if not PYNPUT_AVAILABLE:
-            return
         # Validate & load credentials
         creds = settings.get_fanvue_credentials(alias)
 
@@ -52,9 +31,6 @@ class FanvuePublisher:
         self.driver.click("button[type='submit']")
 
     def post_publication(self, file_path: Path, caption: str) -> None:
-        if not PYNPUT_AVAILABLE:
-            return
-
         # Click "New Post" button
         self.driver.click("a[aria-label='New Post']")
         # Click "Upload from device" button
@@ -99,3 +75,16 @@ class FanvuePublisher:
         # Timed out without seeing the substring
         last = self.driver.get_current_url()
         raise TimeoutException(f"Post not published, still at: {last}")
+
+if __name__ == "__main__":
+    from seleniumbase import SB
+    from pathlib import Path
+
+    TEST_PROFILE = "laura_vigne"
+    TEST_IMAGE = Path("C:/Users/carlosperez/Desktop/repos/my-side-hustles/el-xurrer/resources/laura_vigne/meta/outputs/publications/week_1/day_1/a-countdown-begins_0.png")
+    TEST_CAPTION = "This is a test post from FanvuePublisher."
+
+    with SB(uc=True, locale_code="en") as driver:
+        publisher = FanvuePublisher(driver)
+        publisher.login(TEST_PROFILE)
+        publisher.post_publication(TEST_IMAGE, TEST_CAPTION)
