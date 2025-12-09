@@ -1,6 +1,7 @@
 loguru
 tqdm
 python-dotenv
+# When problem is fixed, pin the seleniumbase version
 seleniumbase
 requests
 typer
