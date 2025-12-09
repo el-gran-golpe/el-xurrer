@@ -55,10 +55,10 @@ class Settings(BaseSettings):
         """
         Dynamically retrieves Fanvue credentials for a given profile alias.
         """
-        alias_norm = alias.strip().replace(" ", "_").upper()
+        alias_norm = alias.strip().replace(" ", "_")
         # Access extra fields via model_extra
-        username = self.model_extra.get(f"{alias_norm}_FANVUE_USERNAME")
-        password = self.model_extra.get(f"{alias_norm}_FANVUE_PASSWORD")
+        username = self.model_extra.get(f"{alias_norm}_fanvue_username")
+        password = self.model_extra.get(f"{alias_norm}_fanvue_password")
 
         if not username or not password:
             raise EnvironmentError(
