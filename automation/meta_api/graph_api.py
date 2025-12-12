@@ -309,39 +309,62 @@ class GraphAPI:
         }
 
         for attempt in range(1, max_attempts + 1):
+            should_sleep = attempt < max_attempts
+
+            # 1) Network/HTTP
             try:
                 resp = requests.get(url, params=params, timeout=30)
                 resp.raise_for_status()
-                data = resp.json()
-                status = data.get("status_code")
-
-                logger.info(
-                    "IG media container {} status: {} (attempt {}/{})",
-                    creation_id,
-                    status,
-                    attempt,
-                    max_attempts,
-                )
-
-                if status == "FINISHED":
-                    return True
-                if status == "ERROR":
-                    logger.error(
-                        "IG media container {} entered ERROR state: {}",
-                        creation_id,
-                        data,
-                    )
-                    return False
-
-                # IN_PROGRESS or other → wait and retry
-                time.sleep(delay_seconds)
-
             except requests.exceptions.RequestException as e:
                 logger.error(
-                    "Error while polling IG media container {} status: {}",
+                    "Error while polling IG media container {} status (attempt {}/{}): {}",
                     creation_id,
+                    attempt,
+                    max_attempts,
                     e,
                 )
+                if should_sleep:
+                    time.sleep(delay_seconds)
+                continue
+
+            # 2) JSON
+            try:
+                data = resp.json()
+            except ValueError as e:
+                logger.error(
+                    "Invalid JSON while polling IG media container {} (attempt {}/{}): {}",
+                    creation_id,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+                if should_sleep:
+                    time.sleep(delay_seconds)
+                continue
+
+            # 3) Happy path (steps 1 and 2 work)
+            status = data.get("status_code")
+            logger.info(
+                "IG media container {} status: {} (attempt {}/{})",
+                creation_id,
+                status,
+                attempt,
+                max_attempts,
+            )
+
+            if status == "FINISHED":
+                return True
+
+            if status == "ERROR":
+                logger.error(
+                    "IG media container {} entered ERROR state: {}",
+                    creation_id,
+                    data,
+                )
+                return False
+
+            # IN_PROGRESS / unknown -> retry (but don't sleep on the last attempt)
+            if should_sleep:
                 time.sleep(delay_seconds)
 
         logger.error(
