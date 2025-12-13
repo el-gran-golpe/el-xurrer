@@ -61,18 +61,28 @@ class ModelRouter:
         ]
         output_as_json = prompt_item.output_as_json
 
-        # ---------- 1) Try all GitHub keys/models first ----------
         reply, soonest, first_error = self._try_github_models(
             conversation, output_as_json, prompt_item
         )
+
         if reply:
             return reply
 
-        # ---------- 2) DeepSeek fallback if GitHub fully failed ----------
-        return self._try_deepseek_fallback(
-            conversation=conversation,
-            output_as_json=output_as_json,
-        )
+        try:
+            return self._try_deepseek_fallback(
+                conversation=conversation,
+                output_as_json=output_as_json,
+            )
+        except Exception as e:
+            if soonest:
+                model, eta = soonest
+                raise RuntimeError(
+                    f"All models failed. GitHub soonest recovery: {model.identifier} in ~{int(eta)}s. "
+                    f"DeepSeek fallback also failed: {e}"
+                ) from first_error or e
+            raise RuntimeError(
+                f"All GitHub models exhausted and DeepSeek fallback failed: {e}"
+            ) from first_error or e
 
     # ---------------- helpers ----------------
 
@@ -192,8 +202,6 @@ class ModelRouter:
         # No candidate succeeded for this key
         return None, soonest, first_error
 
-    # ------------ deepseek helpers ------------
-
     def _try_deepseek_fallback(
         self,
         conversation: list[dict[str, str]],
@@ -205,12 +213,14 @@ class ModelRouter:
         try:
             response = client.chat.completions.create(
                 model="deepseek-chat",
-                messages=conversation,
-                response_format={"type": "json_object"}
-                if output_as_json
-                else {"type": "text"},
+                messages=conversation,  # type: ignore[arg-type]
+                response_format=(
+                    {"type": "json_object"} if output_as_json else {"type": "text"}
+                ),
                 stream=False,
             )
+            if not response.choices:
+                raise RuntimeError("DeepSeek API returned no choices")
             return response.choices[0].message.content or ""
         except Exception as e:
             logger.error("DeepSeek API fallback failed with error: {}", e)
