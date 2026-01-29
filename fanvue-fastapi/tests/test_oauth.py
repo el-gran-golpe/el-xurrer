@@ -1,6 +1,9 @@
 import base64
 import hashlib
+from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlparse
+
+import pytest
 
 
 def test_generate_pkce_returns_verifier_and_challenge():
@@ -73,3 +76,77 @@ def test_get_authorize_url_contains_required_params(monkeypatch):
     assert "openid" in params["scope"][0]
     assert "offline_access" in params["scope"][0]
     assert "read:self" in params["scope"][0]
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_for_token_success(monkeypatch):
+    """Token exchange should return tokens on success."""
+    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
+    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "access_token": "test_access_token",
+        "refresh_token": "test_refresh_token",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+    }
+
+    with patch("app.oauth.httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        from app.oauth import exchange_code_for_token
+
+        result = await exchange_code_for_token(
+            code="test_code",
+            code_verifier="test_verifier",
+        )
+
+    assert result["access_token"] == "test_access_token"
+    assert result["refresh_token"] == "test_refresh_token"
+    assert result["expires_in"] == 3600
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_for_token_failure_raises(monkeypatch):
+    """Token exchange should raise on HTTP error."""
+    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
+    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = "Bad Request"
+
+    with patch("app.oauth.httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        from app.oauth import OAuthError, exchange_code_for_token
+
+        with pytest.raises(OAuthError):
+            await exchange_code_for_token(
+                code="invalid_code",
+                code_verifier="test_verifier",
+            )
