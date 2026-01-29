@@ -1,3 +1,5 @@
+import os
+import uvicorn
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse
 
@@ -8,8 +10,19 @@ from app.session import SessionPayload
 
 app = FastAPI(title="Fanvue OAuth App")
 
-# Include routers
 app.include_router(oauth_router)
+
+if __name__ == "__main__":
+    # Default configuration with environment variable overrides
+    host = os.getenv("SERVER_HOST", "127.0.0.1")
+    port = int(os.getenv("SERVER_PORT", "8000"))
+    reload = os.getenv("RELOAD", "true").lower() in ("true", "1", "yes")
+
+    # Startup message
+    print(f"Starting Fanvue OAuth App on {host}:{port} (Reload: {reload})")
+
+    # Run the server
+    uvicorn.run("main:app", host=host, port=port, reload=reload)
 
 
 @app.get("/", response_class=HTMLResponse)
