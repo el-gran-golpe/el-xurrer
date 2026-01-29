@@ -150,3 +150,39 @@ async def test_exchange_code_for_token_failure_raises(monkeypatch):
                 code="invalid_code",
                 code_verifier="test_verifier",
             )
+
+
+@pytest.mark.asyncio
+async def test_refresh_access_token_success(monkeypatch):
+    """Token refresh should return new tokens."""
+    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
+    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "access_token": "new_access_token",
+        "refresh_token": "new_refresh_token",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+    }
+
+    with patch("app.oauth.httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.post.return_value = (
+            mock_response
+        )
+
+        from app.oauth import refresh_access_token
+
+        result = await refresh_access_token("old_refresh_token")
+
+    assert result["access_token"] == "new_access_token"
