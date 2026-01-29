@@ -4,6 +4,7 @@
 # === Environment files / virtualenvs ===
 *.env
 venv
+.venv
 
 # === Python ===
 *.pyc
