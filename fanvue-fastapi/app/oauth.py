@@ -133,3 +133,44 @@ async def exchange_code_for_token(
         )
 
     return response.json()
+
+
+async def refresh_access_token(refresh_token: str) -> TokenResponse:
+    """Refresh an expired access token.
+
+    Args:
+        refresh_token: The refresh token from previous authentication
+
+    Returns:
+        New token response with fresh access_token
+
+    Raises:
+        OAuthError: If token refresh fails
+    """
+    settings = get_settings()
+
+    credentials = f"{settings.oauth_client_id}:{settings.oauth_client_secret}"
+    basic_auth = base64.b64encode(credentials.encode()).decode()
+
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": settings.oauth_client_id,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.oauth_issuer_base_url}/oauth2/token",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {basic_auth}",
+            },
+            data=data,
+        )
+
+    if response.status_code != 200:
+        raise OAuthError(
+            f"Token refresh failed: {response.status_code} {response.text}"
+        )
+
+    return response.json()
