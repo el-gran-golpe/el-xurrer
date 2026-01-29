@@ -38,8 +38,8 @@ async def home(request: Request):
         # If session was updated (token refreshed), we'd need to set new cookie
         # For simplicity, just show user info
         if user:
-            username = user.get("username", "User")
-            user_id = user.get("id", "N/A")
+            username = user.get("displayName", "User")
+            user_id = user.get("uuid", "N/A")
             return f"""
             <html>
                 <body>
