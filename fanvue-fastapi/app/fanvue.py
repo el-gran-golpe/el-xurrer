@@ -11,24 +11,21 @@ from app.session import SessionPayload
 TOKEN_REFRESH_BUFFER_MS = 30_000
 
 
-async def get_current_user(
+async def ensure_valid_token(
     session: SessionPayload,
-) -> Tuple[Optional[Dict[str, Any]], Optional[SessionPayload]]:
-    """Fetch current user from Fanvue API with auto token refresh.
+) -> Tuple[str, Optional[SessionPayload]]:
+    """Ensure access token is valid, refreshing if needed.
 
     Args:
         session: Current session with tokens
 
     Returns:
-        Tuple of (user_data, updated_session).
+        Tuple of (access_token, updated_session).
         updated_session is None if no refresh was needed.
-        user_data is None if the request failed.
     """
-    settings = get_settings()
     updated_session: Optional[SessionPayload] = None
     access_token = session.access_token
 
-    # Check if token needs refresh (expired or expiring within buffer)
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     if now_ms >= session.expires_at - TOKEN_REFRESH_BUFFER_MS and session.refresh_token:
         try:
@@ -43,8 +40,17 @@ async def get_current_user(
                 expires_at=now_ms + refreshed.get("expires_in", 0) * 1000,
             )
         except OAuthError:
-            # Silently fail refresh, try with old token
             pass
+
+    return access_token, updated_session
+
+
+async def get_current_user(
+    session: SessionPayload,
+) -> Tuple[Optional[Dict[str, Any]], Optional[SessionPayload]]:
+    """Fetch current user from Fanvue API with auto token refresh."""
+    settings = get_settings()
+    access_token, updated_session = await ensure_valid_token(session)
 
     try:
         async with httpx.AsyncClient() as client:

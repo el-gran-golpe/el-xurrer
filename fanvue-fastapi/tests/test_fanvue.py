@@ -105,3 +105,80 @@ async def test_get_current_user_refreshes_expired_token(monkeypatch):
         assert updated_session is not None
         assert updated_session.access_token == "new_access_token"
         assert updated_session.refresh_token == "new_refresh_token"
+
+
+@pytest.mark.asyncio
+async def test_ensure_valid_token_returns_original_when_not_expired(monkeypatch):
+    """ensure_valid_token should return original token when not expired."""
+    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
+    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    from app.session import SessionPayload
+
+    session = SessionPayload(
+        access_token="valid_token",
+        refresh_token="refresh_token",
+        expires_at=int(
+            (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp() * 1000
+        ),
+        token_type="Bearer",
+    )
+
+    from app.fanvue import ensure_valid_token
+
+    access_token, updated_session = await ensure_valid_token(session)
+
+    assert access_token == "valid_token"
+    assert updated_session is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_valid_token_refreshes_when_expired(monkeypatch):
+    """ensure_valid_token should refresh token when expired."""
+    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
+    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    from app.session import SessionPayload
+
+    session = SessionPayload(
+        access_token="expired_token",
+        refresh_token="refresh_token",
+        expires_at=int(
+            (datetime.now(timezone.utc) - timedelta(hours=1)).timestamp() * 1000
+        ),
+        token_type="Bearer",
+    )
+
+    with patch("app.fanvue.refresh_access_token") as mock_refresh:
+        mock_refresh.return_value = {
+            "access_token": "new_access_token",
+            "refresh_token": "new_refresh_token",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+        }
+
+        from app.fanvue import ensure_valid_token
+
+        access_token, updated_session = await ensure_valid_token(session)
+
+        assert access_token == "new_access_token"
+        assert updated_session is not None
+        assert updated_session.access_token == "new_access_token"
