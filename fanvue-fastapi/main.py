@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 
 # Removed unused import
 from app.routes.oauth import router as oauth_router
+from app.routes.posts import router as posts_router
 from app.dependencies import get_session_from_cookie, require_session
 from app.fanvue import get_current_user
 from app.session import SessionPayload
@@ -13,6 +14,7 @@ app = FastAPI(title="Fanvue OAuth App")
 
 # Include routers
 app.include_router(oauth_router)
+app.include_router(posts_router)
 
 if __name__ == "__main__":
     # Default configuration with environment variable overrides
