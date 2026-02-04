@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 
 import httpx
 
@@ -103,3 +103,33 @@ async def upload_chunk(url: str, data: bytes) -> str:
         raise MediaUploadError(f"Failed to upload chunk: {response.status_code}")
 
     return response.headers.get("ETag", "")
+
+
+async def complete_upload(
+    upload_id: str,
+    etags: List[str],
+    access_token: str,
+) -> None:
+    """Complete a multipart upload.
+
+    Args:
+        upload_id: The upload session ID
+        etags: List of ETags from chunk uploads
+        access_token: Valid Fanvue access token
+
+    Raises:
+        MediaUploadError: If completing upload fails
+    """
+    settings = get_settings()
+
+    parts = [{"partNumber": i + 1, "etag": etag} for i, etag in enumerate(etags)]
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{settings.api_base_url}/media/uploads/{upload_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"parts": parts},
+        )
+
+    if response.status_code not in (200, 204):
+        raise MediaUploadError(f"Failed to complete upload: {response.status_code}")
