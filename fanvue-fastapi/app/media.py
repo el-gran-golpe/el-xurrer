@@ -9,6 +9,25 @@ from app.config import get_settings
 CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
 
 
+def get_media_type(content_type: str) -> str:
+    """Determine Fanvue mediaType from MIME content type.
+
+    Args:
+        content_type: MIME type (e.g., 'image/jpeg', 'video/mp4')
+
+    Returns:
+        One of: 'image', 'video', 'audio', 'document'
+    """
+    if content_type.startswith("image/"):
+        return "image"
+    elif content_type.startswith("video/"):
+        return "video"
+    elif content_type.startswith("audio/"):
+        return "audio"
+    else:
+        return "document"
+
+
 class MediaUploadError(Exception):
     """Error during media upload."""
 
@@ -43,12 +62,17 @@ async def initiate_upload(
             headers={"Authorization": f"Bearer {access_token}"},
             json={
                 "filename": filename,
+                "name": filename,
+                "mediaType": get_media_type(content_type),
                 "contentType": content_type,
             },
         )
 
-    if response.status_code != 201:
-        raise MediaUploadError(f"Failed to initiate upload: {response.status_code}")
+    if response.status_code != 200:
+        error_detail = response.text
+        raise MediaUploadError(
+            f"Failed to initiate upload: {response.status_code} - {error_detail}"
+        )
 
     return response.json()
 
@@ -80,9 +104,12 @@ async def get_upload_url(
         )
 
     if response.status_code != 200:
-        raise MediaUploadError(f"Failed to get upload URL: {response.status_code}")
+        error_detail = response.text
+        raise MediaUploadError(
+            f"Failed to get upload URL: {response.status_code} - {error_detail}"
+        )
 
-    return response.json()["url"]
+    return response.text
 
 
 async def upload_chunk(url: str, data: bytes) -> str:
@@ -102,7 +129,10 @@ async def upload_chunk(url: str, data: bytes) -> str:
         response = await client.put(url, content=data)
 
     if response.status_code not in (200, 201):
-        raise MediaUploadError(f"Failed to upload chunk: {response.status_code}")
+        error_detail = response.text
+        raise MediaUploadError(
+            f"Failed to upload chunk: {response.status_code} - {error_detail}"
+        )
 
     return response.headers.get("ETag", "")
 
@@ -124,7 +154,7 @@ async def complete_upload(
     """
     settings = get_settings()
 
-    parts = [{"partNumber": i + 1, "etag": etag} for i, etag in enumerate(etags)]
+    parts = [{"PartNumber": i + 1, "ETag": etag} for i, etag in enumerate(etags)]
 
     async with httpx.AsyncClient() as client:
         response = await client.patch(
@@ -134,7 +164,10 @@ async def complete_upload(
         )
 
     if response.status_code not in (200, 204):
-        raise MediaUploadError(f"Failed to complete upload: {response.status_code}")
+        error_detail = response.text
+        raise MediaUploadError(
+            f"Failed to complete upload: {response.status_code} - {error_detail}"
+        )
 
 
 @dataclass
