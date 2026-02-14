@@ -26,3 +26,4 @@ venv
 # === Misc / tooling ===
 .qodo
 .vscode/launch.json
+.worktrees
