@@ -3,6 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from time import sleep
 from typing import Any, Iterator, List, Type, Union, cast
+
+from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 from automation.meta_api.graph_api import GraphAPI
 import shutil
@@ -80,7 +82,9 @@ class PostingScheduler:
         template_profiles: List[Profile],
         platform_name: Platform,
         # I pass the class itself and not an instance, since Fanvue needs a driver to be passed to it
-        publisher: Union[Type[GraphAPI], Type[FanvuePublisher]],
+        publisher: Union[
+            Type[GraphAPI], Type[FanvuePublisher], Type[FanvueAPIPublisher]
+        ],
     ):
         self.platform_name = platform_name
         self.platform_name = platform_name
@@ -126,9 +130,20 @@ class PostingScheduler:
                     )
 
                     if self.platform_name == Platform.FANVUE:
-                        self._upload_via_selenium(
-                            pub, cast(Type[FanvuePublisher], self.publisher), profile
-                        )
+                        # Check publisher type to route to correct method
+                        if self.publisher is FanvueAPIPublisher:
+                            self._upload_via_fanvue_api(
+                                pub,
+                                cast(Type[FanvueAPIPublisher], self.publisher),
+                                profile,
+                            )
+                        else:
+                            # Default to Selenium-based (FanvuePublisher)
+                            self._upload_via_selenium(
+                                pub,
+                                cast(Type[FanvuePublisher], self.publisher),
+                                profile,
+                            )
                     elif self.platform_name == Platform.META:
                         self._upload_via_api(pub, cast(Type[GraphAPI], self.publisher))
                     else:
@@ -235,3 +250,32 @@ class PostingScheduler:
             logger.success(f"[{self.platform_name}] Cleaned up publications at {root}")
         except Exception as err:
             logger.error(f"[{self.platform_name}] Cleanup failed for {root}: {err}")
+
+    def _upload_via_fanvue_api(
+        self, pub: Publication, client_class: Type[FanvueAPIPublisher], profile: Profile
+    ) -> None:
+        """Upload via Fanvue OAuth API with multiple images as single carousel post."""
+        import asyncio
+
+        # Create API client
+        client = client_class(profile)
+
+        # Convert datetime to ISO 8601 string with 'Z' suffix (Fanvue requirement)
+        # Fanvue API requires format: YYYY-MM-DDTHH:MM:SSZ
+        from datetime import timezone
+
+        utc_time = pub.upload_time.astimezone(timezone.utc)
+        publish_at = utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        logger.info(f"Scheduling {pub.day_folder.name} via Fanvue API for {publish_at}")
+
+        try:
+            # Run async batch upload in sync context with scheduled time
+            asyncio.run(
+                client.post_publication_batch(
+                    pub.image_paths, pub.caption_text, publish_at
+                )
+            )
+        except Exception as err:
+            logger.error(f"API upload failed for {pub.day_folder}: {err}")
+            raise
