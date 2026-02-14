@@ -6,6 +6,7 @@ from mains.commands.utils import resolve_profiles
 import mains.commands.pipeline as pipeline
 from main_components.common.types import Platform
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
+from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
 from main_components.fanvue_auth import (
     start_fastapi_server,
     authenticate_profile,
@@ -79,3 +80,13 @@ def auth(
         # 3. Stop FastAPI server
         server_process.terminate()
         server_process.wait(timeout=5)
+
+
+@app.command()
+def schedule_api(
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+):
+    """Upload & schedule FANVUE posts (OAuth API-based)."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    pipeline.schedule(Platform.FANVUE, profiles, FanvueAPIPublisher)
