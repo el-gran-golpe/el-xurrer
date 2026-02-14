@@ -1,8 +1,10 @@
 import json
 import os
+import secrets
 import socket
 import subprocess
 import time
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -177,3 +179,54 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
 
     logger.info(f"Started FastAPI server on port {port}")
     return process, port
+
+
+def authenticate_profile(profile_name: str, port: int, timeout: int = 120) -> None:
+    """Open browser for OAuth and wait for token file.
+
+    Args:
+        profile_name: Name of profile to authenticate
+        port: Port where FastAPI server is running
+        timeout: Max seconds to wait for OAuth completion
+
+    Raises:
+        TimeoutError: If OAuth not completed within timeout
+    """
+    state = f"{profile_name}_{secrets.token_urlsafe(16)}"
+
+    # Open browser to FastAPI login endpoint
+    auth_url = (
+        f"http://localhost:{port}/api/oauth/login?profile={profile_name}&state={state}"
+    )
+    logger.info(f"Opening browser for profile '{profile_name}'...")
+    webbrowser.open(auth_url)
+
+    # Wait for tokens.json to be created (polling)
+    token_path = Path(f"resources/{profile_name}/fanvue/tokens.json")
+    wait_for_file(token_path, timeout=timeout)
+
+    logger.success(f"✓ Profile '{profile_name}' authenticated")
+
+
+def wait_for_file(file_path: Path, timeout: int = 120) -> None:
+    """Poll for file existence with timeout.
+
+    Args:
+        file_path: Path to wait for
+        timeout: Max seconds to wait
+
+    Raises:
+        TimeoutError: If file not created within timeout
+    """
+    import time
+
+    start = time.time()
+    while time.time() - start < timeout:
+        if file_path.exists():
+            return
+        time.sleep(0.5)
+
+    raise TimeoutError(
+        f"OAuth timeout: {file_path} not created within {timeout}s. "
+        f"Please complete the OAuth flow in your browser."
+    )
