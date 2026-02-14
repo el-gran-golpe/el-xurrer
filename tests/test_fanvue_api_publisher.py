@@ -31,3 +31,48 @@ def test_publisher_initialization(mock_profile):
     assert publisher.profile == mock_profile
     assert publisher.token_manager is not None
     assert publisher.token_manager.profile_name == "test_profile"
+
+
+@pytest.mark.asyncio
+async def test_post_publication_uploads_and_creates_post(
+    mock_profile, tmp_path, monkeypatch
+):
+    """Test that post_publication uploads media and creates post."""
+    # Create test image file
+    test_image = tmp_path / "test.jpg"
+    test_image.write_text("fake image data")
+
+    # Mock token manager
+    async def mock_ensure_valid_token():
+        return "test_access_token"
+
+    # Mock upload_media
+    async def mock_upload_media(file_path, access_token):
+        return "test_media_uuid"
+
+    # Mock create_post
+    async def mock_create_post(text, media_uuids, audience, publish_at, access_token):
+        return {
+            "id": "test_post_id",
+            "text": text,
+            "mediaUuids": media_uuids,
+        }
+
+    publisher = FanvueAPIPublisher(mock_profile)
+
+    # Monkeypatch methods
+    monkeypatch.setattr(
+        publisher.token_manager, "ensure_valid_token", mock_ensure_valid_token
+    )
+
+    import automation.fanvue_client.fanvue_api_publisher as pub_module
+
+    monkeypatch.setattr(pub_module, "upload_media", mock_upload_media)
+    monkeypatch.setattr(pub_module, "create_post", mock_create_post)
+
+    # Call post_publication
+    result = await publisher.post_publication(test_image, "Test caption")
+
+    assert result["id"] == "test_post_id"
+    assert result["text"] == "Test caption"
+    assert result["mediaUuids"] == ["test_media_uuid"]
