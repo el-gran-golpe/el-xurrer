@@ -28,3 +28,4 @@ venv
 .qodo
 .vscode/launch.json
 .worktrees
+**/tokens.json
