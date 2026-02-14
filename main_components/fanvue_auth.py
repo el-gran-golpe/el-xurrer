@@ -1,7 +1,6 @@
 import json
 import os
 import secrets
-import socket
 import subprocess
 import time
 import webbrowser
@@ -22,7 +21,10 @@ class FanvueTokenManager:
 
     def __init__(self, profile_name: str):
         self.profile_name = profile_name
-        self.token_path = Path(f"resources/{profile_name}/fanvue/tokens.json")
+        project_root = Path(__file__).parent.parent
+        self.token_path = (
+            project_root / "resources" / profile_name / "fanvue" / "tokens.json"
+        )
 
     def save_tokens(self, token_response: dict[str, Any]) -> None:
         """Save OAuth tokens to profile directory.
@@ -139,26 +141,13 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     return dict(result)  # Convert TypedDict to dict for type safety
 
 
-def find_free_port() -> int:
-    """Find a free port for FastAPI server.
-
-    Returns:
-        Available port number
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        s.listen(1)
-        port = s.getsockname()[1]
-    return port
-
-
 def start_fastapi_server() -> tuple[subprocess.Popen, int]:
     """Start FastAPI server on dynamic port.
 
     Returns:
         Tuple of (process, port)
     """
-    port = find_free_port()
+    port = 8000  # FIXME: Fanvue has a callback url in the app settings the port is fixed there
 
     # Get project root
     project_root = Path(__file__).parent.parent
