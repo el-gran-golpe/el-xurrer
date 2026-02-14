@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
+
 
 class AuthError(Exception):
     """Raised when authentication operations fail."""
@@ -70,3 +72,63 @@ class FanvueTokenManager:
 
         # Add 60s buffer
         return time.time() >= (tokens["expires_at"] - 60)
+
+    async def ensure_valid_token(self) -> str:
+        """Get valid access token, refreshing if needed.
+
+        Returns:
+            Valid access_token
+
+        Raises:
+            AuthError: If refresh fails or tokens don't exist
+        """
+        tokens = self.load_tokens()
+        if not tokens:
+            raise AuthError(
+                f"Profile '{self.profile_name}' not authenticated.\n"
+                f"Run: python -m mains.main fanvue auth -p <profile_index>"
+            )
+
+        # Check if access token is expired (with 60s buffer)
+        if time.time() < (tokens["expires_at"] - 60):
+            return tokens["access_token"]
+
+        # Attempt refresh
+        try:
+            logger.debug(f"Refreshing token for profile '{self.profile_name}'...")
+            new_tokens = await refresh_access_token(tokens["refresh_token"])
+            self.save_tokens(new_tokens)
+            return new_tokens["access_token"]
+
+        except Exception as e:
+            raise AuthError(
+                f"Token refresh failed for profile '{self.profile_name}': {e}\n"
+                f"Please re-authenticate: python -m mains.main fanvue auth -p <profile_index>"
+            )
+
+
+# Add this helper function at module level (outside class)
+async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
+    """Refresh access token using OAuth refresh flow.
+
+    Args:
+        refresh_token: The refresh token
+
+    Returns:
+        New token response
+
+    Raises:
+        Exception: If refresh fails
+    """
+    # Import here to avoid circular dependency
+    import sys
+    from pathlib import Path
+
+    # Add fanvue-fastapi to path
+    fastapi_path = Path(__file__).parent.parent / "fanvue-fastapi"
+    if str(fastapi_path) not in sys.path:
+        sys.path.insert(0, str(fastapi_path))
+
+    from app.oauth import refresh_access_token as oauth_refresh
+
+    return await oauth_refresh(refresh_token)

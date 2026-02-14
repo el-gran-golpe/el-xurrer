@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from main_components.fanvue_auth import FanvueTokenManager
+from main_components.fanvue_auth import AuthError, FanvueTokenManager
 
 
 @pytest.fixture
@@ -97,3 +97,83 @@ def test_load_tokens_returns_saved_data(temp_profile_dir):
     assert loaded is not None
     assert loaded["access_token"] == "test_access"
     assert loaded["refresh_token"] == "test_refresh"
+
+
+@pytest.mark.asyncio
+async def test_ensure_valid_token_raises_if_no_tokens(temp_profile_dir):
+    """Test that ensure_valid_token raises AuthError if tokens don't exist."""
+    import os
+
+    os.chdir(temp_profile_dir)
+
+    manager = FanvueTokenManager("test_profile")
+
+    with pytest.raises(AuthError, match="not authenticated"):
+        await manager.ensure_valid_token()
+
+
+@pytest.mark.asyncio
+async def test_ensure_valid_token_returns_valid_token(temp_profile_dir):
+    """Test that ensure_valid_token returns token if not expired."""
+    import os
+
+    os.chdir(temp_profile_dir)
+
+    manager = FanvueTokenManager("test_profile")
+
+    # Save token that expires in 1 hour
+    token_response = {
+        "access_token": "test_access",
+        "refresh_token": "test_refresh",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+        "scope": "openid offline",
+    }
+    manager.save_tokens(token_response)
+
+    # Should return access token without refresh
+    token = await manager.ensure_valid_token()
+    assert token == "test_access"
+
+
+@pytest.mark.asyncio
+async def test_ensure_valid_token_refreshes_expired(temp_profile_dir, monkeypatch):
+    """Test that ensure_valid_token refreshes expired tokens."""
+    import os
+
+    os.chdir(temp_profile_dir)
+
+    manager = FanvueTokenManager("test_profile")
+
+    # Save expired token
+    token_response = {
+        "access_token": "old_access",
+        "refresh_token": "test_refresh",
+        "expires_in": -100,  # Already expired
+        "token_type": "Bearer",
+        "scope": "openid offline",
+    }
+    manager.save_tokens(token_response)
+
+    # Mock refresh_access_token
+    async def mock_refresh(refresh_token):
+        return {
+            "access_token": "new_access",
+            "refresh_token": "new_refresh",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+        }
+
+    # Monkeypatch the import
+    import main_components.fanvue_auth as auth_module
+
+    monkeypatch.setattr(auth_module, "refresh_access_token", mock_refresh)
+
+    # Should refresh and return new token
+    token = await manager.ensure_valid_token()
+    assert token == "new_access"
+
+    # Verify new token was saved
+    loaded = manager.load_tokens()
+    assert loaded["access_token"] == "new_access"
+    assert loaded["refresh_token"] == "new_refresh"
