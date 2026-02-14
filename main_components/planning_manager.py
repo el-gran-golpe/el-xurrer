@@ -36,11 +36,11 @@ class PlanningManager:
 
     def plan(self) -> None:
         github_api_keys: list[str] = api_keys.extract_github_keys()
-        openai_api_keys: list[str] = api_keys.extract_openai_keys()
+        deepseek_api_key: str = api_keys.extract_deepseek_key()
 
         model_router = ModelRouter(
             github_api_keys=github_api_keys,
-            openai_api_keys=openai_api_keys,
+            deepseek_api_key=deepseek_api_key,
         )
         # None means scan all available models
         model_router.initialize_model_classifiers(models_to_scan=None)
