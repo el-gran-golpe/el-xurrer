@@ -1,8 +1,14 @@
 import json
+import socket
 
 import pytest
 
-from main_components.fanvue_auth import AuthError, FanvueTokenManager
+from main_components.fanvue_auth import (
+    AuthError,
+    FanvueTokenManager,
+    find_free_port,
+    start_fastapi_server,
+)
 
 
 @pytest.fixture
@@ -177,3 +183,49 @@ async def test_ensure_valid_token_refreshes_expired(temp_profile_dir, monkeypatc
     loaded = manager.load_tokens()
     assert loaded["access_token"] == "new_access"
     assert loaded["refresh_token"] == "new_refresh"
+
+
+def test_find_free_port_returns_valid_port():
+    """Test that find_free_port returns a valid free port."""
+    port = find_free_port()
+
+    assert isinstance(port, int)
+    assert 1024 <= port <= 65535
+
+    # Verify port is actually free
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        result = s.connect_ex(("127.0.0.1", port))
+        assert result != 0  # Port should not be in use
+
+
+def test_start_fastapi_server_returns_process_and_port(tmp_path, monkeypatch):
+    """Test that start_fastapi_server starts server subprocess."""
+
+    # Mock subprocess.Popen
+    class MockPopen:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            self.stdout = None
+            self.stderr = None
+
+    import subprocess
+
+    # Create a variable to capture the instance
+    captured_instance = None
+
+    def mock_popen(*args, **kwargs):
+        nonlocal captured_instance
+        captured_instance = MockPopen(*args, **kwargs)
+        return captured_instance
+
+    monkeypatch.setattr(subprocess, "Popen", mock_popen)
+
+    # Mock find_free_port
+    monkeypatch.setattr("main_components.fanvue_auth.find_free_port", lambda: 8765)
+
+    process, port = start_fastapi_server()
+
+    assert port == 8765
+    assert process is captured_instance
+    assert "uvicorn" in captured_instance.args[0]

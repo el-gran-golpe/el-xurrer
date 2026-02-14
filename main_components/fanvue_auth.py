@@ -1,5 +1,7 @@
 import json
 import os
+import socket
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -132,3 +134,46 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     from app.oauth import refresh_access_token as oauth_refresh
 
     return await oauth_refresh(refresh_token)
+
+
+def find_free_port() -> int:
+    """Find a free port for FastAPI server.
+
+    Returns:
+        Available port number
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
+
+
+def start_fastapi_server() -> tuple[subprocess.Popen, int]:
+    """Start FastAPI server on dynamic port.
+
+    Returns:
+        Tuple of (process, port)
+    """
+    port = find_free_port()
+
+    # Get project root
+    project_root = Path(__file__).parent.parent
+    fastapi_dir = project_root / "fanvue-fastapi"
+
+    process = subprocess.Popen(
+        [
+            "uvicorn",
+            "main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        cwd=str(fastapi_dir),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    logger.info(f"Started FastAPI server on port {port}")
+    return process, port
