@@ -135,7 +135,8 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
 
     from app.oauth import refresh_access_token as oauth_refresh
 
-    return await oauth_refresh(refresh_token)
+    result = await oauth_refresh(refresh_token)
+    return dict(result)  # Convert TypedDict to dict for type safety
 
 
 def find_free_port() -> int:
