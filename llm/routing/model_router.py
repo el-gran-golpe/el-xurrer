@@ -221,7 +221,13 @@ class ModelRouter:
             )
             if not response.choices:
                 raise RuntimeError("DeepSeek API returned no choices")
-            return response.choices[0].message.content or ""
+            if not response.choices:
+                raise RuntimeError("DeepSeek API returned no choices in response")
+            content = response.choices[0].message.content
+            if content is None:
+                raise RuntimeError("DeepSeek API returned no content in response")
+            return content
+
         except Exception as e:
             logger.error("DeepSeek API fallback failed with error: {}", e)
             raise
