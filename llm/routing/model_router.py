@@ -84,8 +84,6 @@ class ModelRouter:
                 f"All GitHub models exhausted and DeepSeek fallback failed: {e}"
             ) from first_error or e
 
-    # ---------------- helpers ----------------
-
     def _try_github_models(
         self,
         conversation: list[dict[str, str]],
@@ -219,10 +217,12 @@ class ModelRouter:
                 ),
                 stream=False,
             )
-            if not response.choices:
+            if response.choices is None:
                 raise RuntimeError("DeepSeek API returned no choices")
-            if not response.choices:
-                raise RuntimeError("DeepSeek API returned no choices in response")
+            if isinstance(response.choices, list) and len(response.choices) == 0:
+                raise RuntimeError(
+                    "DeepSeek API returned invalid or empty choices in response"
+                )
             content = response.choices[0].message.content
             if content is None:
                 raise RuntimeError("DeepSeek API returned no content in response")
