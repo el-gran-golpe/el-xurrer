@@ -4,14 +4,14 @@ from typing import Optional
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.config import get_settings
-from app.oauth import (
+from fanvue_fastapi.config import get_settings
+from fanvue_fastapi.oauth import (
     generate_pkce,
     get_authorize_url,
     exchange_code_for_token,
     OAuthError,
 )
-from app.session import create_session_token, SessionPayload
+from fanvue_fastapi.session import create_session_token, SessionPayload
 
 router = APIRouter(prefix="/api/oauth", tags=["oauth"])
 
@@ -159,7 +159,7 @@ async def callback(
             status_code=200,
         )
 
-    # Original flow: Create session for web app
+    # Original flow: Create session for web fanvue_fastapi
     import time
 
     session = SessionPayload(

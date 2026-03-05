@@ -34,12 +34,12 @@ class FanvueAPIPublisher:
         # 1. Ensure fresh access token
         access_token = await self.token_manager.ensure_valid_token()
 
-        # 2. Upload media (reuse app/media.py logic)
+        # 2. Upload media (reuse fanvue-fastapi/media.py logic)
         logger.info(f"Uploading media: {file_path.name}")
         media_uuid = await upload_media(file_path, access_token)
         logger.debug(f"Media uploaded: {media_uuid}")
 
-        # 3. Create post (reuse app/posts.py logic)
+        # 3. Create post (reuse fanvue-fastapi/posts.py logic)
         if publish_at:
             logger.info(
                 f"Scheduling post for profile '{self.profile.name}' at {publish_at}"
@@ -125,7 +125,7 @@ class _UploadFileWrapper:
         self._file.close()
 
 
-# Add imports for FastAPI app functions
+# Add imports for FastAPI fanvue-fastapi functions
 async def upload_media(file_path: Path, access_token: str) -> str:
     """Upload media file to Fanvue.
 
@@ -148,7 +148,7 @@ async def upload_media(file_path: Path, access_token: str) -> str:
     if str(fastapi_path) not in sys.path:
         sys.path.insert(0, str(fastapi_path))
 
-    from app.media import upload_media as api_upload_media
+    from fanvue_fastapi.media import upload_media as api_upload_media
 
     # Determine content type
     content_type, _ = mimetypes.guess_type(str(file_path))
@@ -197,6 +197,6 @@ async def create_post(
     if str(fastapi_path) not in sys.path:
         sys.path.insert(0, str(fastapi_path))
 
-    from app.posts import create_post as api_create_post
+    from fanvue_fastapi.posts import create_post as api_create_post
 
     return await api_create_post(text, media_uuids, audience, publish_at, access_token)

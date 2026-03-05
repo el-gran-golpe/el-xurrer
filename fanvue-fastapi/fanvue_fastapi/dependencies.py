@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import Request, HTTPException
 
-from app.session import verify_session_token, SessionPayload
+from fanvue_fastapi.session import verify_session_token, SessionPayload
 
 
 def get_session_from_cookie(request: Request) -> Optional[SessionPayload]:
@@ -14,7 +14,7 @@ def get_session_from_cookie(request: Request) -> Optional[SessionPayload]:
     Returns:
         SessionPayload if valid session exists, None otherwise
     """
-    from app.config import get_settings
+    from fanvue_fastapi.config import get_settings
 
     settings = get_settings()
 

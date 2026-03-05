@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.config import get_settings
+from fanvue_fastapi.config import get_settings
 
 DEFAULT_SCOPES = "openid offline_access offline"
 

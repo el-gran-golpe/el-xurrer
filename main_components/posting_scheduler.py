@@ -132,11 +132,16 @@ class PostingScheduler:
                     if self.platform_name == Platform.FANVUE:
                         # Check publisher type to route to correct method
                         if self.publisher is FanvueAPIPublisher:
-                            self._upload_via_fanvue_api(
-                                pub,
-                                cast(Type[FanvueAPIPublisher], self.publisher),
-                                profile,
-                            )
+                            try:
+                                self._upload_via_fanvue_api(
+                                    pub,
+                                    cast(Type[FanvueAPIPublisher], self.publisher),
+                                    profile,
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Failed to upload {pub.day_folder.name} via Fanvue API: {e}"
+                                )
                         else:
                             # Default to Selenium-based (FanvuePublisher)
                             self._upload_via_selenium(

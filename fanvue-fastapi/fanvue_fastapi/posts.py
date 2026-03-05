@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from app.config import get_settings
+from fanvue_fastapi.config import get_settings
 
 
 class PostCreationError(Exception):

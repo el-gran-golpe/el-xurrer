@@ -4,11 +4,11 @@ from fastapi import FastAPI, Request, Depends
 from fastapi.responses import HTMLResponse
 
 # Removed unused import
-from app.routes.oauth import router as oauth_router
-from app.routes.posts import router as posts_router
-from app.dependencies import get_session_from_cookie, require_session
-from app.fanvue import get_current_user
-from app.session import SessionPayload
+from fanvue_fastapi.routes.oauth import router as oauth_router
+from fanvue_fastapi.routes.posts import router as posts_router
+from fanvue_fastapi.dependencies import get_session_from_cookie, require_session
+from fanvue_fastapi.fanvue import get_current_user
+from fanvue_fastapi.session import SessionPayload
 
 app = FastAPI(title="Fanvue OAuth App")
 
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     print(f"Starting Fanvue OAuth App on {host}:{port} (Reload: {reload})")
 
     # Run the server
-    uvicorn.run("main:app", host=host, port=port, reload=reload)
+    uvicorn.run("main:fanvue_fastapi", host=host, port=port, reload=reload)
 
 if __name__ == "__main__":
     # Default configuration with environment variable overrides
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     print(f"Starting Fanvue OAuth App on {host}:{port} (Reload: {reload})")
 
     # Run the server
-    uvicorn.run("main:app", host=host, port=port, reload=reload)
+    uvicorn.run("main:fanvue_fastapi", host=host, port=port, reload=reload)
 
 
 @app.get("/", response_class=HTMLResponse)

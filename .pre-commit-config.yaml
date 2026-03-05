@@ -24,6 +24,7 @@ repos:
     rev: v1.8.0
     hooks:
     -   id: mypy
+        exclude: ^fanvue-fastapi/
         additional_dependencies:
         - types-requests
         - types-python-slugify

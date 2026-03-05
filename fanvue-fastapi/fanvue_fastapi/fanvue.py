@@ -3,9 +3,9 @@ from typing import Any, Optional, Tuple, Dict
 
 import httpx
 
-from app.config import get_settings
-from app.oauth import refresh_access_token, OAuthError
-from app.session import SessionPayload
+from fanvue_fastapi.config import get_settings
+from fanvue_fastapi.oauth import refresh_access_token, OAuthError
+from fanvue_fastapi.session import SessionPayload
 
 # Refresh token 30 seconds before expiry
 TOKEN_REFRESH_BUFFER_MS = 30_000

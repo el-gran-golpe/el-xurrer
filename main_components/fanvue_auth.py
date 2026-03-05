@@ -132,10 +132,12 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
 
     # Add fanvue-fastapi to path
     fastapi_path = Path(__file__).parent.parent / "fanvue-fastapi"
+    logger.debug(f"Fastapi PATH: {fastapi_path}")
     if str(fastapi_path) not in sys.path:
+        logger.debug(f"Adding {fastapi_path} to sys.path")
         sys.path.insert(0, str(fastapi_path))
 
-    from app.oauth import refresh_access_token as oauth_refresh
+    from fanvue_fastapi.oauth import refresh_access_token as oauth_refresh
 
     result = await oauth_refresh(refresh_token)
     return dict(result)  # Convert TypedDict to dict for type safety
@@ -147,7 +149,7 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
     Returns:
         Tuple of (process, port)
     """
-    port = 8000  # FIXME: Fanvue has a callback url in the app settings the port is fixed there
+    port = 8000  # FIXME: Fanvue has a callback url in the fanvue_fastapi settings the port is fixed there
 
     # Get project root
     project_root = Path(__file__).parent.parent
@@ -156,7 +158,7 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
     process = subprocess.Popen(
         [
             "uvicorn",
-            "main:app",
+            "main:fanvue_fastapi",
             "--host",
             "127.0.0.1",
             "--port",
