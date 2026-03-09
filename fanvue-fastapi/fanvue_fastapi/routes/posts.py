@@ -11,12 +11,12 @@ from fastapi import (
     UploadFile,
 )
 
-from app.dependencies import require_session
-from app.fanvue import ensure_valid_token
-from app.media import upload_media
-from app.posts import create_post, PostCreationError
-from app.schemas.posts import Audience, CreatePostResponse, UploadFailure
-from app.session import SessionPayload, create_session_token
+from fanvue_fastapi.dependencies import require_session
+from fanvue_fastapi.fanvue import ensure_valid_token
+from fanvue_fastapi.media import upload_media
+from fanvue_fastapi.posts import create_post, PostCreationError
+from fanvue_fastapi.schemas.posts import Audience, CreatePostResponse, UploadFailure
+from fanvue_fastapi.session import SessionPayload, create_session_token
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -33,7 +33,7 @@ async def create_post_endpoint(
     session: SessionPayload = Depends(require_session),
 ) -> Response:
     """Create a post on Fanvue with optional media attachments."""
-    from app.config import get_settings
+    from fanvue_fastapi.config import get_settings
 
     settings = get_settings()
 

@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 import httpx
 from fastapi import UploadFile
 
-from app.config import get_settings
+from fanvue_fastapi.config import get_settings
 
 CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
 

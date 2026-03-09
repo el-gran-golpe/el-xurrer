@@ -6,15 +6,17 @@ from unittest.mock import patch
 @pytest.fixture
 def client(monkeypatch):
     """Create test client with mocked settings."""
-    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
-    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/callback")
-    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
-    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
-    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
-    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv(
+        "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
+    )
+    monkeypatch.setenv("FANVUE_WEBAPP_SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("FANVUE_WEBAPP_API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("FANVUE_WEBAPP_BASE_URL", "http://localhost:8000")
 
-    from app.config import get_settings
+    from fanvue_fastapi.config import get_settings
 
     get_settings.cache_clear()
 
@@ -32,7 +34,7 @@ def test_create_post_requires_authentication(client):
 def test_create_post_requires_content(client, monkeypatch):
     """POST /api/posts should return 400 without text or files."""
     # Mock session verification to return valid session
-    from app.session import SessionPayload
+    from fanvue_fastapi.session import SessionPayload
     from datetime import datetime, timezone, timedelta
 
     session = SessionPayload(
@@ -43,7 +45,9 @@ def test_create_post_requires_content(client, monkeypatch):
         ),
     )
 
-    with patch("app.dependencies.verify_session_token", return_value=session):
+    with patch(
+        "fanvue_fastapi.dependencies.verify_session_token", return_value=session
+    ):
         response = client.post(
             "/api/posts",
             data={},
@@ -55,7 +59,7 @@ def test_create_post_requires_content(client, monkeypatch):
 
 def test_create_post_with_text_success(client, monkeypatch):
     """POST /api/posts with text should create post successfully."""
-    from app.session import SessionPayload
+    from fanvue_fastapi.session import SessionPayload
     from datetime import datetime, timezone, timedelta
 
     session = SessionPayload(
@@ -67,11 +71,12 @@ def test_create_post_with_text_success(client, monkeypatch):
     )
 
     with (
-        patch("app.dependencies.verify_session_token", return_value=session),
+        patch("fanvue_fastapi.dependencies.verify_session_token", return_value=session),
         patch(
-            "app.routes.posts.ensure_valid_token", return_value=("valid_token", None)
+            "fanvue_fastapi.routes.posts.ensure_valid_token",
+            return_value=("valid_token", None),
         ),
-        patch("app.routes.posts.create_post") as mock_create,
+        patch("fanvue_fastapi.routes.posts.create_post") as mock_create,
     ):
         mock_create.return_value = {
             "uuid": "post-123",
@@ -95,9 +100,9 @@ def test_create_post_with_text_success(client, monkeypatch):
 
 def test_create_post_with_file_and_text(client, monkeypatch):
     """POST /api/posts with file and text should upload media and create post."""
-    from app.session import SessionPayload
+    from fanvue_fastapi.session import SessionPayload
     from datetime import datetime, timezone, timedelta
-    from app.media import MediaUploadResult
+    from fanvue_fastapi.media import MediaUploadResult
 
     session = SessionPayload(
         access_token="valid_token",
@@ -108,12 +113,13 @@ def test_create_post_with_file_and_text(client, monkeypatch):
     )
 
     with (
-        patch("app.dependencies.verify_session_token", return_value=session),
+        patch("fanvue_fastapi.dependencies.verify_session_token", return_value=session),
         patch(
-            "app.routes.posts.ensure_valid_token", return_value=("valid_token", None)
+            "fanvue_fastapi.routes.posts.ensure_valid_token",
+            return_value=("valid_token", None),
         ),
-        patch("app.routes.posts.upload_media") as mock_upload,
-        patch("app.routes.posts.create_post") as mock_create,
+        patch("fanvue_fastapi.routes.posts.upload_media") as mock_upload,
+        patch("fanvue_fastapi.routes.posts.create_post") as mock_create,
     ):
         mock_upload.return_value = MediaUploadResult(
             success=True,

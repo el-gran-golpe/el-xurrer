@@ -4,7 +4,7 @@ from typing import Optional
 from jose import jwt, JWTError
 from pydantic import BaseModel
 
-from app.config import get_settings
+from fanvue_fastapi.config import get_settings
 
 
 class SessionPayload(BaseModel):

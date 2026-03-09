@@ -5,15 +5,17 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client(monkeypatch):
     """Create test client with mocked settings."""
-    monkeypatch.setenv("OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("OAUTH_CLIENT_SECRET", "test_secret")
-    monkeypatch.setenv("OAUTH_REDIRECT_URI", "http://localhost:8000/api/oauth/callback")
-    monkeypatch.setenv("SESSION_SECRET", "test_session_secret_16")
-    monkeypatch.setenv("OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
-    monkeypatch.setenv("API_BASE_URL", "https://api.fanvue.com")
-    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv(
+        "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/api/oauth/callback"
+    )
+    monkeypatch.setenv("FANVUE_WEBAPP_SESSION_SECRET", "test_session_secret_16")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("FANVUE_WEBAPP_API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("FANVUE_WEBAPP_BASE_URL", "http://localhost:8000")
 
-    from app.config import get_settings
+    from fanvue_fastapi.config import get_settings
 
     get_settings.cache_clear()
 

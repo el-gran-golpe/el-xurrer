@@ -1,6 +1,6 @@
 def test_audience_enum_valid_values():
     """Audience should only accept valid enum values."""
-    from app.schemas.posts import Audience
+    from fanvue_fastapi.schemas.posts import Audience
 
     assert Audience.SUBSCRIBERS == "subscribers"
     assert Audience.FOLLOWERS_AND_SUBSCRIBERS == "followers-and-subscribers"
@@ -8,7 +8,7 @@ def test_audience_enum_valid_values():
 
 def test_upload_failure_model():
     """UploadFailure should store filename and error."""
-    from app.schemas.posts import UploadFailure
+    from fanvue_fastapi.schemas.posts import UploadFailure
 
     failure = UploadFailure(filename="video.mp4", error="Upload timeout")
     assert failure.filename == "video.mp4"
@@ -17,7 +17,7 @@ def test_upload_failure_model():
 
 def test_create_post_response_model():
     """CreatePostResponse should include all fields."""
-    from app.schemas.posts import CreatePostResponse
+    from fanvue_fastapi.schemas.posts import CreatePostResponse
 
     response = CreatePostResponse(
         uuid="post-uuid",
