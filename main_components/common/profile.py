@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from main_components.common.types import Platform
 from main_components.common.types import Profile, PlatformInfo, ProfileInput
+from main_components.config import settings
 
 
 # ---------------------------
@@ -81,7 +82,13 @@ class ProfileManager:
             # 4) Gather per-platform info (+ strict prompt & lang validation)
             try:
                 platforms = self._gather_platforms(profile_dir, profile_name)
-                profile = Profile(name=profile_name, platform_info=platforms)
+                # TODO: should we add Fanvue credential checks here?
+                meta_credentials = settings.get_meta_credentials(profile_name)
+                profile = Profile(
+                    name=profile_name,
+                    platform_info=platforms,
+                    meta_credentials=meta_credentials,
+                )
                 self._profiles_by_name[profile_name] = profile
                 self._profiles.append(profile)
                 logger.success("Profile {} loaded and validated.", profile_name)

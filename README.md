@@ -6,7 +6,7 @@ El-xurrer is a modular, end‑to‑end pipeline for planning, generating, schedu
 
 ## ✨ Key Features
 
-* **Multi‑platform support** – ready‑made service wrappers for Meta Graph (Instagram/Facebook), YouTube, and Fanvue, with a clean interface for adding others.
+* **Instagram-first publishing** - plan, generate, and publish Instagram posts with Instagram Login, using shared Facebook media staging only to generate zero-dollar public asset URLs before continuing the pipeline into Fanvue.
 * **Generative tooling** – image (Stable Diffusion via 🤗 Diffusers), video and thumbnail synthesis, TTS voice‑overs, background music, and automatic captions.
 * **LLM‑driven creativity** – prompt engineering helpers and templates to turn high‑level campaign ideas into publish‑ready assets.
 * **Automated workflow** – plan editorial calendars, batch‑generate assets, and schedule uploads, all from simple CLI commands or cron.
@@ -34,48 +34,63 @@ pip install -r requirements.txt
 pre-commit install          # run code‑quality hooks on every commit
 ```
 
-### 3 · Configure credentials
+### 3 · Configure Instagram Login and shared media staging
 
 Create a `.env` file (or export variables):
 
 ```dotenv
-# Meta Graph API
-META_ACCESS_TOKEN=EAAB...
+# Required shared services
+OPENAI_API_KEY=sk-...
+DEEPSEEK_API_KEY=...
+client_id=...
+client_secret=...
+folder_id=...
 
-# YouTube Data v3
-YOUTUBE_CLIENT_SECRETS=./secrets/client_secrets.json
-YOUTUBE_REFRESH_TOKEN=...
+# Per-profile Instagram Login credentials
+LAURA_VIGNE_INSTAGRAM_ACCOUNT_ID=1784...
+LAURA_VIGNE_INSTAGRAM_USER_ACCESS_TOKEN=...
+MARIA_LARSEN_INSTAGRAM_ACCOUNT_ID=1784...
+MARIA_LARSEN_INSTAGRAM_USER_ACCESS_TOKEN=...
 
-# OpenAI / Replicate / etc.
-OPENAI_API_KEY=sk‑...
-
-# Optional: WandB experiment tracking
-WANDB_API_KEY=...
+# Shared Facebook staging page used only to generate public media URLs for
+# Instagram publishing. This repo does not use it for Facebook cross-posting.
+FACEBOOK_STAGING_PAGE_ID=
+FACEBOOK_STAGING_USER_ACCESS_TOKEN=
 ```
+
+The posting path is now Instagram-only via Instagram Login. Facebook remains in
+the runtime solely as a zero-dollar media staging helper because Instagram
+publishing still needs a public `image_url` for each asset.
 
 ---
 
 ## 🚀 Usage
 
-### Generate & post to Instagram/Facebook
+### Run the Instagram posting pipeline
 
 ```bash
-python mains/main_meta.py --plan --generate --upload
+python main.py meta plan -p 0
+python main.py meta generate -p 0
+python main.py meta schedule -p 0
 ```
 
-### Generate assets only (no upload)
+### Run the full Instagram -> Fanvue pipeline
 
 ```bash
-python mains/main_meta.py --plan --generate
+python main.py all run_all -p 0
 ```
 
-### Command‑line flags
+### Instagram credential model
 
-| Flag         | Action                                                  |
-| ------------ | ------------------------------------------------------- |
-| `--plan`     | Build (or refresh) the content calendar                 |
-| `--generate` | Create images / videos / captions according to the plan |
-| `--upload`   | Schedule or immediately post content via platform APIs  |
+For each migrated influencer profile you need:
+
+- `<PROFILE>_INSTAGRAM_ACCOUNT_ID`
+- `<PROFILE>_INSTAGRAM_USER_ACCESS_TOKEN`
+
+For the shared zero-dollar media staging helper you need:
+
+- `FACEBOOK_STAGING_PAGE_ID`
+- `FACEBOOK_STAGING_USER_ACCESS_TOKEN`
 
 ---
 
@@ -87,7 +102,7 @@ python mains/main_meta.py --plan --generate
 | **`generation_tools/`**       | Low‑level media creation: `image_generator/`, `voice_generator/`, `thumbnails_generator/`, …            |
 | **`bot_services/`**           | Thin API clients for Meta, YouTube, Fanvue; handles auth, retries, rate‑limits                          |
 | **`llm/`**                    | Base and platform‑specific LLM helpers (`meta_llm.py`, `fanvue_llm.py`)                                 |
-| **`mains/`**                  | CLI entry points (`main_meta.py`, `main_fanvue.py`, etc.)                                               |
+| **`mains/`**                  | CLI command modules used by [`main.py`](main.py) for Instagram publishing and Fanvue workflows          |
 | **`utils/`**                  | Shared helpers, custom exceptions, lightweight HTTP server                                              |
 | **`Dockerfile`**              | Build reproducible containers                                                                           |
 | **`.pre-commit-config.yaml`** | Black, isort, flake8, mypy, etc.                                                                        |

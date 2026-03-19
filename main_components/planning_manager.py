@@ -43,7 +43,7 @@ class PlanningManager:
             deepseek_api_key=deepseek_api_key,
         )
         # None means scan all available models
-        model_router.initialize_model_classifiers(models_to_scan=None)
+        model_router.initialize_model_classifiers(models_to_scan=3)
 
         for profile in self.template_profiles:
             inputs_path = profile.platform_info[self.platform_name].inputs_path

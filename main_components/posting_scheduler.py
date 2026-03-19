@@ -5,12 +5,12 @@ from time import sleep
 from typing import Any, Iterator, List, Type, Union, cast
 
 from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
+from automation.meta_api.graph_api import MetaPublisher
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 from automation.meta_api.graph_api import GraphAPI
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
-from seleniumbase import SB
 
 from main_components.common.types import Platform, Profile
 
@@ -80,10 +80,7 @@ class PostingScheduler:
         self,
         template_profiles: List[Profile],
         platform_name: Platform,
-        # I pass the class itself and not an instance, since Fanvue needs a driver to be passed to it
-        publisher: Union[
-            Type[GraphAPI], Type[FanvuePublisher], Type[FanvueAPIPublisher]
-        ],
+        publisher: Union[Type[MetaPublisher], Type[FanvueAPIPublisher]],
     ):
         self.platform_name = platform_name
         self.platform_name = platform_name
@@ -129,27 +126,22 @@ class PostingScheduler:
                     )
 
                     if self.platform_name == Platform.FANVUE:
-                        # Check publisher type to route to correct method
-                        if self.publisher is FanvueAPIPublisher:
-                            try:
-                                self._upload_via_fanvue_api(
-                                    pub,
-                                    cast(Type[FanvueAPIPublisher], self.publisher),
-                                    profile,
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Failed to upload {pub.day_folder.name} via Fanvue API: {e}"
-                                )
-                        else:
-                            # Default to Selenium-based (FanvuePublisher)
-                            self._upload_via_selenium(
+                        try:
+                            self._upload_via_fanvue_api(
                                 pub,
-                                cast(Type[FanvuePublisher], self.publisher),
+                                cast(Type[FanvueAPIPublisher], self.publisher),
                                 profile,
                             )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to upload {pub.day_folder.name} via Fanvue API: {e}"
+                            )
                     elif self.platform_name == Platform.META:
-                        self._upload_via_api(pub, cast(Type[GraphAPI], self.publisher))
+                        self._upload_via_api(
+                            pub,
+                            cast(Type[MetaPublisher], self.publisher),
+                            profile,
+                        )
                     else:
                         raise NotImplementedError(
                             f"Unsupported platform: {self.platform_name}"
@@ -162,68 +154,32 @@ class PostingScheduler:
                     )
                     continue
 
-    def _upload_via_api(self, pub: Publication, client_class: Type[GraphAPI]) -> None:
+    def _upload_via_api(
+        self,
+        pub: Publication,
+        client_class: Type[MetaPublisher],
+        profile: Profile,
+    ) -> None:
         """
         Uses Meta's graph API to upload publications.
         """
-        client = client_class()
+        client = client_class(profile)
         logger.info(f"Uploading {pub.day_folder.name} via API on {self.platform_name}")
 
         # We have to wait anyway since Instagram does not have a built-in api for scheduling
         self._wait_for_time(pub.upload_time)
 
         try:
-            insta_resp = client.upload_instagram_publication(
-                pub.image_paths, pub.caption_text, pub.upload_time
+            meta_resp = client.upload_publication(
+                pub.image_paths,
+                pub.caption_text,
+                pub.upload_time,
             )
-            logger.debug(f"Instagram response: {insta_resp}")
-
-            fb_resp = client.upload_facebook_publication(
-                pub.image_paths, pub.caption_text, pub.upload_time
-            )
-            logger.debug(f"Facebook response: {fb_resp}")
+            logger.debug(f"Meta response: {meta_resp}")
 
         except Exception as err:
             logger.error(f"API upload failed for {pub.day_folder}: {err}")
             raise
-
-    def _upload_via_selenium(
-        self, pub: Publication, client_class: Type[FanvuePublisher], profile: Profile
-    ) -> None:
-        """
-        IMPORTANT:
-        This method uploads a publication to Fanvue, then closes the browser session.
-        For each publication, a new login is performed. This is NOT optimal if you have
-        many posts in a short period, as repeated logins may trigger Fanvue's security
-        mechanisms and get your account flagged or blocked.
-
-        However, the expected use case is to have only one image per day (or at most a few per day),
-        so each upload is separated by hours or days. In zombie mode, this is safe and intended,
-        as the next publication will be uploaded much later, minimizing the risk of detection.
-
-        If you plan to upload many posts in rapid succession, consider refactoring to reuse the session.
-        """
-        logger.info(
-            f"Uploading {pub.day_folder.name} via Selenium on {self.platform_name}"
-        )
-
-        self._wait_for_time(pub.upload_time)
-
-        with SB(uc=True, locale_code="en") as driver:
-            client = client_class(driver)
-            try:
-                client.login(profile.name)
-            except Exception as err:
-                logger.error(f"Login failed for {profile}: {err}")
-                raise
-
-            for image_path in pub.image_paths:
-                try:
-                    client.post_publication(image_path, pub.caption_text)
-                    logger.debug(f"Uploaded {image_path.name}")
-                except Exception as err:
-                    logger.error(f"Failed to upload {image_path.name}: {err}")
-                    raise
 
     def _wait_for_time(self, scheduled: datetime) -> None:
         """
