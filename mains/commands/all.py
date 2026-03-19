@@ -1,5 +1,3 @@
-import asyncio
-
 import typer
 import shutil
 from typing import Optional
