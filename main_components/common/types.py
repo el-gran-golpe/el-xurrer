@@ -96,6 +96,42 @@ class PromptItem(BaseModel):
                     )
 
 
+class FanvueCredentials(BaseModel):
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+class MetaCredentials(BaseModel):
+    instagram_account_id: str = Field(..., min_length=1)
+    instagram_user_access_token: str = Field(..., min_length=1)
+
+    @field_validator("instagram_account_id", "instagram_user_access_token")
+    @classmethod
+    def must_be_non_empty_string(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Meta credentials must be non-empty strings")
+        return value.strip()
+
+    @field_validator("instagram_account_id")
+    @classmethod
+    def instagram_account_id_must_be_numeric(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("instagram_account_id must contain only digits")
+        return value
+
+
+class FacebookMediaStagingCredentials(BaseModel):
+    page_id: str = Field(..., min_length=1)
+    user_access_token: str = Field(..., min_length=1)
+
+    @field_validator("page_id", "user_access_token")
+    @classmethod
+    def must_be_non_empty_string(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Facebook staging credentials must be non-empty strings")
+        return value.strip()
+
+
 # --- Profile ---
 
 
@@ -104,6 +140,7 @@ class Profile(BaseModel):
 
     name: str
     platform_info: dict[Platform, PlatformInfo]
+    meta_credentials: MetaCredentials
 
     def __str__(self) -> str:
         return self.name
@@ -142,8 +179,3 @@ class ProfileInput(BaseModel):
                 )
             seen.add(p.cache_key)
         return prompts
-
-
-class FanvueCredentials(BaseModel):
-    username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)

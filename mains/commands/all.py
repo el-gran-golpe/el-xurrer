@@ -8,10 +8,10 @@ from main_components.common.types import Platform
 
 from mains.commands.utils import resolve_profiles, get_gdrive_sync, RESOURCES_DIR
 import mains.commands.pipeline as pipeline
-from automation.meta_api.graph_api import GraphAPI
-from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 
-app = typer.Typer(help="Run META → FANVUE end‑to‑end for profiles")
+app = typer.Typer(
+    help="Run Instagram Login posting → Fanvue end-to-end for profiles"
+)
 
 
 def _cleanup_local_outputs(profiles: list[Profile]) -> None:
@@ -32,16 +32,25 @@ def _execute_all(
     overwrite: bool,
     use_initial_conditions: bool,
 ):
+    from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
+    from automation.meta_api.graph_api import MetaPublisher
+
     for p in profiles:
-        # META
-        logger.info("▶️  META pipeline for {}", p.name)
+        # Instagram Login posting
+        logger.info(
+            "Instagram Login posting pipeline for {} (shared Facebook staging for media URLs)",
+            p.name,
+        )
         out_meta = p.platform_info[Platform.META].outputs_path
         if not overwrite and any(out_meta.iterdir()):
-            logger.warning("Skipping META plan for {} (outputs exists)", p.name)
+            logger.warning(
+                "Skipping Instagram plan for {} (outputs exist)",
+                p.name,
+            )
         else:
             pipeline.plan(Platform.META, [p], use_initial_conditions)
         pipeline.generate(Platform.META, [p])
-        pipeline.schedule(Platform.META, [p], GraphAPI)
+        pipeline.schedule(Platform.META, [p], MetaPublisher)
 
         # FANVUE
         logger.info("▶️  FANVUE pipeline for {}", p.name)
@@ -51,7 +60,7 @@ def _execute_all(
         else:
             pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
         pipeline.generate(Platform.FANVUE, [p])
-        pipeline.schedule(Platform.FANVUE, [p], FanvuePublisher)
+        pipeline.schedule(Platform.FANVUE, [p], FanvueAPIPublisher)
 
     logger.success("✅  All profiles processed — background uploads in progress.")
 
@@ -71,7 +80,7 @@ def run_all(
     ),
 ):
     """
-    Run the full pipeline (META → FANVUE) at INFO level.
+    Run the full pipeline (Instagram Login posting with shared staging -> Fanvue) at INFO level.
     """
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
@@ -99,7 +108,7 @@ def debug(
     ),
 ):
     """
-    Run the full pipeline with DEBUG‑level logging (baseline).
+    Run the full pipeline with DEBUG-level logging for Instagram Login posting and Fanvue.
     """
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:

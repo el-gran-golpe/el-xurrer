@@ -14,12 +14,19 @@ logger.add(sys.stderr, level="DEBUG")
 app = typer.Typer(help="Top‑level CLI: meta, fanvue, or all")
 
 
+def _is_help_request(argv: list[str]) -> bool:
+    return any(arg in {"-h", "--help"} for arg in argv[1:])
+
+
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     """
     1) Sync resources from Google Drive
     2) Load & validate profiles
     """
+    if ctx.resilient_parsing or _is_help_request(sys.argv):
+        return
+
     # If running `python -m mains.main all run_all`, switch to INFO before sync/load
     if len(sys.argv) >= 3 and sys.argv[1] == "all" and sys.argv[2] == "run_all":
         logger.remove()
@@ -41,9 +48,17 @@ def main_callback(ctx: typer.Context):
         typer.echo(ctx.get_help())
 
 
-app.add_typer(meta_app, name="meta", help="META pipeline commands")
+app.add_typer(
+    meta_app,
+    name="meta",
+    help="Instagram Login publishing commands with shared Facebook file staging",
+)
 app.add_typer(fanvue_app, name="fanvue", help="FANVUE pipeline commands")
-app.add_typer(all_app, name="all", help="End‑to‑end pipelines (run_all/debug)")
+app.add_typer(
+    all_app,
+    name="all",
+    help="End-to-end Instagram Login posting and Fanvue pipelines",
+)
 
 if __name__ == "__main__":
     app()

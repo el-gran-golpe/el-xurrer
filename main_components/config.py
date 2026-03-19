@@ -1,7 +1,11 @@
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from main_components.common.types import FanvueCredentials
+from main_components.common.types import (
+    FanvueCredentials,
+    FacebookMediaStagingCredentials,
+    MetaCredentials,
+)
 
 
 class Settings(BaseSettings):
@@ -21,12 +25,7 @@ class Settings(BaseSettings):
     client_secret: str = Field(validation_alias="client_secret")
     folder_id: str = Field(validation_alias="folder_id")
 
-    # Meta API
-    instagram_account_id: str = Field(validation_alias="INSTAGRAM_ACCOUNT_ID")
-    user_access_token: str = Field(validation_alias="USER_ACCESS_TOKEN")
-    app_scoped_user_id: str = Field(validation_alias="APP_SCOPED_USER_ID")
-
-    # Fanvue credentials are loaded dynamically.
+    # Meta and Fanvue credentials are loaded dynamically.
     # LAURA_VIGNE_FANVUE_USERNAME, MARIA_LARSEN_FANVUE_PASSWORD, etc.
 
     model_config = SettingsConfigDict(
@@ -41,20 +40,23 @@ class Settings(BaseSettings):
         raw = self.model_dump()
         return {k: v for k, v in raw.items() if k.upper().startswith("GITHUB") and v}
 
+    # TODO: I highly suspect that the credentials for Fanvue are just a username and password.
+    # This will probably break when I debug the fanvue backend feature
     def get_fanvue_credentials(self, alias: str) -> FanvueCredentials:
         """
         Dynamically retrieves Fanvue credentials for a given profile alias.
         """
-        alias_norm = alias.strip().replace(" ", "_").upper()
-        # Access extra fields via model_extra
+        alias_norm = alias.strip().replace(" ", "_").lower()  # lowercase
+        alias_env_prefix = alias_norm.upper()
         extras = self.model_extra or {}
-        username = extras.get(f"{alias_norm}_FANVUE_USERNAME")
-        password = extras.get(f"{alias_norm}_FANVUE_PASSWORD")
+        username = extras.get(f"{alias_norm}_fanvue_username")
+        password = extras.get(f"{alias_norm}_fanvue_password")
 
         if not username or not password:
             raise EnvironmentError(
                 f"Missing Fanvue credentials for alias '{alias}'. "
-                f"Ensure {alias_norm}_FANVUE_USERNAME and {alias_norm}_FANVUE_PASSWORD are in your .env file."
+                f"Ensure {alias_env_prefix}_FANVUE_USERNAME and "
+                f"{alias_env_prefix}_FANVUE_PASSWORD are in your .env file."
             )
 
         try:
@@ -62,6 +64,83 @@ class Settings(BaseSettings):
         except ValidationError as e:
             raise EnvironmentError(
                 f"Invalid Fanvue credentials for alias '{alias}': {e}"
+            )
+
+    def get_meta_credentials(self, alias: str) -> MetaCredentials:
+        """
+        Dynamically retrieves Meta credentials for a given profile alias.
+        """
+        alias_norm = alias.strip().replace(" ", "_").lower()  # lowercase
+        alias_env_prefix = alias_norm.upper()
+        extras = self.model_extra or {}
+        instagram_account_id = extras.get(f"{alias_norm}_instagram_account_id")
+        instagram_user_access_token = extras.get(
+            f"{alias_norm}_instagram_user_access_token"
+        )
+
+        missing_keys = [
+            key
+            for key, value in {
+                f"{alias_env_prefix}_INSTAGRAM_ACCOUNT_ID": instagram_account_id,
+                f"{alias_env_prefix}_INSTAGRAM_USER_ACCESS_TOKEN": instagram_user_access_token,
+            }.items()
+            if not value
+        ]
+        if missing_keys:
+            raise EnvironmentError(
+                f"Missing Meta credentials for alias '{alias}'. "
+                f"Ensure these variables exist in .env: {', '.join(missing_keys)}"
+            )
+
+        # This is just to satisfy the type checker below
+        # since we already check for missing keys above
+        assert instagram_account_id is not None
+        assert instagram_user_access_token is not None
+
+        try:
+            return MetaCredentials(
+                instagram_account_id=instagram_account_id,
+                instagram_user_access_token=instagram_user_access_token,
+            )
+        except ValidationError as e:
+            raise EnvironmentError(f"Invalid Meta credentials for alias '{alias}': {e}")
+
+    def get_facebook_media_staging_credentials(
+        self,
+    ) -> FacebookMediaStagingCredentials:
+        """
+        Retrieves the shared Facebook staging credentials used to generate public
+        media URLs for Instagram publishing.
+        """
+        extras = self.model_extra or {}
+        page_id = extras.get("facebook_staging_page_id")
+        user_access_token = extras.get("facebook_staging_user_access_token")
+
+        missing_keys = [
+            key
+            for key, value in {
+                "FACEBOOK_STAGING_PAGE_ID": page_id,
+                "FACEBOOK_STAGING_USER_ACCESS_TOKEN": user_access_token,
+            }.items()
+            if not value
+        ]
+        if missing_keys:
+            raise EnvironmentError(
+                "Missing Facebook staging credentials. Ensure these variables "
+                f"exist in .env: {', '.join(missing_keys)}"
+            )
+
+        assert isinstance(page_id, str)
+        assert isinstance(user_access_token, str)
+
+        try:
+            return FacebookMediaStagingCredentials(
+                page_id=page_id,
+                user_access_token=user_access_token,
+            )
+        except ValidationError as e:
+            raise EnvironmentError(
+                f"Invalid Facebook staging credentials: {e}"
             )
 
     # ---------------- Extraction Methods ----------------
