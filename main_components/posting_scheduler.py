@@ -7,7 +7,6 @@ from typing import Any, Iterator, List, Type, Union, cast
 from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 from automation.meta_api.graph_api import GraphAPI
-import shutil
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
@@ -163,8 +162,6 @@ class PostingScheduler:
                     )
                     continue
 
-            # self._cleanup(pub_root)
-
     def _upload_via_api(self, pub: Publication, client_class: Type[GraphAPI]) -> None:
         """
         Uses Meta's graph API to upload publications.
@@ -244,17 +241,6 @@ class PostingScheduler:
             logger.info(
                 f"[{self.platform_name}] Scheduled time has already passed. Continuing without sleep..."
             )
-
-    # TODO: this should not be here. This class is just for scheduling as its name suggests
-    def _cleanup(self, root: Path) -> None:
-        """
-        Remove publications directory after upload.
-        """
-        try:
-            shutil.rmtree(root)
-            logger.success(f"[{self.platform_name}] Cleaned up publications at {root}")
-        except Exception as err:
-            logger.error(f"[{self.platform_name}] Cleanup failed for {root}: {err}")
 
     def _upload_via_fanvue_api(
         self, pub: Publication, client_class: Type[FanvueAPIPublisher], profile: Profile
