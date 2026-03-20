@@ -1,4 +1,5 @@
 import typer
+import shutil
 from typing import Optional
 
 from loguru import logger
@@ -11,6 +12,19 @@ from automation.meta_api.graph_api import GraphAPI
 from automation.fanvue_client.fanvue_publisher import FanvuePublisher
 
 app = typer.Typer(help="Run META → FANVUE end‑to‑end for profiles")
+
+
+def _cleanup_local_outputs(profiles: list[Profile]) -> None:
+    for profile in profiles:
+        for platform in Platform:
+            outputs_path = profile.platform_info[platform].outputs_path
+            outputs_path.mkdir(parents=True, exist_ok=True)
+            for child in outputs_path.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            logger.info("Cleared local outputs for {} {}", profile.name, platform.value)
 
 
 def _execute_all(
@@ -52,6 +66,9 @@ def run_all(
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
+    cleanup_local_outputs: bool = typer.Option(
+        False, "--cleanup-local-outputs/--keep-local-outputs"
+    ),
 ):
     """
     Run the full pipeline (META → FANVUE) at INFO level.
@@ -63,6 +80,8 @@ def run_all(
 
     _execute_all(profiles, overwrite, use_initial_conditions)
     get_gdrive_sync().push(RESOURCES_DIR)
+    if cleanup_local_outputs:
+        _cleanup_local_outputs(profiles)
 
 
 @app.command("debug")
@@ -75,6 +94,9 @@ def debug(
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
+    cleanup_local_outputs: bool = typer.Option(
+        False, "--cleanup-local-outputs/--keep-local-outputs"
+    ),
 ):
     """
     Run the full pipeline with DEBUG‑level logging (baseline).
@@ -86,3 +108,5 @@ def debug(
 
     _execute_all(profiles, overwrite, use_initial_conditions)
     get_gdrive_sync().push(RESOURCES_DIR)
+    if cleanup_local_outputs:
+        _cleanup_local_outputs(profiles)

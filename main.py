@@ -2,7 +2,7 @@ import sys
 import typer
 from loguru import logger
 
-from mains.commands.utils import profile_manager
+from mains.commands.utils import profile_manager, get_gdrive_sync
 from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
 from mains.commands.all import app as all_app
@@ -26,8 +26,7 @@ def main_callback(ctx: typer.Context):
         logger.add(sys.stderr, level="INFO")
 
     try:
-        # gdrive_sync.pull(profile_manager.resource_path)
-        pass
+        get_gdrive_sync().pull(profile_manager.resource_path)
     except Exception as e:
         logger.error("Failed to sync resources from Google Drive: {}", e)
         raise typer.Exit(1)
@@ -48,7 +47,18 @@ app.add_typer(all_app, name="all", help="End‑to‑end pipelines (run_all/debug
 
 if __name__ == "__main__":
     import sys
-
+    # sys.argv = ["main.py", "all", "debug", "-p", "0", "-p", "1"]
+    # Use --no-overwrite-outputs if you want to skip the planning step
+    sys.argv = [
+        "main.py",
+        "all",
+        "run_all",
+        "-p",
+        "0",
+        "-p",
+        "1",
+        "--no-overwrite-outputs",
+    ]
     # sys.argv = ["main.py", "all", "debug", "-p", "1"]
     # sys.argv = ["main.py", "meta", "schedule", "-p", "1"]
     # sys.argv = ["main.py", "fanvue", "schedule-api", "-p", "1"]
