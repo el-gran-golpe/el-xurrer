@@ -14,17 +14,14 @@ logger.add(sys.stderr, level="DEBUG")
 app = typer.Typer(help="Top‑level CLI: meta, fanvue, or all")
 
 
-def _is_help_request(argv: list[str]) -> bool:
-    return any(arg in {"-h", "--help"} for arg in argv[1:])
-
-
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     """
     1) Sync resources from Google Drive
     2) Load & validate profiles
     """
-    if ctx.resilient_parsing or _is_help_request(sys.argv):
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
         return
 
     # If running `python -m mains.main all run_all`, switch to INFO before sync/load
@@ -43,9 +40,6 @@ def main_callback(ctx: typer.Context):
     except Exception as e:
         logger.error("Failed to load profiles: {}", e)
         raise typer.Exit(1)
-
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
 
 
 app.add_typer(
