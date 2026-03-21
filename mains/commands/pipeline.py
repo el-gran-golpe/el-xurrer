@@ -6,6 +6,7 @@ from main_components.planning_manager import PlanningManager
 from main_components.publications_generator import PublicationsGenerator
 from main_components.posting_scheduler import PostingScheduler
 from generation_tools.image_generator.comfy_local import ComfyLocal
+from main_components.config import settings
 
 from mains.commands.utils import RESOURCES_DIR
 
@@ -26,7 +27,11 @@ def generate(platform: Platform, profiles: list[Profile]):
         return
 
     wf = RESOURCES_DIR / profiles[0].name / f"{profiles[0].name}_comfyworkflow.json"
-    client = ComfyLocal(workflow_path=wf)
+    client = ComfyLocal(
+        workflow_path=wf,
+        server_host=settings.comfy_host,
+        server_port=settings.comfy_port,
+    )
     try:
         client.check_connection()
     except Exception as e:
