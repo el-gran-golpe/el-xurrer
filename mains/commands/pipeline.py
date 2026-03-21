@@ -6,7 +6,6 @@ from main_components.planning_manager import PlanningManager
 from main_components.publications_generator import PublicationsGenerator
 from main_components.posting_scheduler import PostingScheduler
 from generation_tools.image_generator.comfy_local import ComfyLocal
-from main_components.config import settings
 
 from mains.commands.utils import RESOURCES_DIR
 
