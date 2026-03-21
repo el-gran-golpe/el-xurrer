@@ -1,6 +1,7 @@
 import typer
 from typing import Optional
 
+from automation.meta_api.graph_api import MetaPublisher
 from mains.commands.utils import resolve_profiles
 import mains.commands.pipeline as pipeline
 from main_components.common.types import Platform
@@ -40,6 +41,4 @@ def schedule(
 ):
     """Stage media on Facebook CDN and publish Instagram posts via Instagram Login."""
     profiles = resolve_profiles(profile_indexes, profile_names)
-    from automation.meta_api.graph_api import MetaPublisher
-
     pipeline.schedule(Platform.META, profiles, MetaPublisher)
