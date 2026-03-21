@@ -1,8 +1,9 @@
-import time
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import requests
 from loguru import logger
 
@@ -59,6 +60,44 @@ def _request_json(
         ) from exc
 
 
+async def _async_request_json(
+    method: str,
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    data: dict[str, Any] | None = None,
+    files: dict[str, Any] | None = None,
+    timeout: int = 30,
+) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient() as client:
+            if method.upper() == "GET":
+                response = await client.get(url, params=params, timeout=timeout)
+            elif method.upper() == "POST":
+                response = await client.post(
+                    url,
+                    params=params,
+                    data=data,
+                    files=files,
+                    timeout=timeout,
+                )
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = f"{exc} / {exc.response.text}" if exc.response.text else str(exc)
+        raise MetaPublisherError(detail) from exc
+    except httpx.RequestError as exc:
+        raise MetaPublisherError(str(exc)) from exc
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise MetaPublisherError(
+            f"Invalid JSON response from {url}: {response.text}"
+        ) from exc
+
+
 class InstagramPublisher:
     def __init__(self, profile: Profile):
         self.profile = profile
@@ -69,6 +108,8 @@ class InstagramPublisher:
         self.app_user_id = ""
         self._validate_credentials()
 
+    # TODO: NEVER do more stuff than inizialization in an __init__!!!
+    # Please move this to profile.py or types.py or config.py or somewhere else
     def _validate_credentials(self) -> None:
         payload = {
             "fields": "id,user_id,username",
@@ -91,7 +132,7 @@ class InstagramPublisher:
             self.username or "unknown",
         )
 
-    def upload_publication(
+    async def upload_publication(
         self,
         img_paths: list[Path],
         caption: str,
@@ -106,7 +147,7 @@ class InstagramPublisher:
         media_ids: list[str] = []
 
         for img_path in img_paths:
-            image_url = media_stager.upload_photo_and_get_cdn_url(img_path)
+            image_url = await media_stager.upload_photo_and_get_cdn_url(img_path)
 
             payload: dict[str, str] = {
                 "image_url": image_url,
@@ -118,7 +159,7 @@ class InstagramPublisher:
             else:
                 payload["is_carousel_item"] = "true"
 
-            data = _request_json(
+            data = await _async_request_json(
                 "POST",
                 f"{self.base_url}/{self.account_id}/media",
                 data=payload,
@@ -142,7 +183,7 @@ class InstagramPublisher:
         if len(media_ids) == 1:
             creation_id = media_ids[0]
         else:
-            data = _request_json(
+            data = await _async_request_json(
                 "POST",
                 f"{self.base_url}/{self.account_id}/media",
                 data={
@@ -159,12 +200,12 @@ class InstagramPublisher:
                 )
             logger.info("Created Instagram carousel container {}", creation_id)
 
-        if not self._wait_for_media_ready(creation_id):
+        if not await self._wait_for_media_ready(creation_id):
             raise PublicationError(
                 f"Instagram media container {creation_id} was not ready for publishing."
             )
 
-        result = _request_json(
+        result = await _async_request_json(
             "POST",
             f"{self.base_url}/{self.account_id}/media_publish",
             data={
@@ -185,7 +226,7 @@ class InstagramPublisher:
             "status": "scheduled" if upload_time else "published",
         }
 
-    def _wait_for_media_ready(
+    async def _wait_for_media_ready(
         self,
         creation_id: str,
         max_attempts: int = 10,
@@ -198,7 +239,7 @@ class InstagramPublisher:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                data = _request_json(
+                data = await _async_request_json(
                     "GET",
                     f"{self.base_url}/{creation_id}",
                     params=params,
@@ -212,7 +253,7 @@ class InstagramPublisher:
                     exc,
                 )
                 if attempt < max_attempts:
-                    time.sleep(delay_seconds)
+                    await asyncio.sleep(delay_seconds)
                 continue
 
             status = data.get("status_code")
@@ -235,7 +276,7 @@ class InstagramPublisher:
                 return False
 
             if attempt < max_attempts:
-                time.sleep(delay_seconds)
+                await asyncio.sleep(delay_seconds)
 
         logger.error(
             "Instagram media container {} was not ready after {} attempts",
@@ -319,9 +360,9 @@ class FacebookMediaStager:
             f"Configured page id: {page_id}. Visible pages: {visible_pages_text}."
         )
 
-    def _upload_photo(self, img_path: Path) -> str:
+    async def _upload_photo(self, img_path: Path) -> str:
         with img_path.open("rb") as source_file:
-            data = _request_json(
+            data = await _async_request_json(
                 "POST",
                 f"{self.base_url}/{self.page_id}/photos",
                 files={"source": source_file},
@@ -340,10 +381,10 @@ class FacebookMediaStager:
         logger.info("Uploaded Facebook staging photo {} as {}", img_path, photo_id)
         return photo_id
 
-    def upload_photo_and_get_cdn_url(self, img_path: Path) -> str:
-        photo_id = self._upload_photo(img_path)
+    async def upload_photo_and_get_cdn_url(self, img_path: Path) -> str:
+        photo_id = await self._upload_photo(img_path)
 
-        details = _request_json(
+        details = await _async_request_json(
             "GET",
             f"{self.base_url}/{photo_id}",
             params={
@@ -375,13 +416,17 @@ class MetaPublisher:
         self.instagram = InstagramPublisher(profile)
         self.media_stager = FacebookMediaStager()
 
-    def upload_publication(
+    async def upload_publication(
         self,
         img_paths: list[Path],
         caption: str,
         upload_time: datetime | None,
     ) -> dict[str, Any]:
-        instagram_result = self.instagram.upload_publication(
+        if self.instagram is None or self.media_stager is None:
+            raise RuntimeError(
+                "MetaPublisher is not initialised. Use 'await MetaPublisher.create(profile)' instead of the constructor."
+            )
+        instagram_result = await self.instagram.upload_publication(
             img_paths,
             caption,
             upload_time,

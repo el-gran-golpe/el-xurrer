@@ -1,7 +1,7 @@
+import asyncio
 import re
 from datetime import datetime
 from pathlib import Path
-from time import sleep
 from typing import Any, Iterator, List, Type, Union, cast
 
 from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
@@ -87,7 +87,7 @@ class PostingScheduler:
         self.template_profiles = template_profiles
         self.publisher = publisher
 
-    def upload(self) -> None:
+    async def upload(self) -> None:
         for profile in self.template_profiles:
             outputs = profile.platform_info[self.platform_name].outputs_path
 
@@ -96,6 +96,7 @@ class PostingScheduler:
             if not pub_root.exists():
                 raise FileNotFoundError(f"No publications folder for {profile}")
 
+            publications = []
             for day_folder in _iter_day_folders(pub_root):
                 try:
                     caption_text: str = (
@@ -118,45 +119,41 @@ class PostingScheduler:
                     )
 
                     # Let Pydantic handle all validation
-                    pub = Publication(
-                        day_folder=day_folder,  # This Path variable is used for logging stuff in the terminal
-                        caption_text=caption_text,
-                        upload_time=upload_time,
-                        image_paths=image_paths,
+                    publications.append(
+                        Publication(
+                            day_folder=day_folder,  # This Path variable is used for logging stuff in the terminal
+                            caption_text=caption_text,
+                            upload_time=upload_time,
+                            image_paths=image_paths,
+                        )
                     )
-
-                    if self.platform_name == Platform.FANVUE:
-                        try:
-                            self._upload_via_fanvue_api(
-                                pub,
-                                cast(Type[FanvueAPIPublisher], self.publisher),
-                                profile,
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Failed to upload {pub.day_folder.name} via Fanvue API: {e}"
-                            )
-                    elif self.platform_name == Platform.META:
-                        self._upload_via_api(
-                            pub,
-                            cast(Type[MetaPublisher], self.publisher),
-                            profile,
-                        )
-                    else:
-                        raise NotImplementedError(
-                            f"Unsupported platform: {self.platform_name}"
-                        )
-
-                # TODO: this error is too broad
                 except (FileNotFoundError, ValueError, ValidationError) as err:
                     logger.error(
                         f"Failed to create publication for {day_folder}: {err}"
                     )
                     continue
 
+            if self.platform_name == Platform.FANVUE:
+                try:
+                    await self._upload_via_fanvue_api(
+                        publications,
+                        cast(Type[FanvueAPIPublisher], self.publisher),
+                        profile,
+                    )
+                except Exception as e:
+                    logger.error("Failed to upload via Fanvue API: {}", e)
+            elif self.platform_name == Platform.META:
+                await self._upload_via_meta_api(
+                    publications,
+                    cast(Type[MetaPublisher], self.publisher),
+                    profile,
+                )
+            else:
+                raise NotImplementedError(f"Unsupported platform: {self.platform_name}")
+
     def _upload_via_api(
         self,
-        pub: Publication,
+        publications: list[Publication],
         client_class: Type[MetaPublisher],
         profile: Profile,
     ) -> None:
@@ -164,24 +161,26 @@ class PostingScheduler:
         Uses Meta's graph API to upload publications.
         """
         client = client_class(profile)
-        logger.info(f"Uploading {pub.day_folder.name} via API on {self.platform_name}")
 
-        # We have to wait anyway since Instagram does not have a built-in api for scheduling
-        self._wait_for_time(pub.upload_time)
-
-        try:
-            meta_resp = client.upload_publication(
-                pub.image_paths,
-                pub.caption_text,
-                pub.upload_time,
+        for pub in publications:
+            logger.info(
+                f"Uploading {pub.day_folder.name} via API on {self.platform_name}"
             )
-            logger.debug(f"Meta response: {meta_resp}")
+            # We have to wait anyway since Instagram does not have a built-in api for scheduling
+            await self._wait_for_time(pub.upload_time)
 
-        except Exception as err:
-            logger.error(f"API upload failed for {pub.day_folder}: {err}")
-            raise
+            try:
+                meta_resp = await client.upload_publication(
+                    pub.image_paths,
+                    pub.caption_text,
+                    pub.upload_time,
+                )
+                logger.debug(f"Meta response: {meta_resp}")
 
-    def _wait_for_time(self, scheduled: datetime) -> None:
+            except Exception as err:
+                logger.error(f"API upload failed for {pub.day_folder}: {err}")
+
+    async def _wait_for_time(self, scheduled: datetime) -> None:
         """
         Sleep until scheduled time.
         """
@@ -192,17 +191,19 @@ class PostingScheduler:
             logger.info(
                 f"[{self.platform_name}] Sleeping for {delay:.0f}s until {scheduled.isoformat()}"
             )
-            sleep(delay)
+            await asyncio.sleep(delay)
         else:
             logger.info(
                 f"[{self.platform_name}] Scheduled time has already passed. Continuing without sleep..."
             )
 
-    def _upload_via_fanvue_api(
-        self, pub: Publication, client_class: Type[FanvueAPIPublisher], profile: Profile
+    async def _upload_via_fanvue_api(
+        self,
+        publications: list[Publication],
+        client_class: Type[FanvueAPIPublisher],
+        profile: Profile,
     ) -> None:
         """Upload via Fanvue OAuth API with multiple images as single carousel post."""
-        import asyncio
 
         # Create API client
         client = client_class(profile)
@@ -211,18 +212,18 @@ class PostingScheduler:
         # Fanvue API requires format: YYYY-MM-DDTHH:MM:SSZ
         from datetime import timezone
 
-        utc_time = pub.upload_time.astimezone(timezone.utc)
-        publish_at = utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        for pub in publications:
+            utc_time = pub.upload_time.astimezone(timezone.utc)
+            publish_at = utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        logger.info(f"Scheduling {pub.day_folder.name} via Fanvue API for {publish_at}")
+            logger.info(
+                f"Scheduling {pub.day_folder.name} via Fanvue API for {publish_at}"
+            )
 
-        try:
-            # Run async batch upload in sync context with scheduled time
-            asyncio.run(
-                client.post_publication_batch(
+            try:
+                # Run async batch upload in sync context with scheduled time
+                await client.post_publication_batch(
                     pub.image_paths, pub.caption_text, publish_at
                 )
-            )
-        except Exception as err:
-            logger.error(f"API upload failed for {pub.day_folder}: {err}")
-            raise
+            except Exception as err:
+                logger.error(f"API upload failed for {pub.day_folder}: {err}")

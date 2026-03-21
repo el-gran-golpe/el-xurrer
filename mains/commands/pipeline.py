@@ -1,3 +1,5 @@
+import asyncio
+
 from loguru import logger
 
 from main_components.common.types import Platform
@@ -48,10 +50,11 @@ def generate(platform: Platform, profiles: list[Profile]):
 
 
 def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
-    for p in profiles:
-        PostingScheduler(
-            template_profiles=[p],
+    async def do_schedule():
+        await PostingScheduler(
+            template_profiles=profiles,
             platform_name=platform,
             publisher=publisher_cls,
         ).upload()
-        logger.success("{} posts scheduled for {}.", platform.name, p.name)
+
+    asyncio.run(do_schedule())
