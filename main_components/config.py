@@ -5,6 +5,10 @@ from main_components.common.types import FanvueCredentials
 
 
 class Settings(BaseSettings):
+    # ComfyUI server (defaults to local; set COMFY_HOST to a ZeroTier IP for a remote machine)
+    comfy_host: str = Field(default="127.0.0.1", validation_alias="COMFY_HOST")
+    comfy_port: int = Field(default=8188, validation_alias="COMFY_PORT")
+
     # BaseLLM Keys
     openai_api_key: str = Field(validation_alias="OPENAI_API_KEY")
     deepseek_api_key: str = Field(validation_alias="DEEPSEEK_API_KEY")
