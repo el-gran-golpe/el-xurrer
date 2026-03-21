@@ -8,10 +8,10 @@ from main_components.common.types import Platform
 
 from mains.commands.utils import resolve_profiles, get_gdrive_sync, RESOURCES_DIR
 import mains.commands.pipeline as pipeline
+from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
+from automation.meta_api.graph_api import MetaPublisher
 
-app = typer.Typer(
-    help="Run Instagram Login posting → Fanvue end-to-end for profiles"
-)
+app = typer.Typer(help="Run Instagram Login posting → Fanvue end-to-end for profiles")
 
 
 def _cleanup_local_outputs(profiles: list[Profile]) -> None:
@@ -32,9 +32,6 @@ def _execute_all(
     overwrite: bool,
     use_initial_conditions: bool,
 ):
-    from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
-    from automation.meta_api.graph_api import MetaPublisher
-
     for p in profiles:
         # Instagram Login posting
         logger.info(
