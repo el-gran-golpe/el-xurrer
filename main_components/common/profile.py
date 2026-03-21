@@ -82,7 +82,7 @@ class ProfileManager:
             # 4) Gather per-platform info (+ strict prompt & lang validation)
             try:
                 platforms = self._gather_platforms(profile_dir, profile_name)
-                # TODO: should we add Fanvue credential checks here?
+                # TODO: Add Fanvue credential checks here
                 meta_credentials = settings.get_meta_credentials(profile_name)
                 profile = Profile(
                     name=profile_name,
