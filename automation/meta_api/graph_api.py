@@ -22,14 +22,6 @@ class PublicationError(MetaPublisherError):
     """Raised when an upload or publish operation fails."""
 
 
-def _require_setting(value: str | None, setting_name: str) -> str:
-    if not value:
-        raise MetaValidationError(
-            f"Missing required Meta setting: {setting_name}. Check your .env configuration."
-        )
-    return value
-
-
 def _request_json(
     method: str,
     url: str,
@@ -62,20 +54,16 @@ def _request_json(
     try:
         return response.json()
     except ValueError as exc:
-        raise MetaPublisherError(f"Invalid JSON response from {url}: {response.text}") from exc
+        raise MetaPublisherError(
+            f"Invalid JSON response from {url}: {response.text}"
+        ) from exc
 
 
 class InstagramPublisher:
     def __init__(self, profile: Profile):
         self.profile = profile
-        self.account_id = _require_setting(
-            profile.meta_credentials.instagram_account_id,
-            f"{profile.name.upper()}_INSTAGRAM_ACCOUNT_ID",
-        )
-        self.user_access_token = _require_setting(
-            profile.meta_credentials.instagram_user_access_token,
-            f"{profile.name.upper()}_INSTAGRAM_USER_ACCESS_TOKEN",
-        )
+        self.account_id = profile.meta_credentials.instagram_account_id
+        self.user_access_token = profile.meta_credentials.instagram_user_access_token
         self.base_url = "https://graph.instagram.com/v21.0"
         self.username = ""
         self.app_user_id = ""
@@ -166,7 +154,9 @@ class InstagramPublisher:
             )
             creation_id = str(data.get("id", ""))
             if not creation_id:
-                raise PublicationError("Instagram carousel container creation returned no id.")
+                raise PublicationError(
+                    "Instagram carousel container creation returned no id."
+                )
             logger.info("Created Instagram carousel container {}", creation_id)
 
         if not self._wait_for_media_ready(creation_id):
@@ -272,14 +262,8 @@ class FacebookMediaStager:
 
     def _load_credentials(self) -> None:
         staging = settings.get_facebook_media_staging_credentials()
-        self.page_id = _require_setting(
-            staging.page_id,
-            "FACEBOOK_STAGING_PAGE_ID",
-        )
-        self.user_access_token = _require_setting(
-            staging.user_access_token,
-            "FACEBOOK_STAGING_USER_ACCESS_TOKEN",
-        )
+        self.page_id = staging.page_id
+        self.user_access_token = staging.user_access_token
         self.page_access_token = self._lookup_page_access_token(
             page_id=self.page_id,
             user_access_token=self.user_access_token,
