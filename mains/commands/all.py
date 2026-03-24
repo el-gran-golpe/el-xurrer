@@ -1,3 +1,5 @@
+import asyncio
+
 import typer
 import shutil
 from typing import Optional
@@ -27,37 +29,54 @@ def _cleanup_local_outputs(profiles: list[Profile]) -> None:
             logger.info("Cleared local outputs for {} {}", profile.name, platform.value)
 
 
-def _execute_all(
+async def _execute_all(
     profiles: list[Profile],
     overwrite: bool,
     use_initial_conditions: bool,
 ):
+    tasks = []
     for p in profiles:
-        # Instagram Login posting
-        logger.info(
-            "Instagram Login posting pipeline for {} (shared Facebook staging for media URLs)",
-            p.name,
-        )
-        out_meta = p.platform_info[Platform.META].outputs_path
-        if not overwrite and any(out_meta.iterdir()):
-            logger.warning(
-                "Skipping Instagram plan for {} (outputs exist)",
+        try:
+            # Instagram Login posting
+            logger.info(
+                "Instagram Login posting pipeline for {} (shared Facebook staging for media URLs)",
                 p.name,
             )
-        else:
-            pipeline.plan(Platform.META, [p], use_initial_conditions)
-        pipeline.generate(Platform.META, [p])
-        pipeline.schedule(Platform.META, [p], MetaPublisher)
+            out_meta = p.platform_info[Platform.META].outputs_path
+            if not overwrite and any(out_meta.iterdir()):
+                logger.warning(
+                    "Skipping Instagram plan for {} (outputs exist)",
+                    p.name,
+                )
+            else:
+                pipeline.plan(Platform.META, [p], use_initial_conditions)
+            pipeline.generate(Platform.META, [p])
+            tasks.append(
+                asyncio.create_task(
+                    pipeline.schedule(Platform.META, [p], MetaPublisher)
+                )
+            )
 
-        # FANVUE
-        logger.info("▶️  FANVUE pipeline for {}", p.name)
-        out_fan = p.platform_info[Platform.FANVUE].outputs_path
-        if not overwrite and any(out_fan.iterdir()):
-            logger.warning("Skipping FANVUE plan for {} (outputs exists)", p.name)
-        else:
-            pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
-        pipeline.generate(Platform.FANVUE, [p])
-        pipeline.schedule(Platform.FANVUE, [p], FanvueAPIPublisher)
+            # FANVUE
+            logger.info("▶️  FANVUE pipeline for {}", p.name)
+            out_fan = p.platform_info[Platform.FANVUE].outputs_path
+            if not overwrite and any(out_fan.iterdir()):
+                logger.warning("Skipping FANVUE plan for {} (outputs exists)", p.name)
+            else:
+                pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
+            pipeline.generate(Platform.FANVUE, [p])
+            tasks.append(
+                asyncio.create_task(
+                    pipeline.schedule(Platform.FANVUE, [p], FanvueAPIPublisher)
+                )
+            )
+        except Exception as e:
+            logger.error("Failed to process profile {}: {}", p.name, e)
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error("Schedule task failed: {}", result)
 
     logger.success("✅  All profiles processed — background uploads in progress.")
 
@@ -84,7 +103,7 @@ def run_all(
         logger.warning("No profiles to process")
         return
 
-    _execute_all(profiles, overwrite, use_initial_conditions)
+    asyncio.run(_execute_all(profiles, overwrite, use_initial_conditions))
     get_gdrive_sync().push(RESOURCES_DIR)
     if cleanup_local_outputs:
         _cleanup_local_outputs(profiles)
@@ -107,12 +126,13 @@ def debug(
     """
     Run the full pipeline with DEBUG-level logging for Instagram Login posting and Fanvue.
     """
+    # TODO: It would be nice that you place the debug code for showing the logs here and not in main.py
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process")
         return
 
-    _execute_all(profiles, overwrite, use_initial_conditions)
+    asyncio.run(_execute_all(profiles, overwrite, use_initial_conditions))
     get_gdrive_sync().push(RESOURCES_DIR)
     if cleanup_local_outputs:
         _cleanup_local_outputs(profiles)
