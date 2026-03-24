@@ -1,5 +1,3 @@
-import asyncio
-
 from loguru import logger
 
 from main_components.common.types import Platform
@@ -49,12 +47,9 @@ def generate(platform: Platform, profiles: list[Profile]):
         logger.success("{} assets generated for {}.", platform.name, p.name)
 
 
-def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
-    async def do_schedule():
-        await PostingScheduler(
-            template_profiles=profiles,
-            platform_name=platform,
-            publisher=publisher_cls,
-        ).upload()
-
-    asyncio.run(do_schedule())
+async def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
+    await PostingScheduler(
+        template_profiles=profiles,
+        platform_name=platform,
+        publisher=publisher_cls,
+    ).upload()
