@@ -114,13 +114,13 @@ class Settings(BaseSettings):
         """
         extras = self.model_extra or {}
         page_id = extras.get("facebook_staging_page_id")
-        user_access_token = extras.get("facebook_staging_user_access_token")
+        page_access_token = extras.get("facebook_staging_page_access_token")
 
         missing_keys = [
             key
             for key, value in {
                 "FACEBOOK_STAGING_PAGE_ID": page_id,
-                "FACEBOOK_STAGING_USER_ACCESS_TOKEN": user_access_token,
+                "FACEBOOK_STAGING_PAGE_ACCESS_TOKEN": page_access_token,
             }.items()
             if not value
         ]
@@ -131,17 +131,15 @@ class Settings(BaseSettings):
             )
 
         assert isinstance(page_id, str)
-        assert isinstance(user_access_token, str)
+        assert isinstance(page_access_token, str)
 
         try:
             return FacebookMediaStagingCredentials(
                 page_id=page_id,
-                user_access_token=user_access_token,
+                page_access_token=page_access_token,
             )
         except ValidationError as e:
-            raise EnvironmentError(
-                f"Invalid Facebook staging credentials: {e}"
-            )
+            raise EnvironmentError(f"Invalid Facebook staging credentials: {e}")
 
     # ---------------- Extraction Methods ----------------
 

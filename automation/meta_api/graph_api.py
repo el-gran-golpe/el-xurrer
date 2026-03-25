@@ -298,66 +298,15 @@ class FacebookMediaStager:
         self.base_url = "https://graph.facebook.com/v21.0"
         self.page_id = ""
         self.page_access_token = ""
-        self.user_access_token = ""
         self._load_credentials()
 
     def _load_credentials(self) -> None:
         staging = settings.get_facebook_media_staging_credentials()
         self.page_id = staging.page_id
-        self.user_access_token = staging.user_access_token
-        self.page_access_token = self._lookup_page_access_token(
-            page_id=self.page_id,
-            user_access_token=self.user_access_token,
-        )
+        self.page_access_token = staging.page_access_token
         logger.info(
             "Using shared Facebook media staging page {} for Instagram CDN URLs",
             self.page_id,
-        )
-
-    def _lookup_page_access_token(
-        self,
-        *,
-        page_id: str,
-        user_access_token: str,
-    ) -> str:
-        payload = {
-            "fields": "id,name,access_token,tasks",
-            "access_token": user_access_token,
-        }
-        try:
-            data = _request_json("GET", f"{self.base_url}/me/accounts", params=payload)
-        except MetaPublisherError as exc:
-            raise MetaValidationError(
-                f"Unable to resolve a page access token for Facebook staging page {page_id}: {exc}"
-            ) from exc
-
-        pages = data.get("data", [])
-        if not isinstance(pages, list):
-            raise MetaValidationError(
-                f"Unexpected Facebook /me/accounts response shape: {data}"
-            )
-
-        visible_pages: list[str] = []
-        for page in pages:
-            current_page_id = str(page.get("id", ""))
-            current_page_name = str(page.get("name", "unknown"))
-            if current_page_id:
-                visible_pages.append(f"{current_page_name} ({current_page_id})")
-
-            if current_page_id != page_id:
-                continue
-
-            page_access_token = str(page.get("access_token", ""))
-            if not page_access_token:
-                raise MetaValidationError(
-                    f"Facebook staging page {page_id} returned no page access token in /me/accounts."
-                )
-            return page_access_token
-
-        visible_pages_text = ", ".join(visible_pages) if visible_pages else "none"
-        raise MetaValidationError(
-            "FACEBOOK_STAGING_PAGE_ID is not managed by FACEBOOK_STAGING_USER_ACCESS_TOKEN. "
-            f"Configured page id: {page_id}. Visible pages: {visible_pages_text}."
         )
 
     async def _upload_photo(self, img_path: Path) -> str:

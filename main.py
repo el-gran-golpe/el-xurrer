@@ -5,7 +5,7 @@ from loguru import logger
 from mains.commands.utils import profile_manager, get_gdrive_sync
 from mains.commands.meta import app as meta_app
 from mains.commands.fanvue import app as fanvue_app
-from mains.commands.all import app as all_app
+from mains.commands.all import app as all_app, configure_run_all_logging
 
 # Baseline DEBUG for everything (only run_all command overwrites this internally)
 logger.remove()
@@ -26,8 +26,7 @@ def main_callback(ctx: typer.Context):
 
     # If running `python -m mains.main all run_all`, switch to INFO before sync/load
     if len(sys.argv) >= 3 and sys.argv[1] == "all" and sys.argv[2] == "run_all":
-        logger.remove()
-        logger.add(sys.stderr, level="INFO")
+        configure_run_all_logging()
 
     try:
         get_gdrive_sync().pull(profile_manager.resource_path)
