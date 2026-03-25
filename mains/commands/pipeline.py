@@ -8,6 +8,7 @@ from main_components.posting_scheduler import PostingScheduler
 from generation_tools.image_generator.comfy_local import ComfyLocal
 
 from mains.commands.utils import RESOURCES_DIR
+from main_components.config import settings
 
 
 def plan(platform: Platform, profiles: list[Profile], use_initial_conditions: bool):

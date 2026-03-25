@@ -54,13 +54,33 @@ MARIA_LARSEN_INSTAGRAM_USER_ACCESS_TOKEN=...
 
 # Shared Facebook staging page used only to generate public media URLs for
 # Instagram publishing. This repo does not use it for Facebook cross-posting.
+# Use a direct Page access token for the staging Page.
 FACEBOOK_STAGING_PAGE_ID=
-FACEBOOK_STAGING_USER_ACCESS_TOKEN=
+FACEBOOK_STAGING_PAGE_ACCESS_TOKEN=
 ```
 
 The posting path is now Instagram-only via Instagram Login. Facebook remains in
 the runtime solely as a zero-dollar media staging helper because Instagram
 publishing still needs a public `image_url` for each asset.
+
+The staging helper no longer uses a short-lived Facebook user token. It now
+expects a direct `FACEBOOK_STAGING_PAGE_ACCESS_TOKEN`, which is a better match
+for this automation flow because the runtime only stages media on one known
+Page and does not need to discover a Page token through `/me/accounts`.
+
+This change removes the old `FACEBOOK_STAGING_USER_ACCESS_TOKEN` contract from
+the repo. In practice, the goal is a hands-off token setup for the staging
+Page. "Immortal" here should be understood operationally, not literally: the
+token is intended to avoid time-based refresh churn, but it can still be
+invalidated if Meta app access, business assets, page permissions, or assigned
+roles change.
+
+Migration summary:
+
+- old: `FACEBOOK_STAGING_USER_ACCESS_TOKEN`
+- new: `FACEBOOK_STAGING_PAGE_ACCESS_TOKEN`
+- behavior change: the staging helper now uses the configured Page token
+  directly and no longer performs a `/me/accounts` lookup at runtime
 
 ---
 
@@ -90,7 +110,7 @@ For each migrated influencer profile you need:
 For the shared zero-dollar media staging helper you need:
 
 - `FACEBOOK_STAGING_PAGE_ID`
-- `FACEBOOK_STAGING_USER_ACCESS_TOKEN`
+- `FACEBOOK_STAGING_PAGE_ACCESS_TOKEN`
 
 ---
 

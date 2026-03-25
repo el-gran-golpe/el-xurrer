@@ -1,3 +1,6 @@
+import asyncio
+import sys
+
 import typer
 import shutil
 from typing import Optional
@@ -25,6 +28,11 @@ def _cleanup_local_outputs(profiles: list[Profile]) -> None:
                 else:
                     child.unlink()
             logger.info("Cleared local outputs for {} {}", profile.name, platform.value)
+
+
+def configure_run_all_logging():
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
 
 
 async def _execute_all(
@@ -124,7 +132,6 @@ def debug(
     """
     Run the full pipeline with DEBUG-level logging for Instagram Login posting and Fanvue.
     """
-    # TODO: It would be nice that you place the debug code for showing the logs here and not in main.py
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process")

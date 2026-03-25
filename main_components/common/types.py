@@ -122,9 +122,9 @@ class MetaCredentials(BaseModel):
 
 class FacebookMediaStagingCredentials(BaseModel):
     page_id: str = Field(..., min_length=1)
-    user_access_token: str = Field(..., min_length=1)
+    page_access_token: str = Field(..., min_length=1)
 
-    @field_validator("page_id", "user_access_token")
+    @field_validator("page_id", "page_access_token")
     @classmethod
     def must_be_non_empty_string(cls, value: str) -> str:
         if not isinstance(value, str) or not value.strip():
