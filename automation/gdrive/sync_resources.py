@@ -15,6 +15,7 @@ from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 
 from main_components.common.profile import ProfileManager
+from main_components.common.types import Platform
 from main_components.config import settings
 
 
@@ -49,7 +50,6 @@ class GoogleDriveSync:
     SCOPES = ["https://www.googleapis.com/auth/drive"]
     FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
     INITIAL_CONDITIONS_FILENAME = "initial_conditions.md"
-    PLATFORMS = ("meta", "fanvue")
 
     def __init__(self):
         self.settings = settings
@@ -87,7 +87,6 @@ class GoogleDriveSync:
     # TODO: check that this has no vulnerabilities
     def _get_drive_service(self):
         """Authenticate (or load cached token), auto-refresh if expired, and return Drive v3 client."""
-        creds = None
         try:
             creds = self._load_cached_credentials()
 
@@ -150,9 +149,7 @@ class GoogleDriveSync:
 
         for profile_dir in profile_dirs:
             if not self._is_valid_profile_name(profile_dir.name):
-                raise ValueError(
-                    f"Invalid profile directory name: {profile_dir.name}"
-                )
+                raise ValueError(f"Invalid profile directory name: {profile_dir.name}")
             manifest.update(self._validate_local_profile(root, profile_dir))
 
         return manifest
@@ -168,7 +165,7 @@ class GoogleDriveSync:
             raise ValueError(f"Missing workflow JSON: {workflow_path}")
         manifest[workflow_path.relative_to(root)] = workflow_path
 
-        for platform in self.PLATFORMS:
+        for platform in Platform:
             platform_dir = profile_dir / platform
             if not platform_dir.is_dir():
                 raise ValueError(f"Missing platform directory: {platform_dir}")
@@ -232,12 +229,14 @@ class GoogleDriveSync:
             raise ValueError(f"Missing workflow JSON on Drive: {workflow_path}")
         manifest[workflow_path] = workflow_file
 
-        for platform in self.PLATFORMS:
+        for platform in Platform:
             platform_path = profile_root / platform
             inputs_path = platform_path / "inputs"
 
             if platform_path not in remote_index.folders:
-                raise ValueError(f"Missing platform directory on Drive: {platform_path}")
+                raise ValueError(
+                    f"Missing platform directory on Drive: {platform_path}"
+                )
             if inputs_path not in remote_index.folders:
                 raise ValueError(f"Missing inputs directory on Drive: {inputs_path}")
 
@@ -342,7 +341,9 @@ class GoogleDriveSync:
                 continue
             downloads.append((remote_file, local_path))
 
-        with tqdm(total=len(downloads), desc="Pulling managed files", unit="file") as pbar:
+        with tqdm(
+            total=len(downloads), desc="Pulling managed files", unit="file"
+        ) as pbar:
             for remote_file, target in downloads:
                 existed = target.exists()
                 self._download_file(service, remote_file.id, target)
@@ -361,6 +362,13 @@ class GoogleDriveSync:
         local_profile_names = {path.parts[0] for path in local_manifest}
         keep_files = set(local_manifest)
         keep_folders = self._build_required_folder_paths(local_profile_names)
+
+        # Valid profile directories on Drive that are NOT part of this push are
+        # preserved in full — their files and folders are never touched.
+        # Everything else (including non-profile top-level items such as a 'misc'
+        # folder or a root-level file) is treated as deletable if it is not in the
+        # sync contract. This is intentional: the configured Drive folder is treated
+        # as owned by this tool, so any unrecognised content is cleaned up on push.
         preserved_remote_profiles = {
             path.name
             for path in remote_index.folders
@@ -369,6 +377,10 @@ class GoogleDriveSync:
             and path.name not in local_profile_names
         }
 
+        # Deleted: any remote file/folder that is not under a preserved profile AND
+        # is not part of the expected sync contract (keep_files / keep_folders).
+        # This includes stray files at the Drive root, unknown top-level folders,
+        # and extra files inside locally-pushed profile directories.
         files_to_delete = [
             remote_file
             for remote_file in remote_index.files.values()
@@ -382,10 +394,13 @@ class GoogleDriveSync:
             and remote_folder.path not in keep_folders
         ]
 
-        for remote_file in files_to_delete:
-            self._delete_remote_item(service, remote_file.id)
-            logger.warning("Deleted remote file outside sync contract: {}", remote_file.path)
+        for stale_file in files_to_delete:
+            self._delete_remote_item(service, stale_file.id)
+            logger.warning(
+                "Deleted remote file outside sync contract: {}", stale_file.path
+            )
 
+        # Delete deepest folders first to avoid removing a parent before its children.
         for remote_folder in sorted(
             folders_to_delete,
             key=lambda folder: len(folder.path.parts),
@@ -403,13 +418,15 @@ class GoogleDriveSync:
 
         uploads: list[tuple[Path, Path, RemoteFile | None]] = []
         for rel_path, local_path in sorted(local_manifest.items()):
-            remote_file = remote_index.files.get(rel_path)
+            remote_file: RemoteFile | None = remote_index.files.get(rel_path)
             local_md5 = self._local_md5(local_path)
             if remote_file and remote_file.md5_checksum == local_md5:
                 continue
             uploads.append((rel_path, local_path, remote_file))
 
-        with tqdm(total=len(uploads), desc="Pushing managed files", unit="file") as pbar:
+        with tqdm(
+            total=len(uploads), desc="Pushing managed files", unit="file"
+        ) as pbar:
             for rel_path, local_path, remote_file in uploads:
                 parent_id = self._ensure_remote_folder_path(
                     service, folder_cache, rel_path.parent
@@ -427,7 +444,7 @@ class GoogleDriveSync:
         for profile_name in profile_names:
             profile_path = Path(profile_name)
             folders.add(profile_path)
-            for platform in self.PLATFORMS:
+            for platform in Platform:
                 platform_path = profile_path / platform
                 folders.add(platform_path)
                 folders.add(platform_path / "inputs")
