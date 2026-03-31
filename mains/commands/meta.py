@@ -1,3 +1,5 @@
+import asyncio
+
 import typer
 from typing import Optional
 
@@ -41,4 +43,4 @@ def schedule(
 ):
     """Stage media on Facebook CDN and publish Instagram posts via Instagram Login."""
     profiles = resolve_profiles(profile_indexes, profile_names)
-    pipeline.schedule(Platform.META, profiles, MetaPublisher)
+    asyncio.run(pipeline.schedule(Platform.META, profiles, MetaPublisher))

@@ -6,8 +6,6 @@ from typing import Any, Iterator, List, Type, Union, cast
 
 from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
 from automation.meta_api.graph_api import MetaPublisher
-from automation.fanvue_client.fanvue_publisher import FanvuePublisher
-from automation.meta_api.graph_api import GraphAPI
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
@@ -143,7 +141,7 @@ class PostingScheduler:
                 except Exception as e:
                     logger.error("Failed to upload via Fanvue API: {}", e)
             elif self.platform_name == Platform.META:
-                await self._upload_via_meta_api(
+                await self._upload_via_api(
                     publications,
                     cast(Type[MetaPublisher], self.publisher),
                     profile,
@@ -151,7 +149,7 @@ class PostingScheduler:
             else:
                 raise NotImplementedError(f"Unsupported platform: {self.platform_name}")
 
-    def _upload_via_api(
+    async def _upload_via_api(
         self,
         publications: list[Publication],
         client_class: Type[MetaPublisher],
