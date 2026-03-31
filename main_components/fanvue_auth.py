@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+import socket
 import subprocess
 import time
 import webbrowser
@@ -143,22 +144,30 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     return dict(result)  # Convert TypedDict to dict for type safety
 
 
-def start_fastapi_server() -> tuple[subprocess.Popen, int]:
-    """Start FastAPI server on dynamic port.
+def _is_port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def start_fastapi_server() -> tuple[subprocess.Popen | None, int]:
+    """Start FastAPI server if not already running.
 
     Returns:
-        Tuple of (process, port)
+        Tuple of (process, port). Process is None if server was already running.
     """
     port = 8000  # FIXME: Fanvue has a callback url in the fanvue_fastapi settings the port is fixed there
 
-    # Get project root
+    if _is_port_in_use(port):
+        logger.info(f"FastAPI server already running on port {port}, reusing it")
+        return None, port
+
     project_root = Path(__file__).parent.parent
     fastapi_dir = project_root / "fanvue-fastapi"
 
     process = subprocess.Popen(
         [
             "uvicorn",
-            "main:fanvue_fastapi",
+            "main:app",
             "--host",
             "127.0.0.1",
             "--port",

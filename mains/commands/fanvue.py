@@ -57,9 +57,10 @@ def auth(
     """Authenticate Fanvue profiles via OAuth (opens browser)."""
     profiles = resolve_profiles(profile_indexes, profile_names)
 
-    # 1. Start FastAPI server in background
+    # 1. Start FastAPI server in background (skipped if already running)
     server_process, port = start_fastapi_server()
-    time.sleep(3)  # Wait for server to be ready
+    if server_process is not None:
+        time.sleep(3)  # Wait for server to be ready
 
     try:
         # 2. Authenticate each profile sequentially
@@ -78,6 +79,7 @@ def auth(
         typer.echo(f"\n✓ Authenticated {len(profiles)} profile(s)")
 
     finally:
-        # 3. Stop FastAPI server
-        server_process.terminate()
-        server_process.wait(timeout=5)
+        # 3. Stop FastAPI server only if we started it
+        if server_process is not None:
+            server_process.terminate()
+            server_process.wait(timeout=5)
