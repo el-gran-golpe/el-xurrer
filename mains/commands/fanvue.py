@@ -1,3 +1,5 @@
+import asyncio
+
 import time
 import typer
 from typing import Optional
@@ -42,9 +44,9 @@ def schedule(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
 ):
-    """Upload & schedule FANVUE posts via the API publisher."""
+    """Upload & schedule FANVUE posts (OAuth API-based)."""
     profiles = resolve_profiles(profile_indexes, profile_names)
-    pipeline.schedule(Platform.FANVUE, profiles, FanvueAPIPublisher)
+    asyncio.run(pipeline.schedule(Platform.FANVUE, profiles, FanvueAPIPublisher))
 
 
 @app.command()
@@ -79,13 +81,3 @@ def auth(
         # 3. Stop FastAPI server
         server_process.terminate()
         server_process.wait(timeout=5)
-
-
-@app.command()
-def schedule_api(
-    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
-    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
-):
-    """Upload & schedule FANVUE posts (OAuth API-based)."""
-    profiles = resolve_profiles(profile_indexes, profile_names)
-    pipeline.schedule(Platform.FANVUE, profiles, FanvueAPIPublisher)

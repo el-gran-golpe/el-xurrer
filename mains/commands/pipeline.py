@@ -53,3 +53,7 @@ async def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
         platform_name=platform,
         publisher=publisher_cls,
     ).upload()
+    # FIXME: When called from "all" we're creating async tasks so all the schedule can run asynchronously
+    #  but when called from Schedule command we're passing a list of profiles so every profile is run sequentially.
+    #  We need to decide if we want to allow a list of profiles in the PostingScheduler or not.
+    #  Currently we're handling the list of profiles in different levels

@@ -56,6 +56,7 @@ async def _execute_all(
                 )
             else:
                 pipeline.plan(Platform.META, [p], use_initial_conditions)
+
             pipeline.generate(Platform.META, [p])
             tasks.append(
                 asyncio.create_task(
