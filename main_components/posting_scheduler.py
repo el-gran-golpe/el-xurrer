@@ -1,6 +1,6 @@
 import asyncio
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, List, Type, Union, cast
 
@@ -206,11 +206,9 @@ class PostingScheduler:
         # Create API client
         client = client_class(profile)
 
-        # Convert datetime to ISO 8601 string with 'Z' suffix (Fanvue requirement)
-        # Fanvue API requires format: YYYY-MM-DDTHH:MM:SSZ
-        from datetime import timezone
-
         for pub in publications:
+            # Convert datetime to ISO 8601 string with 'Z' suffix (Fanvue requirement)
+            # Fanvue API requires format: YYYY-MM-DDTHH:MM:SSZ
             utc_time = pub.upload_time.astimezone(timezone.utc)
             publish_at = utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 

@@ -43,7 +43,7 @@ async def _execute_all(
     tasks = []
     for p in profiles:
         try:
-            # Instagram Login posting
+            # INSTAGRAM
             logger.info(
                 "Instagram Login posting pipeline for {} (shared Facebook staging for media URLs)",
                 p.name,
