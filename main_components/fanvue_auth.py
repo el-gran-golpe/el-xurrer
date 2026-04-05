@@ -1,15 +1,14 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
-import webbrowser
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from loguru import logger
-
-from fanvue_fastapi.oauth import refresh_access_token as oauth_refresh
 
 
 class AuthError(Exception):
@@ -27,6 +26,38 @@ class FanvueTokenManager:
         self.token_path = (
             project_root / "resources" / profile_name / "fanvue" / "tokens.json"
         )
+
+    def authenticate_profile(self, port: int, timeout: int = 120) -> None:
+        """Open browser in an isolated temporary profile for OAuth."""
+        auth_url = (
+            f"http://localhost:{port}/api/oauth/login?profile={self.profile_name}"
+        )
+
+        # Snapshot mtime before browser opens
+        mtime_before = (
+            self.token_path.stat().st_mtime if self.token_path.exists() else None
+        )
+
+        logger.debug("Opening incognito browser for profile {}...", self.profile_name)
+        browser_proc, profile_dir = _open_incognito(auth_url)
+
+        try:
+            self._wait_for_file(mtime_before, timeout)
+        finally:
+            logger.debug(
+                "Cleaning up incognito browser/profile for profile {}...",
+                self.profile_name,
+            )
+            try:
+                browser_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Browser did not exit within 10s for profile {}", self.profile_name
+                )
+            finally:
+                shutil.rmtree(profile_dir, ignore_errors=True)
+
+        logger.success("Profile {} authenticated", self.profile_name)
 
     def save_tokens(self, token_response: dict[str, Any]) -> None:
         """Save OAuth tokens to profile directory.
@@ -116,6 +147,24 @@ class FanvueTokenManager:
                 f"Please re-authenticate: ./.venv/bin/python main.py fanvue auth --profile-names {self.profile_name}"
             )
 
+    def _wait_for_file(self, mtime_before: Optional[float], timeout: int = 120) -> None:
+        """Poll until tokens.json is created or rewritten by the OAuth callback."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.token_path.exists():
+                if mtime_before is None:
+                    return  # File didn't exist before → first auth done
+                if self.token_path.stat().st_mtime > mtime_before:
+                    # Copilot suggested me to do this mtime check to account for edge cases
+                    # like re-auth after revocation, and re-auth after scope changes
+                    return  # File rewritten → re-auth done
+            time.sleep(0.5)
+
+        raise TimeoutError(
+            f"OAuth timeout: {self.token_path} not created/updated within {timeout}s. "
+            f"Please complete the OAuth flow in your browser."
+        )
+
 
 # ── OAuth Helpers ─────────────────────────────────────────────────────────────
 
@@ -132,6 +181,8 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     Raises:
         Exception: If refresh fails
     """
+
+    from fanvue_fastapi.oauth import refresh_access_token as oauth_refresh
 
     # Add fanvue-fastapi to path
     fastapi_path = Path(__file__).parent.parent / "fanvue-fastapi"
@@ -179,32 +230,8 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
     return process, port
 
 
-def authenticate_profile(profile_name: str, port: int, timeout: int = 120) -> None:
-    """Open browser in incognito mode for OAuth and wait for token file.
-
-    Raises:
-        TimeoutError: If OAuth not completed within timeout
-    """
-    auth_url = f"http://localhost:{port}/api/oauth/login?profile={profile_name}"
-    logger.debug("Opening incognito browser for profile {}...", profile_name)
-    _open_incognito(auth_url)
-
-    # Wait for tokens.json to be created (polling)
-    project_root = Path(__file__).parent.parent
-    token_path = project_root / "resources" / profile_name / "fanvue" / "tokens.json"
-    _wait_for_file(token_path, timeout=timeout)
-
-    logger.success("Profile {} authenticated", profile_name)
-
-
-# ── Browser-based OAuth Flow ─────────────────────────────────────────────────
-# _open_incognito and _wait_for_file are internal helpers for authenticate_profile.
-
-
-def _open_incognito(url: str) -> None:
-    """Open URL in an incognito/private browser window."""
-    import shutil
-
+def _open_incognito(url: str) -> tuple[subprocess.Popen, Path]:
+    """Open URL in a fresh browser profile to isolate OAuth cookies."""
     # Try Chrome/Chromium first
     for name in (
         "google-chrome",
@@ -212,50 +239,54 @@ def _open_incognito(url: str) -> None:
         "chromium",
         "chromium-browser",
     ):
-        path = shutil.which(name)
-        if path:
-            subprocess.Popen(
-                [path, "--incognito", url],
+        if path := shutil.which(name):
+            profile_dir = Path(tempfile.mkdtemp(prefix="fanvue-chromium-"))
+            logger.debug(
+                "Launching {} with temporary profile {}",
+                name,
+                profile_dir,
+            )
+            process = subprocess.Popen(
+                [
+                    path,
+                    f"--user-data-dir={profile_dir}",
+                    "--new-window",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    url,
+                ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            return
+            return process, profile_dir
 
     # Try Firefox
     for name in ("firefox", "firefox-esr"):
-        path = shutil.which(name)
-        if path:
-            subprocess.Popen(
-                [path, "--private-window", url],
+        if path := shutil.which(name):
+            profile_dir = Path(tempfile.mkdtemp(prefix="fanvue-firefox-"))
+            logger.debug(
+                "Launching {} with temporary profile {}",
+                name,
+                profile_dir,
+            )
+            process = subprocess.Popen(
+                [
+                    path,
+                    "--no-remote",
+                    "--profile",
+                    str(profile_dir),
+                    "--new-window",
+                    url,
+                ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            return
+            return process, profile_dir
 
-    # Fallback: default browser (no incognito guarantee)
-    logger.warning(
-        "No supported browser found for incognito mode, using default browser"
-    )
-    webbrowser.open(url)
-
-
-def _wait_for_file(file_path: Path, timeout: int = 120) -> None:
-    """Poll for file existence with timeout.
-
-    Args:
-        file_path: Path to wait for
-        timeout: Max seconds to wait
-
-    Raises:
-        TimeoutError: If file not created within timeout
-    """
-    start = time.time()
-    while time.time() - start < timeout:
-        if file_path.exists():
-            return
-        time.sleep(0.5)
-
-    raise TimeoutError(
-        f"OAuth timeout: {file_path} not created within {timeout}s. "
-        f"Please complete the OAuth flow in your browser."
+    raise AuthError(
+        "No supported browser found for isolated Fanvue OAuth login. "
+        "Install one of: google-chrome, google-chrome-stable, chromium, "
+        "chromium-browser, firefox, firefox-esr. "
+        "Fallback to the default browser is disabled because it reuses cookies "
+        "across profiles."
     )
