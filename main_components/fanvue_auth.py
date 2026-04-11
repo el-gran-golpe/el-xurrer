@@ -6,7 +6,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable
+import atexit
 
 from loguru import logger
 
@@ -39,7 +40,7 @@ class FanvueTokenManager:
         )
 
         logger.debug("Opening incognito browser for profile {}...", self.profile_name)
-        browser_proc, profile_dir = _open_incognito(auth_url)
+        browser_proc, profile_dir, atexit_cleanup = _open_incognito(auth_url)
 
         try:
             self._wait_for_file(mtime_before, timeout)
@@ -48,14 +49,16 @@ class FanvueTokenManager:
                 "Cleaning up incognito browser/profile for profile {}...",
                 self.profile_name,
             )
-            try:
-                browser_proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                logger.warning(
-                    "Browser did not exit within 10s for profile {}", self.profile_name
-                )
-            finally:
-                shutil.rmtree(profile_dir, ignore_errors=True)
+            cleaned = _cleanup_browser_and_profile(browser_proc, profile_dir)
+            if cleaned:
+                try:
+                    atexit.unregister(atexit_cleanup)
+                except Exception as e:
+                    logger.debug(
+                        "Could not unregister atexit cleanup for {}: {}",
+                        profile_dir,
+                        e,
+                    )
 
         logger.success("Profile {} authenticated", self.profile_name)
 
@@ -226,11 +229,11 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
         stderr=subprocess.PIPE,
     )
 
-    logger.info(f"Started FastAPI server on port {port}")
+    logger.debug(f"Started FastAPI server on port {port}")
     return process, port
 
 
-def _open_incognito(url: str) -> tuple[subprocess.Popen, Path]:
+def _open_incognito(url: str) -> tuple[subprocess.Popen, Path, Callable[[], None]]:
     """Open URL in a fresh browser profile to isolate OAuth cookies."""
     # Try Chrome/Chromium first
     for name in (
@@ -241,6 +244,7 @@ def _open_incognito(url: str) -> tuple[subprocess.Popen, Path]:
     ):
         if path := shutil.which(name):
             profile_dir = Path(tempfile.mkdtemp(prefix="fanvue-chromium-"))
+            atexit_cleanup = _register_profile_cleanup(profile_dir)
             logger.debug(
                 "Launching {} with temporary profile {}",
                 name,
@@ -258,12 +262,13 @@ def _open_incognito(url: str) -> tuple[subprocess.Popen, Path]:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            return process, profile_dir
+            return process, profile_dir, atexit_cleanup
 
     # Try Firefox
     for name in ("firefox", "firefox-esr"):
         if path := shutil.which(name):
             profile_dir = Path(tempfile.mkdtemp(prefix="fanvue-firefox-"))
+            atexit_cleanup = _register_profile_cleanup(profile_dir)
             logger.debug(
                 "Launching {} with temporary profile {}",
                 name,
@@ -281,7 +286,7 @@ def _open_incognito(url: str) -> tuple[subprocess.Popen, Path]:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            return process, profile_dir
+            return process, profile_dir, atexit_cleanup
 
     raise AuthError(
         "No supported browser found for isolated Fanvue OAuth login. "
@@ -290,3 +295,99 @@ def _open_incognito(url: str) -> tuple[subprocess.Popen, Path]:
         "Fallback to the default browser is disabled because it reuses cookies "
         "across profiles."
     )
+
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+
+
+def _register_profile_cleanup(profile_dir: Path) -> Callable[[], None]:
+    """Register a fallback cleanup for the temporary browser profile."""
+
+    def _cleanup() -> None:
+        _cleanup_profile_dir(profile_dir, retries=3, initial_delay=0.5)
+
+    # This atexit.register(_cleanup) will execute when the python interpreter exits, ensuring we
+    # attempt to clean up the temp profile even if the user doesn't close the browser or if something
+    # goes wrong during cleanup_browser_and_profile.
+    atexit.register(_cleanup)
+    return _cleanup
+
+
+def _cleanup_profile_dir(
+    profile_dir: Path,
+    *,
+    retries: int = 5,
+    initial_delay: float = 0.5,
+) -> bool:
+    """Best-effort cleanup of a temporary browser profile directory."""
+    if not profile_dir.exists():
+        return True
+
+    for attempt in range(1, retries + 1):
+        try:
+            shutil.rmtree(profile_dir)
+            logger.debug("Removed temporary browser profile {}", profile_dir)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            if attempt == retries:
+                logger.warning(
+                    "Could not remove temporary browser profile {} after {} attempts: {}",
+                    profile_dir,
+                    retries,
+                    e,
+                )
+                return False
+
+            sleep_s = initial_delay * attempt
+            logger.debug(
+                "Profile dir {} still in use; retrying cleanup in {:.1f}s (attempt {}/{})",
+                profile_dir,
+                sleep_s,
+                attempt,
+                retries,
+            )
+            time.sleep(sleep_s)
+
+    return False
+
+
+def _cleanup_browser_process(process: subprocess.Popen) -> None:
+    """Best-effort shutdown of the launched browser process."""
+    try:
+        if process.poll() is not None:
+            return
+
+        logger.debug("Terminating browser process {}", process.pid)
+        process.terminate()
+
+        try:
+            process.wait(timeout=3)
+            return
+        except subprocess.TimeoutExpired:
+            logger.debug("Browser process {} did not terminate gracefully", process.pid)
+
+        if process.poll() is None:
+            logger.debug("Killing browser process {}", process.pid)
+            process.kill()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Browser process {} still did not exit after kill()",
+                    process.pid,
+                )
+    except ProcessLookupError:
+        pass
+    except Exception as e:
+        logger.debug("Ignoring browser cleanup error: {}", e)
+
+
+def _cleanup_browser_and_profile(
+    process: subprocess.Popen,
+    profile_dir: Path,
+) -> bool:
+    """Best-effort cleanup for both browser process and its temp profile."""
+    _cleanup_browser_process(process)
+    return _cleanup_profile_dir(profile_dir)
