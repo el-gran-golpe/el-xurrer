@@ -39,14 +39,14 @@ class FanvueTokenManager:
             self.token_path.stat().st_mtime if self.token_path.exists() else None
         )
 
-        logger.debug("Opening incognito browser for profile {}...", self.profile_name)
-        browser_proc, profile_dir, atexit_cleanup = _open_incognito(auth_url)
+        logger.debug("Opening isolated browser for profile {}...", self.profile_name)
+        browser_proc, profile_dir, atexit_cleanup = _open_isolated_browser(auth_url)
 
         try:
             self._wait_for_file(mtime_before, timeout)
         finally:
             logger.debug(
-                "Cleaning up incognito browser/profile for profile {}...",
+                "Cleaning up temporary browser/profile for profile {}...",
                 self.profile_name,
             )
             cleaned = _cleanup_browser_and_profile(browser_proc, profile_dir)
@@ -184,15 +184,13 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     Raises:
         Exception: If refresh fails
     """
-
-    from fanvue_fastapi.oauth import refresh_access_token as oauth_refresh
-
-    # Add fanvue-fastapi to path
     fastapi_path = Path(__file__).parent.parent / "fanvue-fastapi"
-    logger.debug(f"Fastapi PATH: {fastapi_path}")
+
     if str(fastapi_path) not in sys.path:
         logger.debug(f"Adding {fastapi_path} to sys.path")
         sys.path.insert(0, str(fastapi_path))
+
+    from fanvue_fastapi.oauth import refresh_access_token as oauth_refresh
 
     result = await oauth_refresh(refresh_token)
     return dict(result)  # Convert TypedDict to dict for type safety
@@ -233,8 +231,9 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
     return process, port
 
 
-def _open_incognito(url: str) -> tuple[subprocess.Popen, Path, Callable[[], None]]:
-    """Open URL in a fresh browser profile to isolate OAuth cookies."""
+def _open_isolated_browser(
+    url: str,
+) -> tuple[subprocess.Popen, Path, Callable[[], None]]:
     # Try Chrome/Chromium first
     for name in (
         "google-chrome",
