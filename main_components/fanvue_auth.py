@@ -1,11 +1,13 @@
 import json
 import os
-import secrets
+import shutil
 import subprocess
+import sys
+import tempfile
 import time
-import webbrowser
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Callable
+import atexit
 
 from loguru import logger
 
@@ -25,6 +27,40 @@ class FanvueTokenManager:
         self.token_path = (
             project_root / "resources" / profile_name / "fanvue" / "tokens.json"
         )
+
+    def authenticate_profile(self, port: int, timeout: int = 120) -> None:
+        """Open browser in an isolated temporary profile for OAuth."""
+        auth_url = (
+            f"http://localhost:{port}/api/oauth/login?profile={self.profile_name}"
+        )
+
+        # Snapshot mtime before browser opens
+        mtime_before = (
+            self.token_path.stat().st_mtime if self.token_path.exists() else None
+        )
+
+        logger.debug("Opening isolated browser for profile {}...", self.profile_name)
+        browser_proc, profile_dir, atexit_cleanup = _open_isolated_browser(auth_url)
+
+        try:
+            self._wait_for_file(mtime_before, timeout)
+        finally:
+            logger.debug(
+                "Cleaning up temporary browser/profile for profile {}...",
+                self.profile_name,
+            )
+            cleaned = _cleanup_browser_and_profile(browser_proc, profile_dir)
+            if cleaned:
+                try:
+                    atexit.unregister(atexit_cleanup)
+                except Exception as e:
+                    logger.debug(
+                        "Could not unregister atexit cleanup for {}: {}",
+                        profile_dir,
+                        e,
+                    )
+
+        logger.success("Profile {} authenticated", self.profile_name)
 
     def save_tokens(self, token_response: dict[str, Any]) -> None:
         """Save OAuth tokens to profile directory.
@@ -92,7 +128,8 @@ class FanvueTokenManager:
         if not tokens:
             raise AuthError(
                 f"Profile '{self.profile_name}' not authenticated.\n"
-                f"Run: python -m mains.main fanvue auth -p <profile_index>"
+                f"Expected token file: {self.token_path}\n"
+                f"Run: ./.venv/bin/python main.py fanvue auth --profile-names {self.profile_name}"
             )
 
         # Check if access token is expired (with 60s buffer)
@@ -109,11 +146,32 @@ class FanvueTokenManager:
         except Exception as e:
             raise AuthError(
                 f"Token refresh failed for profile '{self.profile_name}': {e}\n"
-                f"Please re-authenticate: python -m mains.main fanvue auth -p <profile_index>"
+                f"Expected token file: {self.token_path}\n"
+                f"Please re-authenticate: ./.venv/bin/python main.py fanvue auth --profile-names {self.profile_name}"
             )
 
+    def _wait_for_file(self, mtime_before: Optional[float], timeout: int = 120) -> None:
+        """Poll until tokens.json is created or rewritten by the OAuth callback."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.token_path.exists():
+                if mtime_before is None:
+                    return  # File didn't exist before → first auth done
+                if self.token_path.stat().st_mtime > mtime_before:
+                    # Copilot suggested me to do this mtime check to account for edge cases
+                    # like re-auth after revocation, and re-auth after scope changes
+                    return  # File rewritten → re-auth done
+            time.sleep(0.5)
 
-# Add this helper function at module level (outside class)
+        raise TimeoutError(
+            f"OAuth timeout: {self.token_path} not created/updated within {timeout}s. "
+            f"Please complete the OAuth flow in your browser."
+        )
+
+
+# ── OAuth Helpers ─────────────────────────────────────────────────────────────
+
+
 async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     """Refresh access token using OAuth refresh flow.
 
@@ -126,13 +184,8 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
     Raises:
         Exception: If refresh fails
     """
-    # Import here to avoid circular dependency
-    import sys
-    from pathlib import Path
-
-    # Add fanvue-fastapi to path
     fastapi_path = Path(__file__).parent.parent / "fanvue-fastapi"
-    logger.debug(f"Fastapi PATH: {fastapi_path}")
+
     if str(fastapi_path) not in sys.path:
         logger.debug(f"Adding {fastapi_path} to sys.path")
         sys.path.insert(0, str(fastapi_path))
@@ -141,6 +194,9 @@ async def refresh_access_token(refresh_token: str) -> dict[str, Any]:
 
     result = await oauth_refresh(refresh_token)
     return dict(result)  # Convert TypedDict to dict for type safety
+
+
+# ── Server & Browser ─────────────────────────────────────────────────────────
 
 
 def start_fastapi_server() -> tuple[subprocess.Popen, int]:
@@ -157,8 +213,10 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
 
     process = subprocess.Popen(
         [
+            sys.executable,
+            "-m",
             "uvicorn",
-            "main:fanvue_fastapi",
+            "main:app",
             "--host",
             "127.0.0.1",
             "--port",
@@ -169,56 +227,166 @@ def start_fastapi_server() -> tuple[subprocess.Popen, int]:
         stderr=subprocess.PIPE,
     )
 
-    logger.info(f"Started FastAPI server on port {port}")
+    logger.debug(f"Started FastAPI server on port {port}")
     return process, port
 
 
-def authenticate_profile(profile_name: str, port: int, timeout: int = 120) -> None:
-    """Open browser for OAuth and wait for token file.
+def _open_isolated_browser(
+    url: str,
+) -> tuple[subprocess.Popen, Path, Callable[[], None]]:
+    # Try Chrome/Chromium first
+    for name in (
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+    ):
+        if path := shutil.which(name):
+            profile_dir = Path(tempfile.mkdtemp(prefix="fanvue-chromium-"))
+            atexit_cleanup = _register_profile_cleanup(profile_dir)
+            logger.debug(
+                "Launching {} with temporary profile {}",
+                name,
+                profile_dir,
+            )
+            process = subprocess.Popen(
+                [
+                    path,
+                    f"--user-data-dir={profile_dir}",
+                    "--new-window",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    url,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return process, profile_dir, atexit_cleanup
 
-    Args:
-        profile_name: Name of profile to authenticate
-        port: Port where FastAPI server is running
-        timeout: Max seconds to wait for OAuth completion
+    # Try Firefox
+    for name in ("firefox", "firefox-esr"):
+        if path := shutil.which(name):
+            profile_dir = Path(tempfile.mkdtemp(prefix="fanvue-firefox-"))
+            atexit_cleanup = _register_profile_cleanup(profile_dir)
+            logger.debug(
+                "Launching {} with temporary profile {}",
+                name,
+                profile_dir,
+            )
+            process = subprocess.Popen(
+                [
+                    path,
+                    "--no-remote",
+                    "--profile",
+                    str(profile_dir),
+                    "--new-window",
+                    url,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return process, profile_dir, atexit_cleanup
 
-    Raises:
-        TimeoutError: If OAuth not completed within timeout
-    """
-    state = f"{profile_name}_{secrets.token_urlsafe(16)}"
-
-    # Open browser to FastAPI login endpoint
-    auth_url = (
-        f"http://localhost:{port}/api/oauth/login?profile={profile_name}&state={state}"
+    raise AuthError(
+        "No supported browser found for isolated Fanvue OAuth login. "
+        "Install one of: google-chrome, google-chrome-stable, chromium, "
+        "chromium-browser, firefox, firefox-esr. "
+        "Fallback to the default browser is disabled because it reuses cookies "
+        "across profiles."
     )
-    logger.info(f"Opening browser for profile '{profile_name}'...")
-    webbrowser.open(auth_url)
-
-    # Wait for tokens.json to be created (polling)
-    token_path = Path(f"resources/{profile_name}/fanvue/tokens.json")
-    wait_for_file(token_path, timeout=timeout)
-
-    logger.success(f"✓ Profile '{profile_name}' authenticated")
 
 
-def wait_for_file(file_path: Path, timeout: int = 120) -> None:
-    """Poll for file existence with timeout.
+# ── Utilities ────────────────────────────────────────────────────────────────
 
-    Args:
-        file_path: Path to wait for
-        timeout: Max seconds to wait
 
-    Raises:
-        TimeoutError: If file not created within timeout
-    """
-    import time
+def _register_profile_cleanup(profile_dir: Path) -> Callable[[], None]:
+    """Register a fallback cleanup for the temporary browser profile."""
 
-    start = time.time()
-    while time.time() - start < timeout:
-        if file_path.exists():
+    def _cleanup() -> None:
+        _cleanup_profile_dir(profile_dir, retries=3, initial_delay=0.5)
+
+    # This atexit.register(_cleanup) will execute when the python interpreter exits, ensuring we
+    # attempt to clean up the temp profile even if the user doesn't close the browser or if something
+    # goes wrong during cleanup_browser_and_profile.
+    atexit.register(_cleanup)
+    return _cleanup
+
+
+def _cleanup_profile_dir(
+    profile_dir: Path,
+    *,
+    retries: int = 5,
+    initial_delay: float = 0.5,
+) -> bool:
+    """Best-effort cleanup of a temporary browser profile directory."""
+    if not profile_dir.exists():
+        return True
+
+    for attempt in range(1, retries + 1):
+        try:
+            shutil.rmtree(profile_dir)
+            logger.debug("Removed temporary browser profile {}", profile_dir)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            if attempt == retries:
+                logger.warning(
+                    "Could not remove temporary browser profile {} after {} attempts: {}",
+                    profile_dir,
+                    retries,
+                    e,
+                )
+                return False
+
+            sleep_s = initial_delay * attempt
+            logger.debug(
+                "Profile dir {} still in use; retrying cleanup in {:.1f}s (attempt {}/{})",
+                profile_dir,
+                sleep_s,
+                attempt,
+                retries,
+            )
+            time.sleep(sleep_s)
+
+    return False
+
+
+def _cleanup_browser_process(process: subprocess.Popen) -> None:
+    """Best-effort shutdown of the launched browser process."""
+    try:
+        if process.poll() is not None:
             return
-        time.sleep(0.5)
 
-    raise TimeoutError(
-        f"OAuth timeout: {file_path} not created within {timeout}s. "
-        f"Please complete the OAuth flow in your browser."
-    )
+        logger.debug("Terminating browser process {}", process.pid)
+        process.terminate()
+
+        try:
+            process.wait(timeout=3)
+            return
+        except subprocess.TimeoutExpired:
+            logger.debug("Browser process {} did not terminate gracefully", process.pid)
+
+        if process.poll() is None:
+            logger.debug("Killing browser process {}", process.pid)
+            process.kill()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Browser process {} still did not exit after kill()",
+                    process.pid,
+                )
+    except ProcessLookupError:
+        pass
+    except Exception as e:
+        logger.debug("Ignoring browser cleanup error: {}", e)
+
+
+def _cleanup_browser_and_profile(
+    process: subprocess.Popen,
+    profile_dir: Path,
+) -> bool:
+    """Best-effort cleanup for both browser process and its temp profile."""
+    _cleanup_browser_process(process)
+    return _cleanup_profile_dir(profile_dir)

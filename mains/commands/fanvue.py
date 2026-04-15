@@ -9,8 +9,8 @@ import mains.commands.pipeline as pipeline
 from main_components.common.types import Platform
 from automation.fanvue_client.fanvue_api_publisher import FanvueAPIPublisher
 from main_components.fanvue_auth import (
+    FanvueTokenManager,
     start_fastapi_server,
-    authenticate_profile,
 )
 
 app = typer.Typer(help="FANVUE‑only pipeline commands")
@@ -65,7 +65,7 @@ def auth(
         # 2. Authenticate each profile sequentially
         for profile in profiles:
             try:
-                authenticate_profile(profile.name, port)
+                FanvueTokenManager(profile.name).authenticate_profile(port)
             except TimeoutError as e:
                 typer.echo(f"❌ {e}", err=True)
                 continue
