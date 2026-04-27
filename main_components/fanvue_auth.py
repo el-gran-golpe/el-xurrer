@@ -159,8 +159,6 @@ class FanvueTokenManager:
                 if mtime_before is None:
                     return  # File didn't exist before → first auth done
                 if self.token_path.stat().st_mtime > mtime_before:
-                    # Copilot suggested me to do this mtime check to account for edge cases
-                    # like re-auth after revocation, and re-auth after scope changes
                     return  # File rewritten → re-auth done
             time.sleep(0.5)
 
@@ -240,6 +238,11 @@ def start_fastapi_server() -> tuple[subprocess.Popen | None, int]:
 def _open_isolated_browser(
     url: str,
 ) -> tuple[subprocess.Popen, Path, Callable[[], None]]:
+    """Launch a browser with a fresh temporary profile to avoid cookie cross-contamination.
+
+    Tries Chrome/Chromium first, then Firefox. Raises AuthError if none are found.
+    Returns (process, temp_profile_dir, atexit_cleanup_fn).
+    """
     # Try Chrome/Chromium first
     for name in (
         "google-chrome",
