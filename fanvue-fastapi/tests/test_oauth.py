@@ -47,8 +47,6 @@ def test_generate_pkce_verifier_is_unique():
 
 def test_get_authorize_url_contains_required_params(monkeypatch):
     """Authorization URL should contain all required OAuth params."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -64,7 +62,13 @@ def test_get_authorize_url_contains_required_params(monkeypatch):
 
     from fanvue_fastapi.oauth import get_authorize_url
 
-    url = get_authorize_url(state="test_state", code_challenge="test_challenge")
+    url = get_authorize_url(
+        state="test_state",
+        code_challenge="test_challenge",
+        client_id="test_client",
+        redirect_uri="http://localhost:8000/api/oauth/callback",
+        issuer_base_url="https://auth.fanvue.com",
+    )
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
 
@@ -83,8 +87,6 @@ def test_get_authorize_url_contains_required_params(monkeypatch):
 @pytest.mark.asyncio
 async def test_exchange_code_for_token_success(monkeypatch):
     """Token exchange should return tokens on success."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -116,6 +118,10 @@ async def test_exchange_code_for_token_success(monkeypatch):
         result = await exchange_code_for_token(
             code="test_code",
             code_verifier="test_verifier",
+            client_id="test_client",
+            client_secret="test_secret",
+            redirect_uri="http://localhost:8000/api/oauth/callback",
+            issuer_base_url="https://auth.fanvue.com",
         )
 
     assert result["access_token"] == "test_access_token"
@@ -126,8 +132,6 @@ async def test_exchange_code_for_token_success(monkeypatch):
 @pytest.mark.asyncio
 async def test_exchange_code_for_token_failure_raises(monkeypatch):
     """Token exchange should raise on HTTP error."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -155,14 +159,16 @@ async def test_exchange_code_for_token_failure_raises(monkeypatch):
             await exchange_code_for_token(
                 code="invalid_code",
                 code_verifier="test_verifier",
+                client_id="test_client",
+                client_secret="test_secret",
+                redirect_uri="http://localhost:8000/api/oauth/callback",
+                issuer_base_url="https://auth.fanvue.com",
             )
 
 
 @pytest.mark.asyncio
 async def test_refresh_access_token_success(monkeypatch):
     """Token refresh should return new tokens."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -191,6 +197,11 @@ async def test_refresh_access_token_success(monkeypatch):
 
         from fanvue_fastapi.oauth import refresh_access_token
 
-        result = await refresh_access_token("old_refresh_token")
+        result = await refresh_access_token(
+            refresh_token="rt",
+            client_id="test_client",
+            client_secret="test_secret",
+            issuer_base_url="https://auth.fanvue.com",
+        )
 
     assert result["access_token"] == "new_access_token"
