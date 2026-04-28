@@ -94,3 +94,32 @@ def test_verify_session_token_returns_none_for_invalid(monkeypatch):
     result = verify_session_token("invalid.jwt.token")
 
     assert result is None
+
+
+def test_session_payload_round_trip_preserves_profile(monkeypatch):
+    monkeypatch.setenv("FANVUE_WEBAPP_SESSION_SECRET", "x" * 32)
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/cb")
+    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
+    monkeypatch.setenv("FANVUE_WEBAPP_API_BASE_URL", "https://api.fanvue.com")
+    monkeypatch.setenv("FANVUE_WEBAPP_BASE_URL", "http://localhost:8000")
+
+    from fanvue_fastapi.config import get_settings
+    from fanvue_fastapi.session import (
+        SessionPayload,
+        create_session_token,
+        verify_session_token,
+    )
+
+    get_settings.cache_clear()
+
+    payload = SessionPayload(
+        access_token="at",
+        refresh_token="rt",
+        expires_at=1_000_000,
+        profile="laura_vigne",
+    )
+    token = create_session_token(payload)
+    decoded = verify_session_token(token)
+
+    assert decoded is not None
+    assert decoded.profile == "laura_vigne"

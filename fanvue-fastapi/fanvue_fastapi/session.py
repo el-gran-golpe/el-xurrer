@@ -16,6 +16,7 @@ class SessionPayload(BaseModel):
     token_type: Optional[str] = None
     scope: Optional[str] = None
     id_token: Optional[str] = None
+    profile: Optional[str] = None
 
 
 SESSION_EXPIRY_DAYS = 30
