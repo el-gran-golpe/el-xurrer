@@ -6,8 +6,6 @@ from unittest.mock import patch
 @pytest.fixture
 def client(monkeypatch):
     """Create test client with mocked settings."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )

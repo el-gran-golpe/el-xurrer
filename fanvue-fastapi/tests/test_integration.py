@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client(monkeypatch):
     """Create test client with mocked settings."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
+    monkeypatch.setenv("FANVUE_WEBAPP_TESTPROFILE_OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("FANVUE_WEBAPP_TESTPROFILE_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/api/oauth/callback"
     )
@@ -33,7 +33,9 @@ def test_home_shows_login_link(client):
 
 def test_login_redirects_to_fanvue(client):
     """Login endpoint should redirect to Fanvue auth."""
-    response = client.get("/api/oauth/login", follow_redirects=False)
+    response = client.get(
+        "/api/oauth/login?profile=testprofile", follow_redirects=False
+    )
 
     assert response.status_code == 302
     assert "auth.fanvue.com" in response.headers["location"]

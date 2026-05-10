@@ -14,33 +14,49 @@ TOKEN_REFRESH_BUFFER_MS = 30_000
 async def ensure_valid_token(
     session: SessionPayload,
 ) -> Tuple[str, Optional[SessionPayload]]:
-    """Ensure access token is valid, refreshing if needed.
+    """Ensure access token is valid, refreshing if needed."""
+    from fanvue_fastapi.config import (
+        ProfileNotConfiguredError,
+        get_profile_oauth_settings,
+    )
 
-    Args:
-        session: Current session with tokens
-
-    Returns:
-        Tuple of (access_token, updated_session).
-        updated_session is None if no refresh was needed.
-    """
     updated_session: Optional[SessionPayload] = None
     access_token = session.access_token
 
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    if now_ms >= session.expires_at - TOKEN_REFRESH_BUFFER_MS and session.refresh_token:
-        try:
-            refreshed = await refresh_access_token(session.refresh_token)
-            access_token = refreshed.get("access_token", session.access_token)
-            updated_session = SessionPayload(
-                access_token=access_token,
-                refresh_token=refreshed.get("refresh_token", session.refresh_token),
-                token_type=refreshed.get("token_type", session.token_type),
-                scope=refreshed.get("scope", session.scope),
-                id_token=refreshed.get("id_token", session.id_token),
-                expires_at=now_ms + refreshed.get("expires_in", 0) * 1000,
-            )
-        except OAuthError:
-            pass
+    needs_refresh = (
+        now_ms >= session.expires_at - TOKEN_REFRESH_BUFFER_MS
+        and session.refresh_token is not None
+    )
+    if not needs_refresh:
+        return access_token, None
+
+    if not session.profile:
+        return access_token, None
+
+    try:
+        profile_oauth = get_profile_oauth_settings(session.profile)
+    except ProfileNotConfiguredError:
+        return access_token, None
+
+    try:
+        refreshed = await refresh_access_token(
+            session.refresh_token,  # type: ignore[arg-type]
+            client_id=profile_oauth.client_id,
+            client_secret=profile_oauth.client_secret,
+        )
+        access_token = refreshed.get("access_token", session.access_token)
+        updated_session = SessionPayload(
+            access_token=access_token,
+            refresh_token=refreshed.get("refresh_token", session.refresh_token),
+            token_type=refreshed.get("token_type", session.token_type),
+            scope=refreshed.get("scope", session.scope),
+            id_token=refreshed.get("id_token", session.id_token),
+            expires_at=now_ms + refreshed.get("expires_in", 0) * 1000,
+            profile=session.profile,
+        )
+    except OAuthError:
+        pass
 
     return access_token, updated_session
 

@@ -6,8 +6,6 @@ from datetime import datetime, timedelta, timezone
 @pytest.mark.asyncio
 async def test_get_current_user_returns_user_data(monkeypatch):
     """get_current_user should return user data from Fanvue API."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -53,8 +51,6 @@ async def test_get_current_user_returns_user_data(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_current_user_refreshes_expired_token(monkeypatch):
     """get_current_user should refresh token if expired."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -62,6 +58,8 @@ async def test_get_current_user_refreshes_expired_token(monkeypatch):
     monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
     monkeypatch.setenv("FANVUE_WEBAPP_API_BASE_URL", "https://api.fanvue.com")
     monkeypatch.setenv("FANVUE_WEBAPP_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("FANVUE_WEBAPP_TESTPROFILE_OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("FANVUE_WEBAPP_TESTPROFILE_OAUTH_CLIENT_SECRET", "test_secret")
 
     from fanvue_fastapi.config import get_settings
 
@@ -77,6 +75,7 @@ async def test_get_current_user_refreshes_expired_token(monkeypatch):
             (datetime.now(timezone.utc) - timedelta(hours=1)).timestamp() * 1000
         ),
         token_type="Bearer",
+        profile="testprofile",
     )
 
     mock_user_response = MagicMock()
@@ -114,8 +113,6 @@ async def test_get_current_user_refreshes_expired_token(monkeypatch):
 @pytest.mark.asyncio
 async def test_ensure_valid_token_returns_original_when_not_expired(monkeypatch):
     """ensure_valid_token should return original token when not expired."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -150,8 +147,6 @@ async def test_ensure_valid_token_returns_original_when_not_expired(monkeypatch)
 @pytest.mark.asyncio
 async def test_ensure_valid_token_refreshes_when_expired(monkeypatch):
     """ensure_valid_token should refresh token when expired."""
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_ID", "test_client")
-    monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_CLIENT_SECRET", "test_secret")
     monkeypatch.setenv(
         "FANVUE_WEBAPP_OAUTH_REDIRECT_URI", "http://localhost:8000/callback"
     )
@@ -159,6 +154,8 @@ async def test_ensure_valid_token_refreshes_when_expired(monkeypatch):
     monkeypatch.setenv("FANVUE_WEBAPP_OAUTH_ISSUER_BASE_URL", "https://auth.fanvue.com")
     monkeypatch.setenv("FANVUE_WEBAPP_API_BASE_URL", "https://api.fanvue.com")
     monkeypatch.setenv("FANVUE_WEBAPP_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("FANVUE_WEBAPP_TESTPROFILE_OAUTH_CLIENT_ID", "test_client")
+    monkeypatch.setenv("FANVUE_WEBAPP_TESTPROFILE_OAUTH_CLIENT_SECRET", "test_secret")
 
     from fanvue_fastapi.config import get_settings
 
@@ -173,6 +170,7 @@ async def test_ensure_valid_token_refreshes_when_expired(monkeypatch):
             (datetime.now(timezone.utc) - timedelta(hours=1)).timestamp() * 1000
         ),
         token_type="Bearer",
+        profile="testprofile",
     )
 
     with patch("fanvue_fastapi.fanvue.refresh_access_token") as mock_refresh:
