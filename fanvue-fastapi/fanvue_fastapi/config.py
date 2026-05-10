@@ -1,7 +1,4 @@
-import os
-from functools import lru_cache
-
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,34 +39,34 @@ class Settings(BaseSettings):
         return v
 
 
-class ProfileOAuthSettings(BaseModel):
-    """Per-profile OAuth credentials."""
+class ProfileOAuthSettings(BaseSettings):
+    """Per-profile OAuth credentials, loaded via a dynamic env prefix."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     client_id: str
     client_secret: str
 
 
-@lru_cache
 def get_settings() -> Settings:
-    """Get cached shared settings instance."""
     return Settings()
 
 
 def get_profile_oauth_settings(profile_name: str) -> ProfileOAuthSettings:
-    """Resolve OAuth credentials for a given profile from environment variables.
+    """Resolve OAuth credentials for a given profile.
 
-    Reads ``FANVUE_WEBAPP_{PROFILE_UPPER}_OAUTH_CLIENT_ID`` and
-    ``FANVUE_WEBAPP_{PROFILE_UPPER}_OAUTH_CLIENT_SECRET`` (case-insensitive on the
-    profile name).
+    Reads ``FANVUE_WEBAPP_{PROFILE}_OAUTH_CLIENT_ID`` and
+    ``FANVUE_WEBAPP_{PROFILE}_OAUTH_CLIENT_SECRET`` from the environment or .env file.
     """
-    prefix = f"FANVUE_WEBAPP_{profile_name.upper()}_OAUTH"
-    client_id = os.environ.get(f"{prefix}_CLIENT_ID")
-    client_secret = os.environ.get(f"{prefix}_CLIENT_SECRET")
-
-    if not client_id or not client_secret:
+    prefix = f"FANVUE_WEBAPP_{profile_name.upper()}_OAUTH_"
+    try:
+        return ProfileOAuthSettings(_env_prefix=prefix)
+    except Exception:
         raise ProfileNotConfiguredError(
             f"OAuth credentials for profile '{profile_name}' not configured. "
-            f"Set {prefix}_CLIENT_ID and {prefix}_CLIENT_SECRET in the environment."
+            f"Set {prefix}CLIENT_ID and {prefix}CLIENT_SECRET in the environment."
         )
-
-    return ProfileOAuthSettings(client_id=client_id, client_secret=client_secret)
