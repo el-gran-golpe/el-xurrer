@@ -25,19 +25,7 @@ if __name__ == "__main__":
     print(f"Starting Fanvue OAuth App on {host}:{port} (Reload: {reload})")
 
     # Run the server
-    uvicorn.run("main:fanvue_fastapi", host=host, port=port, reload=reload)
-
-if __name__ == "__main__":
-    # Default configuration with environment variable overrides
-    host = os.getenv("SERVER_HOST", "127.0.0.1")
-    port = int(os.getenv("SERVER_PORT", "8000"))
-    reload = os.getenv("RELOAD", "true").lower() in ("true", "1", "yes")
-
-    # Startup message
-    print(f"Starting Fanvue OAuth App on {host}:{port} (Reload: {reload})")
-
-    # Run the server
-    uvicorn.run("main:fanvue_fastapi", host=host, port=port, reload=reload)
+    uvicorn.run("main:app", host=host, port=port, reload=reload)
 
 
 @app.get("/", response_class=HTMLResponse)
