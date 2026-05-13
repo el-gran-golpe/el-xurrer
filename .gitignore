@@ -12,9 +12,8 @@ venv
 # === IDEs / Editors ===
 .idea
 .vs/
+.vscode
 *.code-workspace
-.vscode/extensions.json
-.vscode/settings.json
 
 # === Media ===
 *.jpg
