@@ -20,10 +20,18 @@ def plan(
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
+    refresh_model_cache: bool = typer.Option(
+        False, "--refresh-model-cache", help="Refresh the cached GitHub Models catalog."
+    ),
 ):
     """Create Instagram planning JSON for the Instagram Login publishing flow."""
     profiles = resolve_profiles(profile_indexes, profile_names)
-    pipeline.plan(Platform.META, profiles, use_initial_conditions)
+    pipeline.plan(
+        Platform.META,
+        profiles,
+        use_initial_conditions,
+        refresh_model_cache=refresh_model_cache,
+    )
 
 
 @app.command()

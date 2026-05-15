@@ -2,10 +2,9 @@ import json
 import re
 from time import sleep
 from typing import Optional, Match, cast
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import requests
-from requests import HTTPError
 from loguru import logger
 
 from llm.error_handlers.api_error_handler import ApiErrorHandler
@@ -16,6 +15,7 @@ from llm.routing.classification.constants import (
     CHAT_COMPLETIONS_URL,
 )
 from llm.routing.classification.llm_model import LLMModel
+from llm.routing.classification.model_cache import GitHubModelsCache
 from main_components.common.types import PromptItem
 from llm.error_handlers.exceptions import RateLimitError
 
@@ -34,11 +34,13 @@ class ModelClassifier:
     def __init__(
         self,
         github_api_key: str,
+        model_cache: GitHubModelsCache | None = None,
     ):
         self.github_api_key: str = github_api_key
-        self.github_free_catalog: list[dict] = self._fetch_github_models_catalog()
+        self.github_free_catalog: list[dict] = []
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[str, LLMModel] = {}
+        self.model_cache = model_cache or GitHubModelsCache()
         self.api_error_handler = ApiErrorHandler()
 
     # NEW: give the router a *list* of candidates, not just one.
@@ -65,9 +67,20 @@ class ModelClassifier:
             raise RuntimeError("No suitable model found for the given prompt item.")
         return candidates[0]
 
-    def populate_models_catalog(self, models_to_scan: Optional[int]):
-        models = self.github_free_catalog
+    def populate_models_catalog(
+        self,
+        models_to_scan: Optional[int],
+        github_free_catalog: list[dict] | None = None,
+    ):
+        if github_free_catalog is None:
+            self.github_free_catalog = self.model_cache.get_catalog(
+                self._fetch_github_models_catalog
+            )
+        else:
+            self.github_free_catalog = github_free_catalog
 
+        self.models_catalog = {}
+        models = self.github_free_catalog
         for model in models[0:models_to_scan]:
             model_id = model.get("id")
 
@@ -89,57 +102,20 @@ class ModelClassifier:
                 "max_output_tokens": max_output_tokens,
             }
 
-            try:
-                # Check quota FIRST before any probing
-                self._check_model_quota(model_id)
-            except RateLimitError as e:
-                logger.warning(
-                    "Model {} quota exhausted during initial check. Cooldown seconds: {}",
-                    model_id,
-                    e.cooldown_seconds,
-                )
-                # Mark as exhausted but add to catalog
-                llm_model_params["is_quota_exhausted"] = True
-                llm_model_params["exhausted_until_datetime"] = (
-                    datetime.now() + timedelta(seconds=e.cooldown_seconds)
-                )
-                self.models_catalog[model_id] = LLMModel(
-                    identifier=model_id,
-                    **llm_model_params,
-                )
-                continue
-            except Exception as e:
-                logger.error("Error while checking quota for model {}: {}", model_id, e)
-                continue
-
-            # If quota check passed, NOW probe JSON support
-            try:
+            cached_state = self.model_cache.get_model_state(
+                self.github_api_key, model_id
+            )
+            if cached_state is not None:
                 llm_model_params["supports_json_format"] = (
-                    self._supports_json_response_format(model_id)
+                    cached_state.supports_json_format
                 )
-            # INFO: I want to encapsulate the exceptions on its own class handler, but I think is going to
-            # be harder, so I will leave it like this for now.
-            except RateLimitError as e:
-                logger.warning(
-                    "Model {} quota exhausted while probing JSON support. Cooldown seconds: {}",
-                    model_id,
-                    e.cooldown_seconds,
-                )
-                continue
-            # TODO: If it's a 400 try to merge system prompt and prompt together
-            except HTTPError as e:
-                logger.error(
-                    "HTTP error while probing JSON support for model {}: {}",
-                    model_id,
-                    e,
-                )
-                continue
-            # TODO: Study those errors
-            except Exception as e:
-                logger.error(
-                    "Error while probing JSON support for model {}: {}", model_id, e
-                )
-                continue
+                exhausted_until = cached_state.exhausted_until_datetime
+                if (
+                    exhausted_until is not None
+                    and self.model_cache.now() < exhausted_until
+                ):
+                    llm_model_params["is_quota_exhausted"] = True
+                    llm_model_params["exhausted_until_datetime"] = exhausted_until
 
             self.models_catalog[model_id] = LLMModel(
                 identifier=model_id,
@@ -152,13 +128,28 @@ class ModelClassifier:
         self, model: LLMModel, cooldown_seconds: int
     ) -> None:
         model.is_quota_exhausted = True
-        model.exhausted_until_datetime = datetime.now() + timedelta(
+        model.exhausted_until_datetime = self.model_cache.now() + timedelta(
             seconds=cooldown_seconds
+        )
+        self.model_cache.set_model_exhausted_until(
+            self.github_api_key,
+            model.identifier,
+            model.exhausted_until_datetime,
         )
         logger.info(
             "Marked {} as exhausted until {}",
             model.identifier,
             model.exhausted_until_datetime,
+        )
+
+    def mark_model_json_support(
+        self, model: LLMModel, supports_json_format: bool
+    ) -> None:
+        model.supports_json_format = supports_json_format
+        self.model_cache.set_model_json_support(
+            self.github_api_key,
+            model.identifier,
+            supports_json_format,
         )
 
     def _fetch_github_models_catalog(self) -> list[dict]:
@@ -259,9 +250,14 @@ class ModelClassifier:
             return True
         if model.exhausted_until_datetime is None:
             return True
-        if datetime.now() >= model.exhausted_until_datetime:
+        if self.model_cache.now() >= model.exhausted_until_datetime:
             model.is_quota_exhausted = False
             model.exhausted_until_datetime = None
+            self.model_cache.set_model_exhausted_until(
+                self.github_api_key,
+                model.identifier,
+                None,
+            )
             logger.info("Model {} quota has recovered", model.identifier)
             return True
         logger.debug(

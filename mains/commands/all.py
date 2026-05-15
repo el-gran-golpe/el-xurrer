@@ -39,6 +39,7 @@ async def _execute_all(
     profiles: list[Profile],
     overwrite: bool,
     use_initial_conditions: bool,
+    refresh_model_cache: bool,
 ):
     tasks = []
     for p in profiles:
@@ -55,7 +56,12 @@ async def _execute_all(
                     p.name,
                 )
             else:
-                pipeline.plan(Platform.META, [p], use_initial_conditions)
+                pipeline.plan(
+                    Platform.META,
+                    [p],
+                    use_initial_conditions,
+                    refresh_model_cache=refresh_model_cache,
+                )
 
             pipeline.generate(Platform.META, [p])
             tasks.append(
@@ -70,7 +76,12 @@ async def _execute_all(
             if not overwrite and any(out_fan.iterdir()):
                 logger.warning("Skipping FANVUE plan for {} (outputs exists)", p.name)
             else:
-                pipeline.plan(Platform.FANVUE, [p], use_initial_conditions)
+                pipeline.plan(
+                    Platform.FANVUE,
+                    [p],
+                    use_initial_conditions,
+                    refresh_model_cache=refresh_model_cache,
+                )
             pipeline.generate(Platform.FANVUE, [p])
             tasks.append(
                 asyncio.create_task(
@@ -98,6 +109,9 @@ def run_all(
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
+    refresh_model_cache: bool = typer.Option(
+        False, "--refresh-model-cache", help="Refresh the cached GitHub Models catalog."
+    ),
     cleanup_local_outputs: bool = typer.Option(
         False, "--cleanup-local-outputs/--keep-local-outputs"
     ),
@@ -110,7 +124,9 @@ def run_all(
         logger.warning("No profiles to process")
         return
 
-    asyncio.run(_execute_all(profiles, overwrite, use_initial_conditions))
+    asyncio.run(
+        _execute_all(profiles, overwrite, use_initial_conditions, refresh_model_cache)
+    )
     get_gdrive_sync().push(RESOURCES_DIR)
     if cleanup_local_outputs:
         _cleanup_local_outputs(profiles)
@@ -126,6 +142,9 @@ def debug(
     use_initial_conditions: bool = typer.Option(
         True, "--use-initial-conditions/--no-initial-conditions"
     ),
+    refresh_model_cache: bool = typer.Option(
+        False, "--refresh-model-cache", help="Refresh the cached GitHub Models catalog."
+    ),
     cleanup_local_outputs: bool = typer.Option(
         False, "--cleanup-local-outputs/--keep-local-outputs"
     ),
@@ -138,7 +157,9 @@ def debug(
         logger.warning("No profiles to process")
         return
 
-    asyncio.run(_execute_all(profiles, overwrite, use_initial_conditions))
+    asyncio.run(
+        _execute_all(profiles, overwrite, use_initial_conditions, refresh_model_cache)
+    )
     get_gdrive_sync().push(RESOURCES_DIR)
     if cleanup_local_outputs:
         _cleanup_local_outputs(profiles)

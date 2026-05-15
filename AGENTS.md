@@ -15,6 +15,17 @@
 - `fanvue-fastapi/` is a nested FastAPI app with its own dependencies, tests, and agent instructions.
 - Runtime profile resources live under `resources/`, which is gitignored. Profile details are organized there by profile and platform, with `inputs/` for source prompt data and `outputs/` for local generated planning/publication artifacts.
 
+## Model Router Behavior
+- `ModelRouter` uses GitHub Models first, then falls back to DeepSeek if GitHub candidates fail.
+- GitHub model discovery is cache-backed. On the first run without cache, the router fetches the GitHub Models catalog once and stores it under `.cache/model_router/github_models_catalog.json`.
+- The catalog fetch is metadata only: model IDs, token limits, and similar fields. Do not reintroduce startup probes that send test prompts to every model, because that is slow and consumes quota.
+- During generation, the router tries candidate models lazily. It stops as soon as one model returns a usable response.
+- Runtime failures are learned and cached:
+  - Rate limits are stored per GitHub API key fingerprint and skipped until cooldown recovery.
+  - JSON-mode bad requests mark that model as not supporting JSON, so future JSON prompts skip it.
+- The cache refreshes automatically after 24 hours. Planning commands can force refresh with `--refresh-model-cache`.
+- Prompt files are processed as sequential prompt items, not one persistent API conversation. Continuity comes from local `cache_key` placeholder substitution between prompts.
+
 ## Resources And Sync
 - Google Drive is used as a simple sync source of truth for managed profile inputs.
 - The Drive sync contract covers only each profile workflow JSON plus each platform's flat `inputs/initial_conditions.md` and `inputs/{profile}.json`.
