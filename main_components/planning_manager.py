@@ -29,10 +29,12 @@ class PlanningManager:
         template_profiles: list[Profile],
         platform_name: Platform,
         use_initial_conditions: bool,
+        refresh_model_cache: bool = False,
     ):
         self.template_profiles = template_profiles
         self.platform_name = platform_name
         self.use_initial_conditions = use_initial_conditions
+        self.refresh_model_cache = refresh_model_cache
 
     def plan(self) -> None:
         github_api_keys: list[str] = api_keys.extract_github_keys()
@@ -44,7 +46,8 @@ class PlanningManager:
         )
         # None means scan all available models
         model_router.initialize_model_classifiers(
-            models_to_scan=0
+            models_to_scan=None,
+            force_refresh=self.refresh_model_cache,
         )  # TODO: put this into the env or settings
 
         for profile in self.template_profiles:

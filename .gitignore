@@ -24,6 +24,7 @@ venv
 /resources
 
 # === Misc / tooling ===
+.cache/
 .qodo
 .vscode/launch.json
 .worktrees

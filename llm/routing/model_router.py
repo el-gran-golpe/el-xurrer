@@ -6,9 +6,11 @@ from loguru import logger
 from llm.error_handlers.exceptions import RateLimitError
 from llm.routing.classification.llm_model import LLMModel
 from llm.routing.classification.model_classifier import ModelClassifier
+from llm.routing.classification.model_cache import GitHubModelsCache
 from main_components.common.types import PromptItem
 
 from openai import OpenAI
+from requests import HTTPError
 
 INLINE_WAIT_THRESHOLD_SECONDS = 60
 MAX_INLINE_WAIT_RETRIES = (
@@ -17,12 +19,19 @@ MAX_INLINE_WAIT_RETRIES = (
 
 
 class ModelRouter:
-    def __init__(self, github_api_keys: list[str], deepseek_api_key: str):
+    def __init__(
+        self,
+        github_api_keys: list[str],
+        deepseek_api_key: str,
+        model_cache: GitHubModelsCache | None = None,
+    ):
         self.github_api_keys = github_api_keys
         self.deepseek_api_key = deepseek_api_key
+        self.model_cache = model_cache or GitHubModelsCache()
         # One classifier per GitHub API key
         self.github_classifiers: list[ModelClassifier] = [
-            ModelClassifier(k) for k in self.github_api_keys
+            ModelClassifier(k, model_cache=self.model_cache)
+            for k in self.github_api_keys
         ]
         # Cursor to remember which key worked last; we start at 0 and rotate on shortages
         self._github_key_cursor: int = 0
@@ -30,9 +39,20 @@ class ModelRouter:
     def initialize_model_classifiers(
         self,
         models_to_scan: Optional[int] = None,  # None means scan all
+        force_refresh: bool = False,
     ) -> None:
+        github_free_catalog: list[dict] = []
+        if self.github_classifiers:
+            github_free_catalog = self.model_cache.get_catalog(
+                self.github_classifiers[0]._fetch_github_models_catalog,
+                force_refresh=force_refresh,
+            )
+
         for classifier in self.github_classifiers:
-            classifier.populate_models_catalog(models_to_scan=models_to_scan)
+            classifier.populate_models_catalog(
+                models_to_scan=models_to_scan,
+                github_free_catalog=github_free_catalog,
+            )
 
         # Debug: log models for each classifier after population
         for idx, classifier in enumerate(self.github_classifiers):
@@ -150,6 +170,8 @@ class ModelRouter:
             while True:
                 try:
                     reply = model.get_model_response(conversation, output_as_json)
+                    if output_as_json:
+                        classifier.mark_model_json_support(model, True)
                     return reply, soonest, first_error
 
                 except RateLimitError as e:
@@ -179,6 +201,16 @@ class ModelRouter:
 
                     eta = float(cooldown)
                     soonest = self._pick_soonest(soonest, (model, eta))
+                    if first_error is None:
+                        first_error = e
+                    break  # next candidate
+
+                except HTTPError as e:
+                    logger.error(
+                        "Model {} failed with HTTP error: {}", model.identifier, e
+                    )
+                    if output_as_json:
+                        classifier.mark_model_json_support(model, False)
                     if first_error is None:
                         first_error = e
                     break  # next candidate

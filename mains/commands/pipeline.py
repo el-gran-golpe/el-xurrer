@@ -11,12 +11,18 @@ from mains.commands.utils import RESOURCES_DIR
 from main_components.config import settings
 
 
-def plan(platform: Platform, profiles: list[Profile], use_initial_conditions: bool):
+def plan(
+    platform: Platform,
+    profiles: list[Profile],
+    use_initial_conditions: bool,
+    refresh_model_cache: bool = False,
+):
     for p in profiles:
         PlanningManager(
             template_profiles=[p],
             platform_name=platform,
             use_initial_conditions=use_initial_conditions,
+            refresh_model_cache=refresh_model_cache,
         ).plan()
         logger.success("{} planning done for {}.", platform.name, p.name)
 
