@@ -8,6 +8,7 @@ venv
 
 # === Python ===
 *.pyc
+__pycache__/
 
 # === IDEs / Editors ===
 .idea
@@ -24,6 +25,7 @@ venv
 /resources
 
 # === Misc / tooling ===
+.cache/
 .qodo
 .vscode/launch.json
 .worktrees

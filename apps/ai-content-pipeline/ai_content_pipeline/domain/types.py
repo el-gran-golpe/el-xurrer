@@ -1,0 +1,181 @@
+import re
+from pathlib import Path
+from pydantic import BaseModel, field_validator, ConfigDict, Field
+from enum import Enum
+
+
+# ---------------------------
+# Pydantic models (strict)
+# ---------------------------
+
+
+# --- Platform ---
+
+
+class Platform(str, Enum):
+    """Enumeration of supported platforms."""
+
+    META = "meta"
+    FANVUE = "fanvue"
+
+
+class PlatformInfo(BaseModel):
+    name: Platform
+    inputs_path: Path
+    outputs_path: Path
+    lang: str  # language for this platform/profile input (e.g., "en", "es", "en-US")
+
+    @field_validator("inputs_path", "outputs_path")
+    @classmethod
+    def must_be_directory(cls, v: Path) -> Path:
+        if not v.exists():
+            raise FileNotFoundError(f"Expected path to exist: {v}")
+        if not v.is_dir():
+            raise ValueError(f"Expected a directory at: {v}")
+        return v
+
+    @field_validator("lang")
+    @classmethod
+    def validate_lang(cls, v: str) -> str:
+        # Accept "en", "es", or BCP47-ish like "en-US", "pt-BR"
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("lang must be a non-empty string")
+        if not re.fullmatch(r"[a-z]{2}(-[A-Z]{2})?", v):
+            raise ValueError(
+                "lang must be a 2-letter code optionally followed by a region, "
+                "e.g., 'en', 'es', 'en-US'"
+            )
+        return v
+
+
+class PromptItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str
+    cache_key: str
+    system_prompt: str
+    output_as_json: bool
+    is_sensitive_content: bool
+
+    @field_validator("prompt", "cache_key", "system_prompt")
+    @classmethod
+    def must_be_non_empty(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("must be a non-empty string")
+        return v
+
+    @field_validator("system_prompt")
+    @classmethod
+    def must_contain_day_placeholder(cls, v: str) -> str:
+        if "{day}" not in v:
+            raise ValueError("system_prompt must include '{day}'")
+        return v
+
+    def replace_prompt_placeholders(
+        self, cache: dict[str, str], accept_unfilled: bool = False
+    ) -> None:
+        """
+        Replace the placeholders in the prompt with the values in the cache
+        :param prompt: The prompt to replace the placeholders
+        :param cache: The cache with the values to replace
+        :return: The prompt with the placeholders replaced
+        """
+        for prompt in [self.prompt, self.system_prompt]:
+            placeholders = re.findall(r"{(\w+)}", prompt)
+            for placeholder in placeholders:
+                if not accept_unfilled:
+                    assert placeholder in cache, (
+                        f"Placeholder '{placeholder}' not found in the cache"
+                    )
+                    prompt = prompt.replace(
+                        f"{{{placeholder}}}", str(cache[placeholder])
+                    )
+                elif placeholder in cache:
+                    prompt = prompt.replace(
+                        f"{{{placeholder}}}", str(cache[placeholder])
+                    )
+
+
+class FanvueOAuthCredentials(BaseModel):
+    client_id: str = Field(..., min_length=1)
+    client_secret: str = Field(..., min_length=1)
+
+
+class MetaCredentials(BaseModel):
+    instagram_account_id: str = Field(..., min_length=1)
+    instagram_user_access_token: str = Field(..., min_length=1)
+
+    @field_validator("instagram_account_id", "instagram_user_access_token")
+    @classmethod
+    def must_be_non_empty_string(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Meta credentials must be non-empty strings")
+        return value.strip()
+
+    @field_validator("instagram_account_id")
+    @classmethod
+    def instagram_account_id_must_be_numeric(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("instagram_account_id must contain only digits")
+        return value
+
+
+class FacebookMediaStagingCredentials(BaseModel):
+    page_id: str = Field(..., min_length=1)
+    page_access_token: str = Field(..., min_length=1)
+
+    @field_validator("page_id", "page_access_token")
+    @classmethod
+    def must_be_non_empty_string(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Facebook staging credentials must be non-empty strings")
+        return value.strip()
+
+
+# --- Profile ---
+
+
+class Profile(BaseModel):
+    """Describes a persona, with per-platform I/O paths."""
+
+    name: str
+    platform_info: dict[Platform, PlatformInfo]
+    meta_credentials: MetaCredentials
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ProfileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lang: str
+    prompts: list[PromptItem]
+
+    @field_validator("lang")
+    @classmethod
+    def validate_lang(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("lang must be a non-empty string")
+        if not re.fullmatch(r"[a-z]{2}(-[A-Z]{2})?", v):
+            raise ValueError(
+                "lang must be a 2-letter code optionally followed by a region, "
+                "e.g., 'en', 'es', 'en-US'"
+            )
+        return v
+
+    @field_validator("prompts")
+    @classmethod
+    def prompts_non_empty_and_unique_cache_keys(
+        cls, prompts: list[PromptItem]
+    ) -> list[PromptItem]:
+        if not prompts:
+            raise ValueError("'prompts' must be a non-empty list")
+        seen: set[str] = set()
+        for i, p in enumerate(prompts):
+            if p.cache_key in seen:
+                raise ValueError(
+                    f"duplicate cache_key '{p.cache_key}' at prompt index {i}"
+                )
+            seen.add(p.cache_key)
+        return prompts
