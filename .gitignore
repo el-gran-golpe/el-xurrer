@@ -8,6 +8,7 @@ venv
 
 # === Python ===
 *.pyc
+__pycache__/
 
 # === IDEs / Editors ===
 .idea

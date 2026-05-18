@@ -1,0 +1,54 @@
+import asyncio
+
+import typer
+from typing import Optional
+
+from ai_content_pipeline.integrations.meta.graph_api import MetaPublisher
+from ai_content_pipeline.cli.commands.utils import resolve_profiles
+import ai_content_pipeline.cli.commands.pipeline as pipeline
+from ai_content_pipeline.domain.types import Platform
+
+app = typer.Typer(
+    help="Instagram Login publishing commands with shared Facebook media staging"
+)
+
+
+@app.command()
+def plan(
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+    use_initial_conditions: bool = typer.Option(
+        True, "--use-initial-conditions/--no-initial-conditions"
+    ),
+    refresh_model_cache: bool = typer.Option(
+        False, "--refresh-model-cache", help="Refresh the cached GitHub Models catalog."
+    ),
+):
+    """Create Instagram planning JSON for the Instagram Login publishing flow."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    pipeline.plan(
+        Platform.META,
+        profiles,
+        use_initial_conditions,
+        refresh_model_cache=refresh_model_cache,
+    )
+
+
+@app.command()
+def generate(
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+):
+    """Generate Instagram assets for the Instagram Login publishing flow."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    pipeline.generate(Platform.META, profiles)
+
+
+@app.command()
+def schedule(
+    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
+    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+):
+    """Stage media on Facebook CDN and publish Instagram posts via Instagram Login."""
+    profiles = resolve_profiles(profile_indexes, profile_names)
+    asyncio.run(pipeline.schedule(Platform.META, profiles, MetaPublisher))

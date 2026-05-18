@@ -1,30 +1,30 @@
 repos:
--   repo: local
+  - repo: local
     hooks:
-    -   id: prevent-nocommit
-        name: "Prevent commit if NOCOMMIT found"
-        entry: 'NOCOMMIT'
-        language: pygrep
-        files: \.(py|txt|md|yaml|json|toml|yml)$
-        exclude: ^\.pre-commit-config\.yaml$
+      - id: ruff-format
+        name: Ruff format
+        entry: uv run ruff format --check .
+        language: system
+        pass_filenames: false
+        always_run: true
 
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
-    hooks:
-    -   id: check-yaml # Check yaml files syntax
-    -   id: end-of-file-fixer # Ensure files end with a newline
-    -   id: trailing-whitespace # Remove trailing whitespaces
-        args: [--markdown-linebreak-ext=md]
--   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.2
-    hooks:
-    -   id: ruff # Check for common mistakes in code
-    -   id: ruff-format
--   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
-    hooks:
-    -   id: mypy
-        exclude: ^fanvue-fastapi/
-        additional_dependencies:
-        - types-requests
-        - types-python-slugify
+      - id: ruff-check
+        name: Ruff check
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true

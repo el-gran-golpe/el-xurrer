@@ -1,0 +1,92 @@
+[project]
+name = "el-xurrer"
+version = "0.1.0"
+description = "Monorepo for AI creator content workflows and Fanvue API helpers."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-oauthlib",
+    "httpx>=0.28.0",
+    "loguru",
+    "openai",
+    "pydantic",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "python-multipart>=0.0.9",
+    "python-slugify",
+    "requests",
+    "tqdm",
+    "typer",
+    "uvicorn[standard]>=0.32.0",
+    "websocket-client",
+]
+
+[dependency-groups]
+dev = [
+    "mypy==1.15.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff==0.11.2",
+    "types-python-jose",
+    "types-python-slugify",
+    "types-requests",
+    "types-tqdm",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [
+    ".cache",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "resources",
+]
+
+[tool.mypy]
+python_version = "3.11"
+explicit_package_bases = true
+mypy_path = [
+    "apps/ai-content-pipeline",
+    "apps/fanvue-fastapi",
+    "shared/fanvue-api-client",
+]
+files = [
+    "apps/ai-content-pipeline/ai_content_pipeline",
+    "apps/fanvue-fastapi/fanvue_fastapi",
+    "shared/fanvue-api-client/fanvue_api_client",
+]
+exclude = [
+    "^resources/",
+    "^\\.cache/",
+    "^\\.venv/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "google_auth_oauthlib.*",
+    "googleapiclient.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "apps/ai-content-pipeline",
+    "apps/fanvue-fastapi",
+    "shared/fanvue-api-client",
+]
+testpaths = [
+    "apps/ai-content-pipeline/tests",
+    "apps/fanvue-fastapi/tests",
+    "shared/fanvue-api-client/tests",
+]
