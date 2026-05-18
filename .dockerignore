@@ -2,10 +2,15 @@
 **/*.pyo
 **/*.pyd
 .Python
+.cache/
 .env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 .venv/
 ENV/
 outputs/
+resources/
 .git/
 .gitignore
 .idea/
