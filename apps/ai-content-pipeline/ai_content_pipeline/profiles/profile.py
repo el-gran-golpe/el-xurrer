@@ -108,6 +108,9 @@ class ProfileManager:
         except IndexError:
             raise IndexError(f"Profile index {index} is out of range.")
 
+    def get_all_profiles(self) -> list[Profile]:
+        return list(self._profiles)
+
     def _validate_profile_name(self, name: str) -> None:
         if not self.PROFILE_NAME_REGEX.match(name):
             raise ValueError(

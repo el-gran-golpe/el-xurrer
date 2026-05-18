@@ -18,6 +18,8 @@ profile_manager = ProfileManager(RESOURCES_DIR)
 def resolve_profiles(
     indexes: list[int],
     names: Optional[str],
+    *,
+    default_all: bool = False,
 ) -> list[Profile]:
     """
     Pick profiles by index list or comma‑separated names. Indexes win.
@@ -28,4 +30,6 @@ def resolve_profiles(
         return [
             profile_manager.get_profile_by_name(n.strip()) for n in names.split(",")
         ]
+    if default_all:
+        return profile_manager.get_all_profiles()
     raise typer.BadParameter("Provide --profile-indexes or --profile-names.")

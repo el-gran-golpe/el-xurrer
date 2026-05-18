@@ -19,6 +19,9 @@
 - Run all tests: `uv run pytest -q`
 - Run configured checks: `uv run pre-commit run --all-files`
 - After making changes, run the relevant focused tests plus `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and `uv run pytest -q`.
+- Run the full Meta and Fanvue pipeline for all loaded profiles: `uv run python apps/ai-content-pipeline/main.py all run_all`
+- `all run_all` defaults to every loaded profile when no `-p/--profile-indexes` or `-n/--profile-names` selector is passed. Selectors still limit the run.
+- `all run_all` clears each selected profile's `meta/outputs` and `fanvue/outputs` before planning/generation by default. Pass `--keep-local-outputs` only when intentionally preserving previous outputs.
 
 ## Safety
 - Do not inspect or modify the repository root `resources/` folder unless the task explicitly requires profile/resource work.

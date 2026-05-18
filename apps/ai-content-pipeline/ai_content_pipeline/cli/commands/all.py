@@ -117,23 +117,24 @@ def run_all(
         False, "--refresh-model-cache", help="Refresh the cached GitHub Models catalog."
     ),
     cleanup_local_outputs: bool = typer.Option(
-        False, "--cleanup-local-outputs/--keep-local-outputs"
+        True, "--cleanup-local-outputs/--keep-local-outputs"
     ),
 ):
     """
     Run the full pipeline (Instagram Login posting with shared staging -> Fanvue) at INFO level.
     """
-    profiles = resolve_profiles(profile_indexes, profile_names)
+    profiles = resolve_profiles(profile_indexes, profile_names, default_all=True)
     if not profiles:
         logger.warning("No profiles to process")
         return
+
+    if cleanup_local_outputs:
+        _cleanup_local_outputs(profiles)
 
     asyncio.run(
         _execute_all(profiles, overwrite, use_initial_conditions, refresh_model_cache)
     )
     get_gdrive_sync().push(RESOURCES_DIR)
-    if cleanup_local_outputs:
-        _cleanup_local_outputs(profiles)
 
 
 @app.command("debug")
@@ -150,20 +151,21 @@ def debug(
         False, "--refresh-model-cache", help="Refresh the cached GitHub Models catalog."
     ),
     cleanup_local_outputs: bool = typer.Option(
-        False, "--cleanup-local-outputs/--keep-local-outputs"
+        True, "--cleanup-local-outputs/--keep-local-outputs"
     ),
 ):
     """
     Run the full pipeline with DEBUG-level logging for Instagram Login posting and Fanvue.
     """
-    profiles = resolve_profiles(profile_indexes, profile_names)
+    profiles = resolve_profiles(profile_indexes, profile_names, default_all=True)
     if not profiles:
         logger.warning("No profiles to process")
         return
+
+    if cleanup_local_outputs:
+        _cleanup_local_outputs(profiles)
 
     asyncio.run(
         _execute_all(profiles, overwrite, use_initial_conditions, refresh_model_cache)
     )
     get_gdrive_sync().push(RESOURCES_DIR)
-    if cleanup_local_outputs:
-        _cleanup_local_outputs(profiles)

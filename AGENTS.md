@@ -7,6 +7,13 @@
 - Treat this file as the shared source of truth for coding agents. Codex and opencode read `AGENTS.md`; Claude Code reads `CLAUDE.md`, which imports this file.
 - Do not commit or push changes unless the user explicitly asks for that in the current task.
 
+## Agent Instructions Maintenance
+- Treat stale agent instructions as a repository bug. At the start of each task, read the applicable `AGENTS.md` files for the area being changed.
+- Before finishing any task that changes behavior, commands, architecture, workflows, safety rules, dependencies, external integrations, or testing expectations, decide whether root or app-specific `AGENTS.md` needs an update.
+- Update `AGENTS.md` in the same change when the new knowledge is durable and useful for future agents. Do not update it for one-off debugging notes, transient failures, or information already captured accurately.
+- Prefer updating `AGENTS.md` rather than `CLAUDE.md`; this repo's `CLAUDE.md` files import their matching `AGENTS.md` files.
+- In the final response, mention whether agent instructions were updated or why no update was needed.
+
 ## Project Map
 - `pyproject.toml` is the source of truth for dependencies and tool configuration for `uv`, Ruff, mypy, and pytest.
 - `.pre-commit-config.yaml` runs the same `uv run ...` quality commands that agents should run manually.
@@ -30,6 +37,9 @@
 - Run all configured checks: `uv run pre-commit run --all-files`
 - Run the AI content CLI: `uv run python apps/ai-content-pipeline/main.py --help`
 - Run Fanvue FastAPI locally only when needed: `uv run python apps/fanvue-fastapi/main.py`
+- Run the full AI content pipeline for all loaded profiles: `uv run python apps/ai-content-pipeline/main.py all run_all`
+- `all run_all` defaults to every loaded profile when no `-p/--profile-indexes` or `-n/--profile-names` selector is passed. Selectors still limit the run.
+- `all run_all` clears each selected profile's Meta and Fanvue `outputs/` folders before planning/generation by default. Pass `--keep-local-outputs` only when intentionally reusing existing outputs.
 
 ## Model Router Behavior
 - `ModelRouter` uses GitHub Models first, then falls back to DeepSeek if GitHub candidates fail.
