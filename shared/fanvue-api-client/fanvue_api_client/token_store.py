@@ -19,10 +19,11 @@ class FanvueTokenStore:
         self.token_path.parent.mkdir(parents=True, exist_ok=True)
 
         now = int(time.time())
+        expires_in = token_response.get("expires_in", 300)
         token_data = {
             "access_token": token_response["access_token"],
             "refresh_token": token_response["refresh_token"],
-            "expires_at": now + token_response["expires_in"],
+            "expires_at": now + expires_in,
             "token_type": token_response.get("token_type", "Bearer"),
             "scope": token_response.get("scope", ""),
             "created_at": now,

@@ -99,7 +99,12 @@ class GitHubModelsCache:
 
     def get_model_state(self, api_key: str, model_id: str) -> CachedModelState | None:
         key_model_state = self._load_key_state(api_key).models.get(model_id)
-        model_capabilities = self._load_model_capabilities_state().models.get(model_id)
+        capabilities_state = self._load_model_capabilities_state()
+        model_capabilities = (
+            capabilities_state.models.get(model_id)
+            if self._capabilities_are_fresh(capabilities_state)
+            else None
+        )
 
         if key_model_state is None and model_capabilities is None:
             return None
@@ -148,6 +153,10 @@ class GitHubModelsCache:
     def _catalog_is_fresh(self, catalog: CachedCatalog) -> bool:
         fetched_at = self._normalize_datetime(catalog.fetched_at)
         return self.now() - fetched_at < self.catalog_ttl
+
+    def _capabilities_are_fresh(self, state: CachedModelCapabilitiesState) -> bool:
+        updated_at = self._normalize_datetime(state.updated_at)
+        return self.now() - updated_at < self.catalog_ttl
 
     def _load_key_state(self, api_key: str) -> CachedKeyState:
         path = self._key_state_path(api_key)

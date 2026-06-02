@@ -54,7 +54,7 @@ async def _execute_all(
                 p.name,
             )
             out_meta = p.platform_info[Platform.META].outputs_path
-            if not overwrite and any(out_meta.iterdir()):
+            if not overwrite and out_meta.exists() and any(out_meta.iterdir()):
                 logger.warning(
                     "Skipping Instagram plan for {} (outputs exist)",
                     p.name,
@@ -77,7 +77,7 @@ async def _execute_all(
             # FANVUE
             logger.info("▶️  FANVUE pipeline for {}", p.name)
             out_fan = p.platform_info[Platform.FANVUE].outputs_path
-            if not overwrite and any(out_fan.iterdir()):
+            if not overwrite and out_fan.exists() and any(out_fan.iterdir()):
                 logger.warning("Skipping FANVUE plan for {} (outputs exists)", p.name)
             else:
                 pipeline.plan(

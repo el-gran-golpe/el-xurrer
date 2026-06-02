@@ -17,6 +17,7 @@ from ai_content_pipeline.llm.routing.classification.constants import (
 from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
 from ai_content_pipeline.llm.routing.classification.model_cache import GitHubModelsCache
 from ai_content_pipeline.domain.types import PromptItem
+from ai_content_pipeline.config import settings
 from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
 
 INLINE_WAIT_THRESHOLD_SECONDS = 60
@@ -40,7 +41,10 @@ class ModelClassifier:
         self.github_free_catalog: list[dict] = []
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[str, LLMModel] = {}
-        self.model_cache = model_cache or GitHubModelsCache()
+        self.model_cache = model_cache or GitHubModelsCache(
+            cache_dir=settings.model_cache_dir,
+            catalog_ttl=timedelta(hours=settings.model_cache_ttl_hours),
+        )
         self.api_error_handler = ApiErrorHandler()
 
     # NEW: give the router a *list* of candidates, not just one.
