@@ -1,3 +1,4 @@
+from datetime import timedelta
 from time import sleep
 from typing import Optional, Generator
 
@@ -10,6 +11,7 @@ from ai_content_pipeline.llm.routing.classification.model_classifier import (
 )
 from ai_content_pipeline.llm.routing.classification.model_cache import GitHubModelsCache
 from ai_content_pipeline.domain.types import PromptItem
+from ai_content_pipeline.config import settings
 
 from openai import OpenAI
 from requests import HTTPError
@@ -29,7 +31,10 @@ class ModelRouter:
     ):
         self.github_api_keys = github_api_keys
         self.deepseek_api_key = deepseek_api_key
-        self.model_cache = model_cache or GitHubModelsCache()
+        self.model_cache = model_cache or GitHubModelsCache(
+            cache_dir=settings.model_cache_dir,
+            catalog_ttl=timedelta(hours=settings.model_cache_ttl_hours),
+        )
         # One classifier per GitHub API key
         self.github_classifiers: list[ModelClassifier] = [
             ModelClassifier(k, model_cache=self.model_cache)
@@ -211,7 +216,11 @@ class ModelRouter:
                     logger.error(
                         "Model {} failed with HTTP error: {}", model.identifier, e
                     )
-                    if output_as_json:
+                    if (
+                        output_as_json
+                        and e.response is not None
+                        and e.response.status_code == 400
+                    ):
                         classifier.mark_model_json_support(model, False)
                     if first_error is None:
                         first_error = e

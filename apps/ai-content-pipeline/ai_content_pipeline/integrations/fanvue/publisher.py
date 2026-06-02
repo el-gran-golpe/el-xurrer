@@ -105,7 +105,9 @@ class FanvueAPIPublisher:
             access_token=access_token,
         )
 
-        logger.success(f"✓ Post created: {post_data['uuid']}")
+        logger.success(
+            f"✓ Post created: {post_data.get('uuid') or post_data.get('id')}"
+        )
         return post_data
 
 

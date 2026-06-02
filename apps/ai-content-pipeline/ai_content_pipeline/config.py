@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,6 +28,18 @@ class Settings(BaseSettings):
     folder_id: str = Field(validation_alias="folder_id")
 
     # Profile-specific Meta and Fanvue OAuth credentials are loaded dynamically.
+
+    # Model router cache directory. Defaults to .cache/model_router relative to CWD.
+    # Set MODEL_CACHE_DIR to an absolute path when invoking from non-repo-root CWDs.
+    model_cache_dir: Path = Field(
+        default=Path(".cache/model_router"),
+        validation_alias="MODEL_CACHE_DIR",
+    )
+    # How long the GitHub Models catalog and capabilities cache are considered fresh.
+    model_cache_ttl_hours: int = Field(
+        default=24,
+        validation_alias="MODEL_CACHE_TTL_HOURS",
+    )
 
     # Shared Fanvue OAuth/API settings used by CLI auth and publishing.
     fanvue_oauth_issuer_base_url: str = Field(

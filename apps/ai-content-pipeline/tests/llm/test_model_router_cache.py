@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 from requests import HTTPError
+from requests.models import Response
 
 from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
 from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
@@ -153,7 +154,9 @@ def test_json_bad_request_marks_model_unsupported_across_github_keys(
     model = classifier.models_catalog["openai/gpt-4o-mini"]
 
     def raise_bad_request(self, conversation, output_as_json):
-        raise HTTPError("Bad request for model openai/gpt-4o-mini")
+        response = Response()
+        response.status_code = 400
+        raise HTTPError("Bad request for model openai/gpt-4o-mini", response=response)
 
     monkeypatch.setattr(LLMModel, "get_model_response", raise_bad_request)
 
