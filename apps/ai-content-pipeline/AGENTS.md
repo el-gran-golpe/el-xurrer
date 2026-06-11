@@ -1,9 +1,9 @@
 # AI Content Pipeline Agent Instructions
 
-## Purpose
-- This app handles AI influencer planning, generation, scheduling, Instagram publishing, Fanvue publishing orchestration, Google Drive resource sync, ComfyUI image generation, and LLM routing.
-- These instructions extend the root `AGENTS.md`.
-- Do not commit or push changes unless the user explicitly asks for that in the current task.
+## Scope
+- These instructions extend the repository root `AGENTS.md`.
+- Treat the root file as the source of truth for shared safety, git workflow, external-service rules, Meta/Fanvue platform boundaries, resources, and full-repo verification.
+- This file only captures AI content app-specific orientation.
 
 ## Project Map
 - `main.py` is the app-local CLI entrypoint.
@@ -16,15 +16,10 @@
 ## Commands
 - Run the CLI from the repository root: `uv run python apps/ai-content-pipeline/main.py --help`
 - Run this app's tests: `uv run pytest apps/ai-content-pipeline/tests -q`
-- Run all tests: `uv run pytest -q`
-- Run configured checks: `uv run pre-commit run --all-files`
-- After making changes, run the relevant focused tests plus `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and `uv run pytest -q`.
 - Run the full Meta and Fanvue pipeline for all loaded profiles: `uv run python apps/ai-content-pipeline/main.py all run_all`
 - `all run_all` defaults to every loaded profile when no `-p/--profile-indexes` or `-n/--profile-names` selector is passed. Selectors still limit the run.
 - `all run_all` clears each selected profile's `meta/outputs` and `fanvue/outputs` before planning/generation by default. Pass `--keep-local-outputs` only when intentionally preserving previous outputs.
 
-## Safety
-- Do not inspect or modify the repository root `resources/` folder unless the task explicitly requires profile/resource work.
-- Ask before running commands that touch external services or generated assets, including Google Drive sync, ComfyUI generation, Meta/Instagram calls, Fanvue API calls, OAuth flows, uploads, scheduling, or publishing.
-- Keep external API interactions mocked in tests unless the user explicitly approves live calls.
-- Instagram assets must stay safe for work. Fanvue-specific explicit content belongs only in Fanvue resources and outputs.
+## Local Notes
+- Profile resources are loaded from the repository root `resources/` tree; follow the root resource-editing restrictions.
+- Meta/Instagram, Fanvue, Google Drive, ComfyUI, OAuth, upload, scheduling, and publishing side-effect rules are defined in the root instructions.
