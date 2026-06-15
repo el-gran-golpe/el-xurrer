@@ -16,9 +16,14 @@ from ai_content_pipeline.cli.commands.utils import (
 )
 import ai_content_pipeline.cli.commands.pipeline as pipeline
 from ai_content_pipeline.integrations.fanvue.publisher import FanvueAPIPublisher
-from ai_content_pipeline.integrations.meta.graph_api import MetaPublisher
+from ai_content_pipeline.integrations.meta.graph_api import (
+    MetaPublisher,
+    validate_meta_profile_auth,
+)
 
-app = typer.Typer(help="Run Instagram Login posting → Fanvue end-to-end for profiles")
+app = typer.Typer(
+    help="Run Instagram Page-token posting -> Fanvue end-to-end for profiles"
+)
 
 
 def _cleanup_local_outputs(profiles: list[Profile]) -> None:
@@ -32,6 +37,11 @@ def _cleanup_local_outputs(profiles: list[Profile]) -> None:
                 else:
                     child.unlink()
             logger.info("Cleared local outputs for {} {}", profile.name, platform.value)
+
+
+def _validate_meta_auth_for_profiles(profiles: list[Profile]) -> None:
+    for profile in profiles:
+        validate_meta_profile_auth(profile)
 
 
 def configure_run_all_logging():
@@ -50,7 +60,7 @@ async def _execute_all(
         try:
             # INSTAGRAM
             logger.info(
-                "Instagram Login posting pipeline for {} (shared Facebook staging for media URLs)",
+                "Instagram Page-token posting pipeline for {} (shared Facebook staging for media URLs)",
                 p.name,
             )
             out_meta = p.platform_info[Platform.META].outputs_path
@@ -121,12 +131,15 @@ def run_all(
     ),
 ):
     """
-    Run the full pipeline (Instagram Login posting with shared staging -> Fanvue) at INFO level.
+    Run the full pipeline (Instagram Page-token posting with shared staging -> Fanvue) at INFO level.
     """
     profiles = resolve_profiles(profile_indexes, profile_names, default_all=True)
     if not profiles:
         logger.warning("No profiles to process")
         return
+
+    # I see, so this pre-verification will only run for the run_all (and debug) command. I like it.
+    _validate_meta_auth_for_profiles(profiles)
 
     if cleanup_local_outputs:
         _cleanup_local_outputs(profiles)
@@ -155,12 +168,14 @@ def debug(
     ),
 ):
     """
-    Run the full pipeline with DEBUG-level logging for Instagram Login posting and Fanvue.
+    Run the full pipeline with DEBUG-level logging for Instagram Page-token posting and Fanvue.
     """
     profiles = resolve_profiles(profile_indexes, profile_names, default_all=True)
     if not profiles:
         logger.warning("No profiles to process")
         return
+
+    _validate_meta_auth_for_profiles(profiles)
 
     if cleanup_local_outputs:
         _cleanup_local_outputs(profiles)

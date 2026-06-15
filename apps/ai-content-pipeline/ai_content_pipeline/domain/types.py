@@ -103,20 +103,25 @@ class FanvueOAuthCredentials(BaseModel):
 
 class MetaCredentials(BaseModel):
     instagram_account_id: str = Field(..., min_length=1)
-    instagram_user_access_token: str = Field(..., min_length=1)
+    facebook_page_id: str = Field(..., min_length=1)
+    facebook_page_access_token: str = Field(..., min_length=1)
 
-    @field_validator("instagram_account_id", "instagram_user_access_token")
+    @field_validator(
+        "instagram_account_id",
+        "facebook_page_id",
+        "facebook_page_access_token",
+    )
     @classmethod
     def must_be_non_empty_string(cls, value: str) -> str:
         if not isinstance(value, str) or not value.strip():
             raise ValueError("Meta credentials must be non-empty strings")
         return value.strip()
 
-    @field_validator("instagram_account_id")
+    @field_validator("instagram_account_id", "facebook_page_id")
     @classmethod
-    def instagram_account_id_must_be_numeric(cls, value: str) -> str:
+    def meta_ids_must_be_numeric(cls, value: str) -> str:
         if not value.isdigit():
-            raise ValueError("instagram_account_id must contain only digits")
+            raise ValueError("Meta account and Page IDs must contain only digits")
         return value
 
 

@@ -14,7 +14,27 @@ from ai_content_pipeline.cli.commands.all import (
 logger.remove()
 logger.add(sys.stderr, level="DEBUG")
 
+STARTUP_PREFLIGHT_BANNER = r"""
++------------------------------------------------------------+
+|        __    CLI STARTUP PREFLIGHT                         |
+|       / /    Google Drive sync -> profile/config checks    |
+|   ___/ /     selected command runs after this block        |
++------------------------------------------------------------+
+""".strip()
+
+STARTUP_PREFLIGHT_COMPLETE = (
+    "+------------------- PREFLIGHT COMPLETE --------------------+"
+)
+
 app = typer.Typer(help="Top‑level CLI: meta, fanvue, or all")
+
+
+def _print_startup_preflight_banner() -> None:
+    typer.echo(f"\n{STARTUP_PREFLIGHT_BANNER}", err=True)
+
+
+def _print_startup_preflight_complete() -> None:
+    typer.echo(STARTUP_PREFLIGHT_COMPLETE, err=True)
 
 
 @app.callback(invoke_without_command=True)
@@ -31,6 +51,8 @@ def main_callback(ctx: typer.Context):
     if len(sys.argv) >= 3 and sys.argv[1] == "all" and sys.argv[2] == "run_all":
         configure_run_all_logging()
 
+    _print_startup_preflight_banner()
+
     try:
         get_gdrive_sync().pull(profile_manager.resource_path)
     except Exception as e:
@@ -43,17 +65,19 @@ def main_callback(ctx: typer.Context):
         logger.error("Failed to load profiles: {}", e)
         raise typer.Exit(1)
 
+    _print_startup_preflight_complete()
+
 
 app.add_typer(
     meta_app,
     name="meta",
-    help="Instagram Login publishing commands with shared Facebook file staging",
+    help="Instagram publishing commands with Facebook Page auth and shared staging",
 )
 app.add_typer(fanvue_app, name="fanvue", help="FANVUE pipeline commands")
 app.add_typer(
     all_app,
     name="all",
-    help="End-to-end Instagram Login posting and Fanvue pipelines",
+    help="End-to-end Instagram Page-token posting and Fanvue pipelines",
 )
 
 if __name__ == "__main__":
