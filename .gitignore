@@ -3,6 +3,7 @@
 
 # === Environment files / virtualenvs ===
 *.env
+*.env*.bak.*
 venv
 .venv
 
