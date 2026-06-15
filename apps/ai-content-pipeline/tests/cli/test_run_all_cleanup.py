@@ -101,6 +101,9 @@ def test_run_all_cleans_selected_profile_outputs_before_pipeline(monkeypatch, tm
             observed["pushed"] = resources_dir
 
     monkeypatch.setattr(all_commands, "resolve_profiles", fake_resolve_profiles)
+    monkeypatch.setattr(
+        all_commands, "validate_meta_profile_auth", lambda profile: None
+    )
     monkeypatch.setattr(all_commands, "_execute_all", fake_execute_all)
     monkeypatch.setattr(all_commands, "get_gdrive_sync", lambda: FakeDriveSync())
 
@@ -141,6 +144,9 @@ def test_run_all_can_keep_existing_outputs(monkeypatch, tmp_path):
         "resolve_profiles",
         lambda indexes, names, *, default_all=False: profiles,
     )
+    monkeypatch.setattr(
+        all_commands, "validate_meta_profile_auth", lambda profile: None
+    )
     monkeypatch.setattr(all_commands, "_execute_all", fake_execute_all)
     monkeypatch.setattr(all_commands, "get_gdrive_sync", lambda: FakeDriveSync())
 
@@ -155,6 +161,62 @@ def test_run_all_can_keep_existing_outputs(monkeypatch, tmp_path):
 
     assert len(observed["entries_during_execute"][Platform.META]) == 2
     assert len(observed["entries_during_execute"][Platform.FANVUE]) == 2
+
+
+def test_run_all_validates_meta_auth_before_cleanup_and_pipeline(
+    monkeypatch,
+    tmp_path,
+):
+    profiles = [_profile("laura_vigne", tmp_path)]
+    observed = []
+
+    def fake_validate_meta_profile_auth(profile):
+        observed.append(("validate", profile.name))
+        raise RuntimeError("bad meta auth")
+
+    def fake_cleanup_local_outputs(selected_profiles):
+        observed.append(("cleanup", [profile.name for profile in selected_profiles]))
+
+    async def fake_execute_all(
+        selected_profiles,
+        overwrite,
+        use_initial_conditions,
+        refresh_model_cache,
+    ):
+        observed.append(("execute", [profile.name for profile in selected_profiles]))
+
+    class FakeDriveSync:
+        def push(self, resources_dir):
+            observed.append(("push", resources_dir))
+
+    monkeypatch.setattr(
+        all_commands,
+        "resolve_profiles",
+        lambda indexes, names, *, default_all=False: profiles,
+    )
+    monkeypatch.setattr(
+        all_commands,
+        "validate_meta_profile_auth",
+        fake_validate_meta_profile_auth,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        all_commands, "_cleanup_local_outputs", fake_cleanup_local_outputs
+    )
+    monkeypatch.setattr(all_commands, "_execute_all", fake_execute_all)
+    monkeypatch.setattr(all_commands, "get_gdrive_sync", lambda: FakeDriveSync())
+
+    with pytest.raises(RuntimeError, match="bad meta auth"):
+        all_commands.run_all(
+            profile_indexes=[],
+            profile_names=None,
+            overwrite=True,
+            use_initial_conditions=True,
+            refresh_model_cache=False,
+            cleanup_local_outputs=True,
+        )
+
+    assert observed == [("validate", "laura_vigne")]
 
 
 def test_run_all_cleanup_defaults_to_clean_outputs():
