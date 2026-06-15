@@ -36,14 +36,33 @@ FACEBOOK_STAGING_PAGE_ACCESS_TOKEN=EA...
 `all run_all` validates selected profiles' Page tokens before clearing outputs or
 starting planning/generation. The Meta publishing path also validates before upload.
 
-To obtain profile Page tokens, use Meta's Graph API Explorer or the official
-Instagram Postman collection with a Business app. Generate a Facebook User Access
-Token with `pages_show_list`, `pages_read_engagement`, `instagram_basic`, and
-`instagram_content_publish`; exchange it for a long-lived user token; call
-`GET https://graph.facebook.com/v21.0/me/accounts?fields=name,id,access_token,instagram_business_account`;
-then save the Page row whose `instagram_business_account.id` matches the profile's
-Instagram account. Do not log or paste tokens; rotate any token that has been
-shared in chat.
+To obtain profile Page tokens, generate a short-lived Facebook User Access Token
+in Meta's Graph API Explorer with `pages_show_list`, `pages_read_engagement`,
+`instagram_basic`, and `instagram_content_publish`, then edit the standalone
+exchange helper constants inside the `if __name__ == "__main__"` block:
+
+```python
+GRAPH_API_BASE_URL = "https://graph.facebook.com/v25.0"
+DEFAULT_PROFILE_ALIAS = "maria_larsen"
+DEFAULT_PAGE_ID = "1055513434323345"
+META_APP_ID = "<meta app id>"
+```
+
+Run the file directly from PyCharm or from the repository root:
+
+```bash
+uv run python apps/ai-content-pipeline/scripts/exchange_meta_page_token.py
+```
+
+The helper exchanges the user token for a long-lived user token, fetches the
+matching Page token from `/me/accounts`, falls back to a direct Page lookup if
+the configured Page is not listed, validates the linked Instagram business
+account, updates `.env`, and prints a summary. It prompts for app secrets and
+user tokens using hidden input. Do not log or paste tokens; rotate any token that
+has been shared in chat.
+
+For the full account setup flow and troubleshooting notes, see
+`../../docs/meta-instagram-page-token-runbook.md`.
 
 ## Tests
 
