@@ -57,8 +57,10 @@ uv run python apps/ai-content-pipeline/scripts/exchange_meta_page_token.py
 The helper exchanges the user token for a long-lived user token, fetches the
 matching Page token from `/me/accounts`, falls back to a direct Page lookup if
 the configured Page is not listed, validates the linked Instagram business
-account, updates `.env`, and prints a summary. It prompts for app secrets and
-user tokens using hidden input. Do not log or paste tokens; rotate any token that
+account, updates the repository root `.env`, and prints a summary. It uses the
+root `.env` even when PyCharm launches the script with a different working
+directory. It prompts for app secrets and user tokens using hidden input, and
+never prints the Page token. Do not log or paste tokens; rotate any token that
 has been shared in chat.
 
 For the full account setup flow and troubleshooting notes, see
