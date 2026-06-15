@@ -10,6 +10,10 @@ from loguru import logger
 from ai_content_pipeline.config import settings
 from ai_content_pipeline.domain.types import Profile
 
+# I am not sure if this version of the api will break for Maria Larsen or other future profiles
+# because now Meta uses v25.0 by default. We could update Laura Vigne to use v25.0 in the future.
+GRAPH_API_BASE_URL = "https://graph.facebook.com/v21.0"
+
 
 class MetaPublisherError(RuntimeError):
     """Base error for Meta publishing failures."""
@@ -21,6 +25,22 @@ class MetaValidationError(MetaPublisherError):
 
 class PublicationError(MetaPublisherError):
     """Raised when an upload or publish operation fails."""
+
+
+def _redact_sensitive_values(
+    message: str,
+    *,
+    params: dict[str, Any] | None = None,
+    data: dict[str, Any] | None = None,
+) -> str:
+    redacted = message
+    for payload in (params, data):
+        if not payload:
+            continue
+        token = payload.get("access_token")
+        if isinstance(token, str) and token:
+            redacted = redacted.replace(token, "<redacted>")
+    return redacted
 
 
 def _request_json(
@@ -50,6 +70,7 @@ def _request_json(
     except requests.exceptions.RequestException as exc:
         response_text = getattr(exc.response, "text", "")
         detail = f"{exc} / {response_text}" if response_text else str(exc)
+        detail = _redact_sensitive_values(detail, params=params, data=data)
         raise MetaPublisherError(detail) from exc
 
     try:
@@ -86,9 +107,11 @@ async def _async_request_json(
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         detail = f"{exc} / {exc.response.text}" if exc.response.text else str(exc)
+        detail = _redact_sensitive_values(detail, params=params, data=data)
         raise MetaPublisherError(detail) from exc
     except httpx.RequestError as exc:
-        raise MetaPublisherError(str(exc)) from exc
+        detail = _redact_sensitive_values(str(exc), params=params, data=data)
+        raise MetaPublisherError(detail) from exc
 
     try:
         return response.json()
@@ -98,39 +121,50 @@ async def _async_request_json(
         ) from exc
 
 
+def validate_meta_profile_auth(profile: Profile) -> None:
+    credentials = profile.meta_credentials
+    payload = {
+        "fields": "instagram_business_account",
+        "access_token": credentials.facebook_page_access_token,
+    }
+    data = _request_json(
+        "GET",
+        f"{GRAPH_API_BASE_URL}/{credentials.facebook_page_id}",
+        params=payload,
+    )
+
+    linked_account = data.get("instagram_business_account")
+    if not isinstance(linked_account, dict):
+        raise MetaValidationError(
+            "Facebook Page token did not return instagram_business_account for "
+            f"Page {credentials.facebook_page_id}."
+        )
+
+    returned_user_id = str(linked_account.get("id", ""))
+    if returned_user_id != credentials.instagram_account_id:
+        raise MetaValidationError(
+            "Facebook Page token does not match INSTAGRAM_ACCOUNT_ID. "
+            f"Expected {credentials.instagram_account_id}, "
+            f"got {returned_user_id or 'missing'}."
+        )
+
+    logger.info(
+        "Validated Facebook Page {} for Instagram account {}",
+        credentials.facebook_page_id,
+        credentials.instagram_account_id,
+    )
+
+
 class InstagramPublisher:
     def __init__(self, profile: Profile):
         self.profile = profile
         self.account_id = profile.meta_credentials.instagram_account_id
-        self.user_access_token = profile.meta_credentials.instagram_user_access_token
-        self.base_url = "https://graph.instagram.com/v21.0"
-        self.username = ""
-        self.app_user_id = ""
+        self.page_access_token = profile.meta_credentials.facebook_page_access_token
+        self.base_url = GRAPH_API_BASE_URL
         self._validate_credentials()
 
-    # TODO: NEVER do more stuff than inizialization in an __init__!!!
-    # Please move this to profile.py or types.py or config.py or somewhere else
     def _validate_credentials(self) -> None:
-        payload = {
-            "fields": "id,user_id,username",
-            "access_token": self.user_access_token,
-        }
-        data = _request_json("GET", f"{self.base_url}/me", params=payload)
-
-        returned_user_id = str(data.get("user_id", ""))
-        if returned_user_id != self.account_id:
-            raise MetaValidationError(
-                "Instagram token does not match INSTAGRAM_ACCOUNT_ID. "
-                f"Expected {self.account_id}, got {returned_user_id or 'missing'}."
-            )
-
-        self.app_user_id = str(data.get("id", ""))
-        self.username = str(data.get("username", ""))
-        logger.info(
-            "Validated Instagram publishing credentials for account {} ({})",
-            self.account_id,
-            self.username or "unknown",
-        )
+        validate_meta_profile_auth(self.profile)
 
     async def upload_publication(
         self,
@@ -151,7 +185,7 @@ class InstagramPublisher:
 
             payload: dict[str, str] = {
                 "image_url": image_url,
-                "access_token": self.user_access_token,
+                "access_token": self.page_access_token,
             }
 
             if len(img_paths) == 1:
@@ -190,7 +224,7 @@ class InstagramPublisher:
                     "media_type": "CAROUSEL",
                     "children": ",".join(media_ids),
                     "caption": caption,
-                    "access_token": self.user_access_token,
+                    "access_token": self.page_access_token,
                 },
             )
             creation_id = str(data.get("id", ""))
@@ -210,7 +244,7 @@ class InstagramPublisher:
             f"{self.base_url}/{self.account_id}/media_publish",
             data={
                 "creation_id": creation_id,
-                "access_token": self.user_access_token,
+                "access_token": self.page_access_token,
             },
         )
 
@@ -234,7 +268,7 @@ class InstagramPublisher:
     ) -> bool:
         params = {
             "fields": "status_code",
-            "access_token": self.user_access_token,
+            "access_token": self.page_access_token,
         }
 
         for attempt in range(1, max_attempts + 1):
@@ -295,7 +329,7 @@ class FacebookMediaStager:
     """
 
     def __init__(self):
-        self.base_url = "https://graph.facebook.com/v21.0"
+        self.base_url = GRAPH_API_BASE_URL
         self.page_id = ""
         self.page_access_token = ""
         self._load_credentials()

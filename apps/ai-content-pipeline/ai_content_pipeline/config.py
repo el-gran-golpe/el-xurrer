@@ -106,15 +106,17 @@ class Settings(BaseSettings):
         alias_env_prefix = alias_norm.upper()
         extras = self.model_extra or {}
         instagram_account_id = extras.get(f"{alias_norm}_instagram_account_id")
-        instagram_user_access_token = extras.get(
-            f"{alias_norm}_instagram_user_access_token"
+        facebook_page_id = extras.get(f"{alias_norm}_facebook_page_id")
+        facebook_page_access_token = extras.get(
+            f"{alias_norm}_facebook_page_access_token"
         )
 
         missing_keys = [
             key
             for key, value in {
                 f"{alias_env_prefix}_INSTAGRAM_ACCOUNT_ID": instagram_account_id,
-                f"{alias_env_prefix}_INSTAGRAM_USER_ACCESS_TOKEN": instagram_user_access_token,
+                f"{alias_env_prefix}_FACEBOOK_PAGE_ID": facebook_page_id,
+                f"{alias_env_prefix}_FACEBOOK_PAGE_ACCESS_TOKEN": facebook_page_access_token,
             }.items()
             if not value
         ]
@@ -127,12 +129,14 @@ class Settings(BaseSettings):
         # This is just to satisfy the type checker below
         # since we already check for missing keys above
         assert instagram_account_id is not None
-        assert instagram_user_access_token is not None
+        assert facebook_page_id is not None
+        assert facebook_page_access_token is not None
 
         try:
             return MetaCredentials(
                 instagram_account_id=instagram_account_id,
-                instagram_user_access_token=instagram_user_access_token,
+                facebook_page_id=facebook_page_id,
+                facebook_page_access_token=facebook_page_access_token,
             )
         except ValidationError as e:
             raise EnvironmentError(f"Invalid Meta credentials for alias '{alias}': {e}")
