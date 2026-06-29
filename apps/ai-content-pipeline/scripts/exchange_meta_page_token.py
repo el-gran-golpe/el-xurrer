@@ -536,11 +536,11 @@ if __name__ == "__main__":
     # Graph API version/base URL used for the token exchange and validation calls.
     GRAPH_API_BASE_URL = "https://graph.facebook.com/v25.0"
     # Repo profile alias; this becomes the .env prefix, e.g. maria_larsen -> MARIA_LARSEN.
-    DEFAULT_PROFILE_ALIAS = "maria_larsen"
+    DEFAULT_PROFILE_ALIAS = "johngalli_a"
     # Facebook Page ID whose Page token should be extracted from /me/accounts.
-    DEFAULT_PAGE_ID = "1055513434323345"
+    DEFAULT_PAGE_ID = "123456789"
     # Meta Developer app ID used with the prompted app secret to exchange/debug tokens.
-    META_APP_ID = "3515145835309589"
+    META_APP_ID = "123456777888999"
 
     try:
         raise SystemExit(

@@ -10,9 +10,7 @@ from loguru import logger
 from ai_content_pipeline.config import settings
 from ai_content_pipeline.domain.types import Profile
 
-# I am not sure if this version of the api will break for Maria Larsen or other future profiles
-# because now Meta uses v25.0 by default. We could update Laura Vigne to use v25.0 in the future.
-GRAPH_API_BASE_URL = "https://graph.facebook.com/v21.0"
+GRAPH_API_BASE_URL = "https://graph.facebook.com/v25.0"
 
 
 class MetaPublisherError(RuntimeError):
