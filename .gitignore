@@ -31,4 +31,4 @@ __pycache__/
 .vscode/launch.json
 .worktrees
 **/tokens.json
-/docs
+/docs/superpowers
