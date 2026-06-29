@@ -77,7 +77,7 @@ def test_instagram_publisher_rejects_page_token_for_wrong_instagram_account(
 ):
     def fake_request_json(method, url, *, params=None, **_kwargs):
         assert method == "GET"
-        assert url == "https://graph.facebook.com/v21.0/1234567890"
+        assert url == "https://graph.facebook.com/v25.0/1234567890"
         assert params == {
             "fields": "instagram_business_account",
             "access_token": "profile-page-token",
@@ -138,7 +138,7 @@ async def test_media_creation_uses_facebook_graph_api_and_profile_page_token(
     assert sync_calls == [
         (
             "GET",
-            "https://graph.facebook.com/v21.0/1234567890",
+            "https://graph.facebook.com/v25.0/1234567890",
             {
                 "fields": "instagram_business_account",
                 "access_token": "profile-page-token",
@@ -148,11 +148,11 @@ async def test_media_creation_uses_facebook_graph_api_and_profile_page_token(
     assert all("graph.facebook.com" in url for _, url, _, _ in async_calls)
     assert all("graph.instagram.com" not in url for _, url, _, _ in async_calls)
     assert async_calls[0][1] == (
-        "https://graph.facebook.com/v21.0/17841400000000001/media"
+        "https://graph.facebook.com/v25.0/17841400000000001/media"
     )
     assert async_calls[0][2]["access_token"] == "profile-page-token"
     assert async_calls[-1][1] == (
-        "https://graph.facebook.com/v21.0/17841400000000001/media_publish"
+        "https://graph.facebook.com/v25.0/17841400000000001/media_publish"
     )
     assert async_calls[-1][2]["access_token"] == "profile-page-token"
 
@@ -208,7 +208,7 @@ def test_meta_request_errors_redact_access_tokens(monkeypatch):
         def raise_for_status(self):
             error = requests.exceptions.HTTPError(
                 "400 Client Error for url: "
-                "https://graph.facebook.com/v21.0/123"
+                "https://graph.facebook.com/v25.0/123"
                 "?access_token=profile-page-token"
             )
             error.response = self
@@ -224,7 +224,7 @@ def test_meta_request_errors_redact_access_tokens(monkeypatch):
     with pytest.raises(MetaPublisherError) as error:
         graph_api._request_json(
             "GET",
-            "https://graph.facebook.com/v21.0/123",
+            "https://graph.facebook.com/v25.0/123",
             params={"access_token": "profile-page-token"},
         )
 
