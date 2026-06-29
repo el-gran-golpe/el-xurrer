@@ -120,7 +120,20 @@ async def _async_request_json(
 
 
 def validate_meta_profile_auth(profile: Profile) -> None:
+    """Validate that a profile's Meta credentials belong together.
+
+    Confirms that the configured Facebook Page is linked to the expected
+    Instagram professional account. This prevents credentials from different
+    profiles or incorrectly linked accounts from reaching the publishing flow.
+
+    Raises:
+        MetaValidationError: If the Page has no linked Instagram account or its
+            account ID differs from the configured Instagram account ID.
+        MetaPublisherError: If the Graph API request fails.
+    """
     credentials = profile.meta_credentials
+
+    # Check the Page-to-Instagram relationship, not only whether the token is valid.
     payload = {
         "fields": "instagram_business_account",
         "access_token": credentials.facebook_page_access_token,
