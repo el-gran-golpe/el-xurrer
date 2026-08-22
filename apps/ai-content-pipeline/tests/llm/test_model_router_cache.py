@@ -205,3 +205,23 @@ def test_json_bad_request_marks_model_unsupported_across_github_keys(
         is False
     )
     assert next_classifier.get_ranked_models(_prompt_item(output_as_json=True)) == []
+
+
+def test_cache_namespaces_providers_independently(tmp_path):
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    cache.save_catalog("openrouter", _catalog("shared-id"), fetched_at=NOW)
+    cache.save_catalog("deepseek", _catalog("shared-id"), fetched_at=NOW)
+
+    cache.set_model_exhausted_until(
+        "openrouter", "same-key", "shared-id", NOW + timedelta(seconds=120)
+    )
+
+    openrouter_state = cache.get_model_state("openrouter", "same-key", "shared-id")
+    deepseek_state = cache.get_model_state("deepseek", "same-key", "shared-id")
+
+    assert openrouter_state is not None
+    assert openrouter_state.exhausted_until_datetime == NOW + timedelta(seconds=120)
+    assert deepseek_state is None
+
+    assert (tmp_path / "openrouter_catalog.json").exists()
+    assert (tmp_path / "deepseek_catalog.json").exists()
