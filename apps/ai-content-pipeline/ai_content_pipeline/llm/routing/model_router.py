@@ -10,10 +10,14 @@ from ai_content_pipeline.llm.routing.classification.model_classifier import (
     ModelClassifier,
 )
 from ai_content_pipeline.llm.routing.classification.model_cache import ModelCache
+from ai_content_pipeline.llm.routing.providers.base import LLMProvider
+from ai_content_pipeline.llm.routing.providers.openai_compatible_provider import (
+    DEEPSEEK_PROVIDER,
+    OPENROUTER_PROVIDER,
+)
 from ai_content_pipeline.domain.types import PromptItem
 from ai_content_pipeline.config import settings
 
-from openai import OpenAI
 from requests import HTTPError
 
 INLINE_WAIT_THRESHOLD_SECONDS = 60
@@ -25,62 +29,102 @@ MAX_INLINE_WAIT_RETRIES = (
 class ModelRouter:
     def __init__(
         self,
-        github_api_keys: list[str],
+        free_provider_keys: dict[str, list[str]],
         deepseek_api_key: str,
         model_cache: ModelCache | None = None,
+        free_providers: list[LLMProvider] | None = None,
+        deepseek_provider: LLMProvider | None = None,
     ):
-        self.github_api_keys = github_api_keys
-        self.deepseek_api_key = deepseek_api_key
         self.model_cache = model_cache or ModelCache(
             cache_dir=settings.model_cache_dir,
             catalog_ttl=timedelta(hours=settings.model_cache_ttl_hours),
         )
-        # One classifier per GitHub API key
-        self.github_classifiers: list[ModelClassifier] = [
-            ModelClassifier(k, model_cache=self.model_cache)
-            for k in self.github_api_keys
+
+        free_providers = free_providers or [OPENROUTER_PROVIDER]
+        self.deepseek_provider = deepseek_provider or DEEPSEEK_PROVIDER
+
+        # One classifier group per free provider, tried in order; DeepSeek is
+        # always appended last as the paid fallback.
+        self.classifier_groups: list[tuple[str, list[ModelClassifier]]] = [
+            (
+                provider.provider_id,
+                [
+                    ModelClassifier(provider, key, model_cache=self.model_cache)
+                    for key in free_provider_keys.get(provider.provider_id, [])
+                ],
+            )
+            for provider in free_providers
         ]
-        # Cursor to remember which key worked last; we start at 0 and rotate on shortages
-        self._github_key_cursor: int = 0
+        self.classifier_groups.append(
+            (
+                self.deepseek_provider.provider_id,
+                [
+                    ModelClassifier(
+                        self.deepseek_provider,
+                        deepseek_api_key,
+                        model_cache=self.model_cache,
+                    )
+                ],
+            )
+        )
+
+        # Per-provider cursor to remember which key worked last; rotate on shortages.
+        self._key_cursor: dict[str, int] = {
+            provider_id: 0 for provider_id, _ in self.classifier_groups
+        }
+
+    def classifiers_for(self, provider_id: str) -> list[ModelClassifier]:
+        for group_provider_id, classifiers in self.classifier_groups:
+            if group_provider_id == provider_id:
+                return classifiers
+        return []
 
     def initialize_model_classifiers(
         self,
         models_to_scan: Optional[int] = None,  # None means scan all
         force_refresh: bool = False,
     ) -> None:
-        github_free_catalog: list[dict] = []
-        if self.github_classifiers:
-            github_free_catalog = self.model_cache.get_catalog(
-                self.github_classifiers[0].provider_id,
-                self.github_classifiers[0]._fetch_github_models_catalog,
+        for provider_id, classifiers in self.classifier_groups:
+            if not classifiers:
+                continue
+
+            first_classifier = classifiers[0]
+
+            def fetch_catalog(clf: ModelClassifier = first_classifier) -> list[dict]:
+                return clf.provider.fetch_catalog(clf.api_key)
+
+            free_catalog = self.model_cache.get_catalog(
+                provider_id,
+                fetch_catalog,
                 force_refresh=force_refresh,
             )
 
-        for classifier in self.github_classifiers:
-            classifier.populate_models_catalog(
-                models_to_scan=models_to_scan,
-                github_free_catalog=github_free_catalog,
-            )
-
-        # Debug: log models for each classifier after population
-        for idx, classifier in enumerate(self.github_classifiers):
-            catalog = classifier.models_catalog
-            logger.debug(
-                "Classifier index {} populated with {} models",
-                idx,
-                len(catalog),
-            )
-            for model_id, model in catalog.items():
-                logger.debug(
-                    "  • {} | ELO: {:.2f} | JSON: {} | Censored: {} | Quota exhausted: {} | Max input: {} | Max output: {}",
-                    model_id,
-                    model.elo,
-                    model.supports_json_format,
-                    model.is_censored,
-                    model.is_quota_exhausted,
-                    model.max_input_tokens,
-                    model.max_output_tokens,
+            for classifier in classifiers:
+                classifier.populate_models_catalog(
+                    models_to_scan=models_to_scan,
+                    free_catalog=free_catalog,
                 )
+
+            # Debug: log models for each classifier after population
+            for idx, classifier in enumerate(classifiers):
+                catalog = classifier.models_catalog
+                logger.debug(
+                    "{} classifier index {} populated with {} models",
+                    provider_id,
+                    idx,
+                    len(catalog),
+                )
+                for model_id, model in catalog.items():
+                    logger.debug(
+                        "  • {} | ELO: {:.2f} | JSON: {} | Censored: {} | Quota exhausted: {} | Max input: {} | Max output: {}",
+                        model_id,
+                        model.elo,
+                        model.supports_json_format,
+                        model.is_censored,
+                        model.is_quota_exhausted,
+                        model.max_input_tokens,
+                        model.max_output_tokens,
+                    )
 
     def get_response(self, prompt_item: PromptItem) -> str:
         conversation = [
@@ -89,34 +133,39 @@ class ModelRouter:
         ]
         output_as_json = prompt_item.output_as_json
 
-        # ---------- 1) Try all GitHub keys/models first ----------
-        reply, soonest, first_error = self._try_github_models(
-            conversation, output_as_json, prompt_item
-        )
-        if reply:
-            return reply
+        # Try each provider group in order (free providers first, paid DeepSeek
+        # last); the last group's failure is what surfaces if everything fails.
+        last_error: Optional[Exception] = None
+        for provider_id, classifiers in self.classifier_groups:
+            reply, _, group_error = self._try_provider_group(
+                provider_id, classifiers, conversation, output_as_json, prompt_item
+            )
+            if reply:
+                return reply
+            if group_error is not None:
+                last_error = group_error
 
-        # ---------- 2) DeepSeek fallback if GitHub fully failed ----------
-        return self._try_deepseek_fallback(
-            conversation=conversation,
-            output_as_json=output_as_json,
-        )
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("No provider is configured with any usable API key")
 
     # ---------------- helpers ----------------
 
-    def _try_github_models(
+    def _try_provider_group(
         self,
+        provider_id: str,
+        classifiers: list[ModelClassifier],
         conversation: list[dict[str, str]],
         output_as_json: bool,
         prompt_item: PromptItem,
     ) -> tuple[Optional[str], Optional[tuple[LLMModel, float]], Optional[Exception]]:
-        """Try all GitHub API keys/models in rotation."""
+        """Try all API keys/models for one provider, in rotation."""
 
         soonest: Optional[tuple[LLMModel, float]] = None
         first_error: Optional[Exception] = None
 
-        for i in self._iter_key_indices_from_cursor():
-            classifier = self.github_classifiers[i]
+        for i in self._iter_key_indices_from_cursor(provider_id, len(classifiers)):
+            classifier = classifiers[i]
             candidates = self._collect_candidates_for_classifier(
                 classifier, prompt_item
             )
@@ -131,7 +180,7 @@ class ModelRouter:
             soonest = self._pick_soonest(soonest, key_soonest)
 
             if reply:
-                self._github_key_cursor = i
+                self._key_cursor[provider_id] = i
                 return reply, soonest, first_error
 
             if first_error is None:
@@ -139,12 +188,15 @@ class ModelRouter:
 
         return None, soonest, first_error
 
-    def _iter_key_indices_from_cursor(self) -> Generator[int, None, None]:
-        """Yield GitHub API key indices in circular rotation order, starting from the last successful key."""
-        n = len(self.github_classifiers)
-        start = self._github_key_cursor % max(1, n)
-        for i in range(n):
-            yield (start + i) % n
+    def _iter_key_indices_from_cursor(
+        self, provider_id: str, num_keys: int
+    ) -> Generator[int, None, None]:
+        """Yield API key indices for one provider in circular rotation order, starting from the last successful key."""
+        if num_keys == 0:
+            return
+        start = self._key_cursor[provider_id] % num_keys
+        for i in range(num_keys):
+            yield (start + i) % num_keys
 
     def _collect_candidates_for_classifier(
         self, clf: ModelClassifier, prompt_item: PromptItem
@@ -235,38 +287,6 @@ class ModelRouter:
 
         # No candidate succeeded for this key
         return None, soonest, first_error
-
-    def _try_deepseek_fallback(
-        self,
-        conversation: list[dict[str, str]],
-        output_as_json: bool,
-    ) -> str:
-        client = OpenAI(
-            api_key=self.deepseek_api_key, base_url="https://api.deepseek.com/v1"
-        )
-        try:
-            response = client.chat.completions.create(  # type: ignore[call-overload]
-                model="deepseek-chat",
-                messages=conversation,  # type: ignore[arg-type]
-                response_format=(
-                    {"type": "json_object"} if output_as_json else {"type": "text"}
-                ),
-                stream=False,
-            )
-            if response.choices is None:
-                raise RuntimeError("DeepSeek API returned no choices")
-            if isinstance(response.choices, list) and len(response.choices) == 0:
-                raise RuntimeError(
-                    "DeepSeek API returned invalid or empty choices in response"
-                )
-            content = response.choices[0].message.content
-            if content is None:
-                raise RuntimeError("DeepSeek API returned no content in response")
-            return content
-
-        except Exception as e:
-            logger.error("DeepSeek API fallback failed with error: {}", e)
-            raise
 
     @staticmethod
     def _pick_soonest(

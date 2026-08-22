@@ -37,11 +37,11 @@ class PlanningManager:
         self.refresh_model_cache = refresh_model_cache
 
     def plan(self) -> None:
-        github_api_keys: list[str] = api_keys.extract_github_keys()
+        openrouter_api_keys: list[str] = api_keys.extract_openrouter_keys()
         deepseek_api_key: str = api_keys.extract_deepseek_key()
 
         model_router = ModelRouter(
-            github_api_keys=github_api_keys,
+            free_provider_keys={"openrouter": openrouter_api_keys},
             deepseek_api_key=deepseek_api_key,
         )
         # None means scan all available models
