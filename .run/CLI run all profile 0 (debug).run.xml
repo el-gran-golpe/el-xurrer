@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="CLI run all" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="CLI run all profile 0 (debug)" type="PythonConfigurationType" factoryName="Python">
     <module name="el-xurrer" />
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
@@ -26,7 +26,7 @@
     </EXTENSION>
     <option name="RUN_TOOL" value="true" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/apps/ai-content-pipeline/main.py" />
-    <option name="PARAMETERS" value="all  debug -p 0 -p 1" />
+    <option name="PARAMETERS" value="all debug -p 0" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

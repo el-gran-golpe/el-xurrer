@@ -24,8 +24,8 @@
         <ENTRY IS_ENABLED="true" PARSER="runconfig" IS_EXECUTABLE="false" />
       </ENTRIES>
     </EXTENSION>
-    <option name="RUN_TOOL" value="" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
+    <option name="RUN_TOOL" value="true" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/apps/ai-content-pipeline/main.py" />
     <option name="PARAMETERS" value="fanvue auth -p 1 -p 0" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />

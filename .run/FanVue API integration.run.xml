@@ -25,7 +25,7 @@
       </ENTRIES>
     </EXTENSION>
     <option name="RUN_TOOL" value="" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/fanvue-fastapi/main.py" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/apps/fanvue-fastapi/main.py" />
     <option name="PARAMETERS" value="" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
