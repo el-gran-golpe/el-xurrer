@@ -42,13 +42,16 @@
 - `all run_all` clears each selected profile's Meta and Fanvue `outputs/` folders before planning/generation by default. Pass `--keep-local-outputs` only when intentionally reusing existing outputs.
 
 ## Model Router Behavior
-- `ModelRouter` uses GitHub Models first, then falls back to DeepSeek if GitHub candidates fail.
-- GitHub model discovery is cache-backed. On the first run without cache, the router fetches the GitHub Models catalog once and stores it under `.cache/model_router/github_models_catalog.json`.
+- GitHub Models (the router's original free provider) was fully retired by GitHub on 2026-07-30. `ModelRouter` now routes through an `LLMProvider` abstraction (`apps/ai-content-pipeline/ai_content_pipeline/llm/routing/providers/`) instead of hardcoding any one provider.
+- `ModelRouter` tries an ordered list of provider groups: free providers first, then DeepSeek (paid) last as the final fallback. Today the only free provider is OpenRouter (`OPENROUTER_PROVIDER`); DeepSeek and OpenRouter both implement the OpenAI-compatible chat-completions wire format via the shared `OpenAICompatibleProvider` class.
+- Adding another free provider is meant to be cheap: a new `LLMProvider` (or `OpenAICompatibleProvider(...)` instance if it's OpenAI-compatible) plus an entry in `ModelRouter`'s `free_providers` list. Do not special-case a new provider's transport/error-handling inside `ModelRouter` or `ModelClassifier` — that logic is provider-agnostic by design.
+- Like GitHub Models before it, each profile/account can define its own key — `OPENROUTER_API_KEY_HARU`, `OPENROUTER_API_KEY_CHARLY`, etc. — summed to increase free-tier quota. `ModelRouter` rotates across a provider's keys independently per provider (a cursor per `provider_id`), retrying the next key on quota exhaustion.
+- Model discovery is cache-backed and namespaced per provider: `.cache/model_router/{provider_id}_catalog.json`, `{provider_id}_state_{fingerprint}.json` (per API key), `{provider_id}_capabilities.json` (shared across a provider's keys). On the first run without cache, the router fetches a provider's catalog once and reuses it across all of that provider's keys.
 - The catalog fetch is metadata only: model IDs, token limits, and similar fields. Do not reintroduce startup probes that send test prompts to every model, because that is slow and consumes quota.
-- During generation, the router tries candidate models lazily. It stops as soon as one model returns a usable response.
+- During generation, the router tries candidate models lazily, highest-ELO first within a provider, and stops as soon as one model returns a usable response.
 - Runtime failures are learned and cached:
-  - Rate limits are stored per GitHub API key fingerprint and skipped until cooldown recovery.
-  - JSON-mode bad requests mark that model as not supporting JSON, so future JSON prompts skip it.
+  - Rate limits are stored per provider+API-key fingerprint and skipped until cooldown recovery.
+  - JSON-mode requests are validated by actually parsing the reply (via `decode_json_from_message`), not just trusting a 200 response — a model that returns malformed JSON despite `response_format=json_object` (common on free/experimental models) is marked as not supporting JSON and the router fails over to the next candidate, same as an explicit 400.
 - The cache refreshes automatically after 24 hours. Planning commands can force refresh with `--refresh-model-cache`.
 - Prompt files are processed as sequential prompt items, not one persistent API conversation. Continuity comes from local `cache_key` placeholder substitution between prompts.
 
