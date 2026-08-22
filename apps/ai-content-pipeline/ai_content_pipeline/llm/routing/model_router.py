@@ -9,7 +9,7 @@ from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
 from ai_content_pipeline.llm.routing.classification.model_classifier import (
     ModelClassifier,
 )
-from ai_content_pipeline.llm.routing.classification.model_cache import GitHubModelsCache
+from ai_content_pipeline.llm.routing.classification.model_cache import ModelCache
 from ai_content_pipeline.domain.types import PromptItem
 from ai_content_pipeline.config import settings
 
@@ -27,11 +27,11 @@ class ModelRouter:
         self,
         github_api_keys: list[str],
         deepseek_api_key: str,
-        model_cache: GitHubModelsCache | None = None,
+        model_cache: ModelCache | None = None,
     ):
         self.github_api_keys = github_api_keys
         self.deepseek_api_key = deepseek_api_key
-        self.model_cache = model_cache or GitHubModelsCache(
+        self.model_cache = model_cache or ModelCache(
             cache_dir=settings.model_cache_dir,
             catalog_ttl=timedelta(hours=settings.model_cache_ttl_hours),
         )
@@ -51,6 +51,7 @@ class ModelRouter:
         github_free_catalog: list[dict] = []
         if self.github_classifiers:
             github_free_catalog = self.model_cache.get_catalog(
+                self.github_classifiers[0].provider_id,
                 self.github_classifiers[0]._fetch_github_models_catalog,
                 force_refresh=force_refresh,
             )

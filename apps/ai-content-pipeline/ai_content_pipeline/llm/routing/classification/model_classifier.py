@@ -15,7 +15,7 @@ from ai_content_pipeline.llm.routing.classification.constants import (
     CHAT_COMPLETIONS_URL,
 )
 from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
-from ai_content_pipeline.llm.routing.classification.model_cache import GitHubModelsCache
+from ai_content_pipeline.llm.routing.classification.model_cache import ModelCache
 from ai_content_pipeline.domain.types import PromptItem
 from ai_content_pipeline.config import settings
 from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
@@ -32,16 +32,19 @@ class ModelClassifier:
     if it is censored or uncensored.
     """
 
+    # TODO(commit 3): replace with a real LLMProvider passed into the constructor.
+    provider_id: str = "github"
+
     def __init__(
         self,
         github_api_key: str,
-        model_cache: GitHubModelsCache | None = None,
+        model_cache: ModelCache | None = None,
     ):
         self.github_api_key: str = github_api_key
         self.github_free_catalog: list[dict] = []
         # This is the distilled catalog of models we will use for routing
         self.models_catalog: dict[str, LLMModel] = {}
-        self.model_cache = model_cache or GitHubModelsCache(
+        self.model_cache = model_cache or ModelCache(
             cache_dir=settings.model_cache_dir,
             catalog_ttl=timedelta(hours=settings.model_cache_ttl_hours),
         )
@@ -78,7 +81,7 @@ class ModelClassifier:
     ):
         if github_free_catalog is None:
             self.github_free_catalog = self.model_cache.get_catalog(
-                self._fetch_github_models_catalog
+                self.provider_id, self._fetch_github_models_catalog
             )
         else:
             self.github_free_catalog = github_free_catalog
@@ -107,7 +110,7 @@ class ModelClassifier:
             }
 
             cached_state = self.model_cache.get_model_state(
-                self.github_api_key, model_id
+                self.provider_id, self.github_api_key, model_id
             )
             if cached_state is not None:
                 llm_model_params["supports_json_format"] = (
@@ -136,6 +139,7 @@ class ModelClassifier:
             seconds=cooldown_seconds
         )
         self.model_cache.set_model_exhausted_until(
+            self.provider_id,
             self.github_api_key,
             model.identifier,
             model.exhausted_until_datetime,
@@ -151,6 +155,7 @@ class ModelClassifier:
     ) -> None:
         model.supports_json_format = supports_json_format
         self.model_cache.set_model_json_support(
+            self.provider_id,
             self.github_api_key,
             model.identifier,
             supports_json_format,
@@ -258,6 +263,7 @@ class ModelClassifier:
             model.is_quota_exhausted = False
             model.exhausted_until_datetime = None
             self.model_cache.set_model_exhausted_until(
+                self.provider_id,
                 self.github_api_key,
                 model.identifier,
                 None,

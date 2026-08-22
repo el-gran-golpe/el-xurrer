@@ -7,7 +7,7 @@ from requests.models import Response
 
 from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
 from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
-from ai_content_pipeline.llm.routing.classification.model_cache import GitHubModelsCache
+from ai_content_pipeline.llm.routing.classification.model_cache import ModelCache
 from ai_content_pipeline.llm.routing.model_router import ModelRouter
 from ai_content_pipeline.domain.types import PromptItem
 
@@ -53,8 +53,8 @@ class _Response:
 
 
 def test_cached_catalog_initialization_avoids_network_and_probes(tmp_path, monkeypatch):
-    cache = GitHubModelsCache(cache_dir=tmp_path, now=lambda: NOW)
-    cache.save_catalog(_catalog(), fetched_at=NOW)
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    cache.save_catalog("github", _catalog(), fetched_at=NOW)
 
     def fail_network(*args, **kwargs):
         raise AssertionError("cached initialization must not call the network")
@@ -75,8 +75,10 @@ def test_cached_catalog_initialization_avoids_network_and_probes(tmp_path, monke
 def test_expired_catalog_refreshes_once_and_does_not_probe_models(
     tmp_path, monkeypatch
 ):
-    cache = GitHubModelsCache(cache_dir=tmp_path, now=lambda: NOW)
-    cache.save_catalog(_catalog("old/model"), fetched_at=NOW - timedelta(hours=25))
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    cache.save_catalog(
+        "github", _catalog("old/model"), fetched_at=NOW - timedelta(hours=25)
+    )
     calls = {"catalog": 0}
 
     def catalog_get(*args, **kwargs):
@@ -97,8 +99,8 @@ def test_expired_catalog_refreshes_once_and_does_not_probe_models(
 
 
 def test_force_refresh_ignores_fresh_catalog(tmp_path, monkeypatch):
-    cache = GitHubModelsCache(cache_dir=tmp_path, now=lambda: NOW)
-    cache.save_catalog(_catalog("old/model"), fetched_at=NOW)
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    cache.save_catalog("github", _catalog("old/model"), fetched_at=NOW)
 
     monkeypatch.setattr(
         "requests.get", lambda *a, **k: _Response(_catalog("new/model"))
@@ -115,8 +117,8 @@ def test_force_refresh_ignores_fresh_catalog(tmp_path, monkeypatch):
 
 
 def test_rate_limit_exhaustion_is_persisted_by_key_fingerprint(tmp_path, monkeypatch):
-    cache = GitHubModelsCache(cache_dir=tmp_path, now=lambda: NOW)
-    cache.save_catalog(_catalog(), fetched_at=NOW)
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    cache.save_catalog("github", _catalog(), fetched_at=NOW)
     monkeypatch.setattr("requests.get", lambda *a, **k: pytest.fail("cache expected"))
     monkeypatch.setattr("requests.post", lambda *a, **k: pytest.fail("cache expected"))
 
@@ -143,8 +145,8 @@ def test_rate_limit_exhaustion_is_persisted_by_key_fingerprint(tmp_path, monkeyp
 def test_json_bad_request_marks_model_unsupported_across_github_keys(
     tmp_path, monkeypatch
 ):
-    cache = GitHubModelsCache(cache_dir=tmp_path, now=lambda: NOW)
-    cache.save_catalog(_catalog(), fetched_at=NOW)
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    cache.save_catalog("github", _catalog(), fetched_at=NOW)
     monkeypatch.setattr("requests.get", lambda *a, **k: pytest.fail("cache expected"))
     monkeypatch.setattr("requests.post", lambda *a, **k: pytest.fail("cache expected"))
 
