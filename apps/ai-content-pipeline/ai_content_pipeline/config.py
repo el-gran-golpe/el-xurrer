@@ -19,8 +19,9 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(validation_alias="OPENAI_API_KEY")
     deepseek_api_key: str = Field(validation_alias="DEEPSEEK_API_KEY")
 
-    # Note: GitHub keys are loaded dynamically due to their naming convention
-    # GITHUB_API_KEY_HARU, GITHUB_API_KEY_CHARLY, etc.
+    # Note: OpenRouter keys are loaded dynamically due to their naming convention
+    # OPENROUTER_API_KEY_HARU, OPENROUTER_API_KEY_CHARLY, etc. — one per profile/
+    # account, summed to increase free-tier quota.
 
     # Google Drive OAuth
     client_id: str = Field(validation_alias="client_id")
@@ -35,7 +36,7 @@ class Settings(BaseSettings):
         default=Path(".cache/model_router"),
         validation_alias="MODEL_CACHE_DIR",
     )
-    # How long the GitHub Models catalog and capabilities cache are considered fresh.
+    # How long a provider's model catalog and capabilities cache are considered fresh.
     model_cache_ttl_hours: int = Field(
         default=24,
         validation_alias="MODEL_CACHE_TTL_HOURS",
@@ -54,14 +55,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="allow",  # Allow dynamic keys like GITHUB_API_KEY_* and *_FANVUE_*
+        extra="allow",  # Allow dynamic keys like OPENROUTER_API_KEY_* and *_FANVUE_*
     )
 
-    @property
-    def github_keys(self) -> dict[str, str]:
-        """Returns a dictionary of all non-empty GitHub keys."""
+    def provider_keys(self, prefix: str) -> dict[str, str]:
+        """Returns all non-empty dynamic keys whose name starts with prefix."""
         raw = self.model_dump()
-        return {k: v for k, v in raw.items() if k.upper().startswith("GITHUB") and v}
+        return {
+            k: v for k, v in raw.items() if k.upper().startswith(prefix.upper()) and v
+        }
+
+    @property
+    def openrouter_keys(self) -> dict[str, str]:
+        """Returns a dictionary of all non-empty OpenRouter keys."""
+        return self.provider_keys("OPENROUTER_API_KEY")
 
     def get_fanvue_oauth_credentials(self, alias: str) -> FanvueOAuthCredentials:
         """Dynamically retrieves Fanvue OAuth credentials for a profile alias."""
@@ -179,9 +186,9 @@ class Settings(BaseSettings):
 
     # ---------------- Extraction Methods ----------------
 
-    def extract_github_keys(self) -> list[str]:
-        """Extracts all GitHub API key values."""
-        return list(self.github_keys.values())
+    def extract_openrouter_keys(self) -> list[str]:
+        """Extracts all OpenRouter API key values."""
+        return list(self.openrouter_keys.values())
 
     # This key is not being used currently
     def extract_openai_key(self) -> str:

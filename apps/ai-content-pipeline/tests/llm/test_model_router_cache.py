@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
+import requests
 from requests import HTTPError
 from requests.models import Response
 
@@ -9,10 +10,39 @@ from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
 from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
 from ai_content_pipeline.llm.routing.classification.model_cache import ModelCache
 from ai_content_pipeline.llm.routing.model_router import ModelRouter
+from ai_content_pipeline.llm.routing.providers.base import LLMProvider
 from ai_content_pipeline.domain.types import PromptItem
 
 
 NOW = datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc)
+
+
+class _FakeProvider(LLMProvider):
+    """A minimal provider whose catalog IS the final internal shape, so these
+    cache/rotation tests don't depend on any real provider's wire format."""
+
+    def __init__(self, provider_id: str = "github") -> None:
+        self.provider_id = provider_id
+        self.is_paid = False
+
+    def fetch_catalog(self, api_key: str) -> list[dict[str, Any]]:
+        resp = requests.get("https://example.invalid/models", timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    def chat_completion(self, api_key, model_id, conversation, output_as_json) -> str:
+        raise NotImplementedError(
+            "chat_completion is monkeypatched via LLMModel.get_model_response in these tests"
+        )
+
+
+def _router(keys: list[str], cache: ModelCache) -> ModelRouter:
+    return ModelRouter(
+        free_provider_keys={"github": keys},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[_FakeProvider()],
+    )
 
 
 def _catalog(model_id: str = "openai/gpt-4o-mini") -> list[dict[str, Any]]:
@@ -62,10 +92,10 @@ def test_cached_catalog_initialization_avoids_network_and_probes(tmp_path, monke
     monkeypatch.setattr("requests.get", fail_network)
     monkeypatch.setattr("requests.post", fail_network)
 
-    router = ModelRouter(["github-key"], "deepseek-key", model_cache=cache)
+    router = _router(["github-key"], cache)
     router.initialize_model_classifiers(models_to_scan=None)
 
-    classifier = router.github_classifiers[0]
+    classifier = router.classifiers_for("github")[0]
     model = classifier.models_catalog["openai/gpt-4o-mini"]
     assert model.max_input_tokens == 8192
     assert model.max_output_tokens == 2048
@@ -91,11 +121,11 @@ def test_expired_catalog_refreshes_once_and_does_not_probe_models(
     monkeypatch.setattr("requests.get", catalog_get)
     monkeypatch.setattr("requests.post", fail_probe)
 
-    router = ModelRouter(["github-key"], "deepseek-key", model_cache=cache)
+    router = _router(["github-key"], cache)
     router.initialize_model_classifiers(models_to_scan=None)
 
     assert calls["catalog"] == 1
-    assert list(router.github_classifiers[0].models_catalog) == ["new/model"]
+    assert list(router.classifiers_for("github")[0].models_catalog) == ["new/model"]
 
 
 def test_force_refresh_ignores_fresh_catalog(tmp_path, monkeypatch):
@@ -110,10 +140,10 @@ def test_force_refresh_ignores_fresh_catalog(tmp_path, monkeypatch):
         lambda *a, **k: pytest.fail("force refresh must not probe models"),
     )
 
-    router = ModelRouter(["github-key"], "deepseek-key", model_cache=cache)
+    router = _router(["github-key"], cache)
     router.initialize_model_classifiers(models_to_scan=None, force_refresh=True)
 
-    assert list(router.github_classifiers[0].models_catalog) == ["new/model"]
+    assert list(router.classifiers_for("github")[0].models_catalog) == ["new/model"]
 
 
 def test_rate_limit_exhaustion_is_persisted_by_key_fingerprint(tmp_path, monkeypatch):
@@ -122,9 +152,9 @@ def test_rate_limit_exhaustion_is_persisted_by_key_fingerprint(tmp_path, monkeyp
     monkeypatch.setattr("requests.get", lambda *a, **k: pytest.fail("cache expected"))
     monkeypatch.setattr("requests.post", lambda *a, **k: pytest.fail("cache expected"))
 
-    router = ModelRouter(["github-key"], "deepseek-key", model_cache=cache)
+    router = _router(["github-key"], cache)
     router.initialize_model_classifiers(models_to_scan=None)
-    classifier = router.github_classifiers[0]
+    classifier = router.classifiers_for("github")[0]
     model = classifier.models_catalog["openai/gpt-4o-mini"]
 
     def raise_rate_limit(self, conversation, output_as_json):
@@ -134,9 +164,11 @@ def test_rate_limit_exhaustion_is_persisted_by_key_fingerprint(tmp_path, monkeyp
 
     router._try_candidates_for_classifier(classifier, [model], [], False)
 
-    next_router = ModelRouter(["github-key"], "deepseek-key", model_cache=cache)
+    next_router = _router(["github-key"], cache)
     next_router.initialize_model_classifiers(models_to_scan=None)
-    persisted = next_router.github_classifiers[0].models_catalog["openai/gpt-4o-mini"]
+    persisted = next_router.classifiers_for("github")[0].models_catalog[
+        "openai/gpt-4o-mini"
+    ]
 
     assert persisted.is_quota_exhausted is True
     assert persisted.exhausted_until_datetime == NOW + timedelta(seconds=120)
@@ -150,9 +182,9 @@ def test_json_bad_request_marks_model_unsupported_across_github_keys(
     monkeypatch.setattr("requests.get", lambda *a, **k: pytest.fail("cache expected"))
     monkeypatch.setattr("requests.post", lambda *a, **k: pytest.fail("cache expected"))
 
-    router = ModelRouter(["github-key"], "deepseek-key", model_cache=cache)
+    router = _router(["github-key"], cache)
     router.initialize_model_classifiers(models_to_scan=None)
-    classifier = router.github_classifiers[0]
+    classifier = router.classifiers_for("github")[0]
     model = classifier.models_catalog["openai/gpt-4o-mini"]
 
     def raise_bad_request(self, conversation, output_as_json):
@@ -164,9 +196,9 @@ def test_json_bad_request_marks_model_unsupported_across_github_keys(
 
     router._try_candidates_for_classifier(classifier, [model], [], True)
 
-    next_router = ModelRouter(["another-github-key"], "deepseek-key", model_cache=cache)
+    next_router = _router(["another-github-key"], cache)
     next_router.initialize_model_classifiers(models_to_scan=None)
-    next_classifier = next_router.github_classifiers[0]
+    next_classifier = next_router.classifiers_for("github")[0]
 
     assert (
         next_classifier.models_catalog["openai/gpt-4o-mini"].supports_json_format
