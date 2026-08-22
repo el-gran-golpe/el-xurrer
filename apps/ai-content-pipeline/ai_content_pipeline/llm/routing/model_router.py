@@ -17,6 +17,7 @@ from ai_content_pipeline.llm.routing.providers.openai_compatible_provider import
 )
 from ai_content_pipeline.domain.types import PromptItem
 from ai_content_pipeline.config import settings
+from ai_content_pipeline.llm.utils.response import decode_json_from_message
 
 from requests import HTTPError
 
@@ -231,6 +232,22 @@ class ModelRouter:
                 try:
                     reply = model.get_model_response(conversation, output_as_json)
                     if output_as_json:
+                        try:
+                            decode_json_from_message(reply)
+                        except ValueError as json_error:
+                            # The API accepted response_format=json_object but the
+                            # model didn't actually return valid JSON. Don't trust
+                            # this candidate's json support and fail over.
+                            logger.warning(
+                                "Model {} returned invalid JSON despite JSON mode — "
+                                "marking unsupported and failing over: {}",
+                                model.identifier,
+                                json_error,
+                            )
+                            classifier.mark_model_json_support(model, False)
+                            if first_error is None:
+                                first_error = json_error
+                            break  # next candidate
                         classifier.mark_model_json_support(model, True)
                     return reply, soonest, first_error
 

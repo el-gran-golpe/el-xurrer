@@ -10,12 +10,12 @@ from ai_content_pipeline.domain.types import PromptItem
 NOW = datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc)
 
 
-def _prompt_item() -> PromptItem:
+def _prompt_item(output_as_json: bool = False) -> PromptItem:
     return PromptItem(
         system_prompt="You are a helpful assistant for {day}.",
         prompt="Write a short answer.",
         cache_key="answer",
-        output_as_json=False,
+        output_as_json=output_as_json,
         is_sensitive_content=False,
     )
 
@@ -81,6 +81,47 @@ class _KeyAwareProvider(LLMProvider):
         if api_key == self.failing_key:
             raise RateLimitError(cooldown_seconds=9999)
         return f"reply from {api_key}"
+
+
+class _JsonMisbehavingProvider(LLMProvider):
+    """A free provider whose first model claims success but returns malformed
+    JSON when JSON mode is requested; its second model behaves correctly."""
+
+    def __init__(self, provider_id: str) -> None:
+        self.provider_id = provider_id
+        self.is_paid = False
+
+    def fetch_catalog(self, api_key: str) -> list[dict[str, Any]]:
+        return [
+            {"id": "bad-json-model", "limits": {}},
+            {"id": "good-json-model", "limits": {}},
+        ]
+
+    def chat_completion(self, api_key, model_id, conversation, output_as_json) -> str:
+        if model_id == "bad-json-model":
+            return '{"hashtags": #not_quoted}'
+        return '{"ok": true}'
+
+
+def test_invalid_json_reply_fails_over_and_marks_model_unsupported(tmp_path):
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    provider = _JsonMisbehavingProvider("openrouter")
+
+    router = ModelRouter(
+        free_provider_keys={"openrouter": ["key1"]},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[provider],
+        deepseek_provider=_UnreachableProvider("deepseek"),
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+
+    reply = router.get_response(_prompt_item(output_as_json=True))
+
+    assert reply == '{"ok": true}'
+    classifier = router.classifiers_for("openrouter")[0]
+    assert classifier.models_catalog["bad-json-model"].supports_json_format is False
+    assert classifier.models_catalog["good-json-model"].supports_json_format is True
 
 
 def test_deepseek_fallback_used_only_when_free_provider_fully_exhausted(tmp_path):
