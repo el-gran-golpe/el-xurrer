@@ -1,6 +1,19 @@
 import pytest
 
 
+def test_env_file_is_absolute_repo_root_path():
+    """This app is launched as a uvicorn subprocess with cwd set to its own
+    directory (see ai_content_pipeline.integrations.fanvue.auth), so the
+    configured env_file must be an absolute repo-root path — a relative
+    ".env" would silently resolve to a non-existent file there and every
+    FANVUE_WEBAPP_* variable would appear unset."""
+    from fanvue_fastapi.config import _ENV_FILE
+
+    assert _ENV_FILE.is_absolute()
+    assert _ENV_FILE.name == ".env"
+    assert (_ENV_FILE.parent / "apps" / "fanvue-fastapi").is_dir()
+
+
 def test_settings_loads_from_env(monkeypatch):
     """Settings should load all required env vars."""
     monkeypatch.setenv(

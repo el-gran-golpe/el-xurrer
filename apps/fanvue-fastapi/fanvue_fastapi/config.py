@@ -5,8 +5,20 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
 def _default_resources_root() -> Path:
-    return Path(__file__).resolve().parents[3] / "resources"
+    return _repo_root() / "resources"
+
+
+# Absolute path to the repository-root .env file. This app is launched as a
+# uvicorn subprocess with cwd set to this app's own directory (see
+# ai_content_pipeline.integrations.fanvue.auth.start_fastapi_server), so a
+# relative "env_file" would silently resolve to a non-existent .env there and
+# every FANVUE_WEBAPP_* variable would appear unset regardless of profile.
+_ENV_FILE = _repo_root() / ".env"
 
 
 class ProfileNotConfiguredError(RuntimeError):
@@ -17,7 +29,7 @@ class Settings(BaseSettings):
     """Shared application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="FANVUE_WEBAPP_",
@@ -51,7 +63,7 @@ class ProfileOAuthSettings(BaseSettings):
     """Per-profile OAuth credentials, loaded via a dynamic env prefix."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
