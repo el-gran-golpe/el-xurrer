@@ -13,6 +13,10 @@ from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
 from ai_content_pipeline.domain.types import Platform, Profile
 
 
+FANVUE_UPLOAD_MAX_ATTEMPTS = 3
+FANVUE_UPLOAD_RETRY_BACKOFF_SECONDS = 5.0
+
+
 class Publication(BaseModel):
     """
     Pydantic model representing a single publication.
@@ -216,10 +220,31 @@ class PostingScheduler:
                 f"Scheduling {pub.day_folder.name} via Fanvue API for {publish_at}"
             )
 
-            try:
-                # Run async batch upload in sync context with scheduled time
-                await client.post_publication_batch(
-                    pub.image_paths, pub.caption_text, publish_at
-                )
-            except Exception as err:
-                logger.error(f"API upload failed for {pub.day_folder}: {err}")
+            for attempt in range(1, FANVUE_UPLOAD_MAX_ATTEMPTS + 1):
+                try:
+                    await client.post_publication_batch(
+                        pub.image_paths, pub.caption_text, publish_at
+                    )
+                    break
+                except Exception as err:
+                    # httpx transport errors can have an empty str(), so fall
+                    # back to the exception type name to avoid a blank message.
+                    message = str(err) or type(err).__name__
+                    if attempt == FANVUE_UPLOAD_MAX_ATTEMPTS:
+                        logger.error(
+                            "API upload failed for {} after {} attempts: {}",
+                            pub.day_folder,
+                            FANVUE_UPLOAD_MAX_ATTEMPTS,
+                            message,
+                        )
+                    else:
+                        delay = FANVUE_UPLOAD_RETRY_BACKOFF_SECONDS * attempt
+                        logger.warning(
+                            "API upload attempt {}/{} failed for {}: {} — retrying in {:.0f}s",
+                            attempt,
+                            FANVUE_UPLOAD_MAX_ATTEMPTS,
+                            pub.day_folder,
+                            message,
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
