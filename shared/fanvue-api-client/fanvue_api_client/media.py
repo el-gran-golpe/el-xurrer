@@ -6,6 +6,10 @@ import httpx
 
 CHUNK_SIZE = 10 * 1024 * 1024
 
+# httpx defaults to a 5s timeout for connect/read/write, which is too short
+# for uploading multi-megabyte media chunks and causes spurious ReadTimeouts.
+UPLOAD_TIMEOUT = httpx.Timeout(60.0)
+
 
 class UploadFileLike(Protocol):
     @property
@@ -41,7 +45,7 @@ async def initiate_upload(
     content_type: str,
     access_token: str,
 ) -> Dict[str, str]:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=UPLOAD_TIMEOUT) as client:
         response = await client.post(
             f"{api_base_url}/media/uploads",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -67,7 +71,7 @@ async def get_upload_url(
     part_number: int,
     access_token: str,
 ) -> str:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=UPLOAD_TIMEOUT) as client:
         response = await client.get(
             f"{api_base_url}/media/uploads/{upload_id}/parts/{part_number}/url",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -82,7 +86,7 @@ async def get_upload_url(
 
 
 async def upload_chunk(url: str, data: bytes) -> str:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=UPLOAD_TIMEOUT) as client:
         response = await client.put(url, content=data)
 
     if response.status_code not in (200, 201):
@@ -101,7 +105,7 @@ async def complete_upload(
 ) -> None:
     parts = [{"PartNumber": i + 1, "ETag": etag} for i, etag in enumerate(etags)]
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=UPLOAD_TIMEOUT) as client:
         response = await client.patch(
             f"{api_base_url}/media/uploads/{upload_id}",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -168,4 +172,9 @@ async def upload_media(
     except MediaUploadError as e:
         return MediaUploadResult(success=False, filename=filename, error=e.message)
     except Exception as e:
-        return MediaUploadResult(success=False, filename=filename, error=str(e))
+        # httpx transport errors (timeouts, connection resets) often have an
+        # empty str(), so fall back to the exception type name to avoid a
+        # blank error message.
+        return MediaUploadResult(
+            success=False, filename=filename, error=str(e) or type(e).__name__
+        )

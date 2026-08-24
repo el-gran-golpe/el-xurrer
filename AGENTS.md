@@ -81,6 +81,9 @@
 - The Facebook staging Page is only a media URL bridge for Instagram. Do not turn it into Facebook cross-posting, do not publish those staging photos, and do not replace this cost-saving flow with paid storage unless the user explicitly asks.
 - Instagram Graph API publishing has no native scheduling in this app. Meta scheduling waits asynchronously until each `upload_time`, so running the scheduler can leave the machine sleeping/holding until posts are due.
 - Fanvue API publishing can pass scheduled `publish_at` timestamps to Fanvue.
+- `PostingScheduler._upload_via_fanvue_api` retries a failed publication (media upload + post creation) up to 3 times with linear backoff before giving up and moving to the next day; it does not reuse media UUIDs already uploaded in a failed attempt, so a retry can leave orphaned unused media in the Fanvue vault.
+- `httpx` transport-level exceptions (timeouts, connection resets) often have an empty `str()`. Fanvue upload/post error paths (`fanvue_api_client/media.py`, `fanvue_api_client/posts.py`, `posting_scheduler.py`) fall back to the exception type name so failures never log a blank message; keep that fallback when touching these paths.
+- `fanvue_api_client/media.py` uses an explicit `UPLOAD_TIMEOUT` (60s) for its `httpx.AsyncClient` calls instead of httpx's 5s default, because multi-megabyte media chunk uploads were hitting spurious `ReadTimeout`s under the default.
 - Use ISO 8601 `upload_time` values with an explicit timezone offset, preferably UTC with `Z`. The scheduler accepts `Z` by converting it to `+00:00`; naive datetimes are interpreted using the machine's local timezone and should be avoided.
 - Usual operating cadence is weekly: generate a Monday-to-Sunday content batch. The Sunday regeneration run should produce the next Monday-to-Sunday batch, not rewrite the week that just finished.
 

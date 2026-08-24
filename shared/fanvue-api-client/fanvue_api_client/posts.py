@@ -29,12 +29,18 @@ async def create_post(
     if publish_at:
         payload["publishAt"] = publish_at
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_base_url}/posts",
-            headers={"Authorization": f"Bearer {access_token}"},
-            json=payload,
-        )
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{api_base_url}/posts",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json=payload,
+            )
+    except httpx.HTTPError as e:
+        # httpx transport errors (timeouts, connection resets) often have an
+        # empty str(), so fall back to the exception type name to avoid a
+        # blank error message.
+        raise PostCreationError(f"Request failed: {str(e) or type(e).__name__}")
 
     if response.status_code != 201:
         raise PostCreationError(
