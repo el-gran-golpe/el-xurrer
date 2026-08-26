@@ -55,7 +55,8 @@ async def _execute_all(
     use_initial_conditions: bool,
     refresh_model_cache: bool,
 ):
-    tasks = []
+    meta_ready: list[Profile] = []
+    fanvue_ready: list[Profile] = []
     for p in profiles:
         try:
             # INSTAGRAM
@@ -78,11 +79,7 @@ async def _execute_all(
                 )
 
             pipeline.generate(Platform.META, [p])
-            tasks.append(
-                asyncio.create_task(
-                    pipeline.schedule(Platform.META, [p], MetaPublisher)
-                )
-            )
+            meta_ready.append(p)
 
             # FANVUE
             logger.info("▶️  FANVUE pipeline for {}", p.name)
@@ -97,15 +94,15 @@ async def _execute_all(
                     refresh_model_cache=refresh_model_cache,
                 )
             pipeline.generate(Platform.FANVUE, [p])
-            tasks.append(
-                asyncio.create_task(
-                    pipeline.schedule(Platform.FANVUE, [p], FanvueAPIPublisher)
-                )
-            )
+            fanvue_ready.append(p)
         except Exception as e:
             logger.error("Failed to process profile {}: {}", p.name, e)
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    results = await asyncio.gather(
+        pipeline.schedule(Platform.META, meta_ready, MetaPublisher),
+        pipeline.schedule(Platform.FANVUE, fanvue_ready, FanvueAPIPublisher),
+        return_exceptions=True,
+    )
     for result in results:
         if isinstance(result, Exception):
             logger.error("Schedule task failed: {}", result)
