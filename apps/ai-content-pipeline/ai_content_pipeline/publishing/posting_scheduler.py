@@ -90,68 +90,72 @@ class PostingScheduler:
         self.publisher = publisher
 
     async def upload(self) -> None:
-        for profile in self.template_profiles:
-            outputs = profile.platform_info[self.platform_name].outputs_path
+        results = await asyncio.gather(
+            *(self._upload_profile(profile) for profile in self.template_profiles),
+            return_exceptions=True,
+        )
+        for profile, result in zip(self.template_profiles, results):
+            if isinstance(result, Exception):
+                logger.error("Failed to process profile {}: {}", profile.name, result)
 
-            pub_root = Path(outputs) / "publications"
-            # TODO: should be this included in the Profile class?
-            if not pub_root.exists():
-                raise FileNotFoundError(f"No publications folder for {profile}")
+    async def _upload_profile(self, profile: Profile) -> None:
+        outputs = profile.platform_info[self.platform_name].outputs_path
 
-            publications = []
-            for day_folder in _iter_day_folders(pub_root):
-                try:
-                    caption_text: str = (
-                        (day_folder / "captions.txt")
-                        .read_text(encoding="utf-8")
-                        .strip()
-                    )
+        pub_root = Path(outputs) / "publications"
+        # TODO: should be this included in the Profile class?
+        if not pub_root.exists():
+            raise FileNotFoundError(f"No publications folder for {profile}")
 
-                    upload_time: datetime = datetime.fromisoformat(
-                        (day_folder / "upload_times.txt")
-                        .read_text(encoding="utf-8")
-                        .strip()
-                        .replace("Z", "+00:00")
-                    )
+        publications = []
+        for day_folder in _iter_day_folders(pub_root):
+            try:
+                caption_text: str = (
+                    (day_folder / "captions.txt").read_text(encoding="utf-8").strip()
+                )
 
-                    image_paths: List[Path] = (
-                        list(day_folder.glob("*.png"))
-                        + list(day_folder.glob("*.jpg"))
-                        + list(day_folder.glob("*.jpeg"))
-                    )
+                upload_time: datetime = datetime.fromisoformat(
+                    (day_folder / "upload_times.txt")
+                    .read_text(encoding="utf-8")
+                    .strip()
+                    .replace("Z", "+00:00")
+                )
 
-                    # Let Pydantic handle all validation
-                    publications.append(
-                        Publication(
-                            day_folder=day_folder,  # This Path variable is used for logging stuff in the terminal
-                            caption_text=caption_text,
-                            upload_time=upload_time,
-                            image_paths=image_paths,
-                        )
-                    )
-                except (FileNotFoundError, ValueError, ValidationError) as err:
-                    logger.error(
-                        f"Failed to create publication for {day_folder}: {err}"
-                    )
-                    continue
+                image_paths: List[Path] = (
+                    list(day_folder.glob("*.png"))
+                    + list(day_folder.glob("*.jpg"))
+                    + list(day_folder.glob("*.jpeg"))
+                )
 
-            if self.platform_name == Platform.FANVUE:
-                try:
-                    await self._upload_via_fanvue_api(
-                        publications,
-                        cast(Type[FanvueAPIPublisher], self.publisher),
-                        profile,
+                # Let Pydantic handle all validation
+                publications.append(
+                    Publication(
+                        day_folder=day_folder,  # This Path variable is used for logging stuff in the terminal
+                        caption_text=caption_text,
+                        upload_time=upload_time,
+                        image_paths=image_paths,
                     )
-                except Exception as e:
-                    logger.error("Failed to upload via Fanvue API: {}", e)
-            elif self.platform_name == Platform.META:
-                await self._upload_via_api(
+                )
+            except (FileNotFoundError, ValueError, ValidationError) as err:
+                logger.error(f"Failed to create publication for {day_folder}: {err}")
+                continue
+
+        if self.platform_name == Platform.FANVUE:
+            try:
+                await self._upload_via_fanvue_api(
                     publications,
-                    cast(Type[MetaPublisher], self.publisher),
+                    cast(Type[FanvueAPIPublisher], self.publisher),
                     profile,
                 )
-            else:
-                raise NotImplementedError(f"Unsupported platform: {self.platform_name}")
+            except Exception as e:
+                logger.error("Failed to upload via Fanvue API: {}", e)
+        elif self.platform_name == Platform.META:
+            await self._upload_via_api(
+                publications,
+                cast(Type[MetaPublisher], self.publisher),
+                profile,
+            )
+        else:
+            raise NotImplementedError(f"Unsupported platform: {self.platform_name}")
 
     async def _upload_via_api(
         self,
