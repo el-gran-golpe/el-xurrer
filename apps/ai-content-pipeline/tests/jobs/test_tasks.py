@@ -3,16 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from ai_content_pipeline.domain.types import (
-    MetaCredentials,
-    Platform,
-    PlatformInfo,
-    Profile,
-)
+from ai_content_pipeline.domain.types import Platform, Profile
 from ai_content_pipeline.generation.publications_generator import ImageSpec
 from ai_content_pipeline.jobs import tasks
 from ai_content_pipeline.jobs.queue import Job
-from ai_content_pipeline.jobs.store import JobStatus, JobStore, JobType
+from ai_content_pipeline.jobs.store import JobStatus, JobType
 
 PLANNING = {
     "week_1": [
@@ -69,34 +64,6 @@ class FakeBackend:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"jpeg")
         self.generated.append(output_path)
-
-
-@pytest.fixture
-def profile(tmp_path: Path) -> Profile:
-    inputs = tmp_path / "inputs"
-    outputs = tmp_path / "outputs"
-    inputs.mkdir()
-    outputs.mkdir()
-    (inputs / "haru.json").write_text('{"prompts": []}', encoding="utf-8")
-    (inputs / "initial_conditions.md").write_text("once upon a time", encoding="utf-8")
-    return Profile(
-        name="haru",
-        platform_info={
-            Platform.META: PlatformInfo(
-                name=Platform.META, inputs_path=inputs, outputs_path=outputs, lang="en"
-            )
-        },
-        meta_credentials=MetaCredentials(
-            instagram_account_id="1",
-            facebook_page_id="2",
-            facebook_page_access_token="tok",
-        ),
-    )
-
-
-@pytest.fixture
-def store() -> JobStore:
-    return JobStore(":memory:")
 
 
 def _write_planning(profile: Profile, planning: dict = PLANNING) -> Path:
