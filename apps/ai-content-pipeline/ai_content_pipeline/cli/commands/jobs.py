@@ -49,6 +49,7 @@ def register_handlers(
     use_initial_conditions: bool,
     refresh_model_cache: bool,
     schedule_concurrency: int,
+    skip_schedule: bool = False,
 ) -> None:
     """
     Wires the 3 job types onto the queue. Concurrency is decided here, per
@@ -76,6 +77,10 @@ def register_handlers(
 
     async def handle_schedule(batch: list[Job]) -> None:
         job = batch[0]
+        if skip_schedule:
+            # Left pending on purpose, so a later run without the flag publishes it.
+            logger.warning("Skipping publish for {} (--skip-schedule)", job.id)
+            return
         await run_schedule(job, store, PUBLISHERS[job.payload.platform])
 
     queue.register(JobType.PLAN.value, handle_plan, concurrency=1)
@@ -127,6 +132,7 @@ async def _execute(
     profiles: list[Profile],
     use_initial_conditions: bool,
     refresh_model_cache: bool,
+    skip_schedule: bool,
 ) -> None:
     db_path = Path(settings.jobs_db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -142,6 +148,7 @@ async def _execute(
             use_initial_conditions=use_initial_conditions,
             refresh_model_cache=refresh_model_cache,
             schedule_concurrency=max(1, len(profiles) * len(Platform)),
+            skip_schedule=skip_schedule,
         )
         await seed_plans(queue, profiles)
         await queue.run()
@@ -159,6 +166,12 @@ def run(
     refresh_model_cache: bool = typer.Option(
         False, "--refresh-model-cache", help="Refresh the cached model catalog."
     ),
+    skip_schedule: bool = typer.Option(
+        False,
+        "--skip-schedule",
+        help="Plan and generate only: never publish to Meta/Fanvue, and never "
+        "sleep until upload_time. The schedule jobs stay pending for a later run.",
+    ),
 ):
     """
     Run plan -> generate -> schedule as a DAG for the selected profiles.
@@ -175,6 +188,8 @@ def run(
     for profile in profiles:
         validate_meta_profile_auth(profile)
 
-    asyncio.run(_execute(profiles, use_initial_conditions, refresh_model_cache))
+    asyncio.run(
+        _execute(profiles, use_initial_conditions, refresh_model_cache, skip_schedule)
+    )
     get_gdrive_sync().push(RESOURCES_DIR)
     logger.success("✅  DAG run finished for {} profile(s).", len(profiles))
