@@ -217,6 +217,21 @@ cambian.
   Meta/Fanvue) puede seguir corriendo en la máquina local/orquestador aunque
   `generate_image` corra en la UPC, ya que el backend de generación es el
   único paso que cambia de sitio.
+- **Async nativo en el código bloqueante**, en pasos posteriores (no en los
+  commits 1-6 de esta lista). Hoy el puente es `asyncio.to_thread` dentro de
+  `LocalComfyBackend.generate` (`jobs/generation_backend.py`): `ComfyLocal`
+  usa `requests` + `websocket` síncronos, y llamarlos directamente desde un
+  worker de la `Queue` congelaría el event loop, bloqueando también las colas
+  de `plan` y `schedule` — justo el head-of-line blocking que la `Queue`
+  existe para evitar. El hilo tapa el problema y es suficiente para v1 (una
+  sola GPU, concurrencia 1), pero lo correcto a medio plazo es convertir esas
+  rutas a async de verdad (`httpx.AsyncClient` + un cliente de websocket
+  async en `integrations/comfyui/local.py`, y lo mismo para las partes
+  bloqueantes de `planning`/`generation` que `jobs/tasks.py` acabe llamando).
+  Cuando eso ocurra, el `to_thread` del backend se cae y `generate` pasa a ser
+  async de punta a punta; el resto del DAG no cambia, porque la interfaz
+  `GenerationBackend.generate` ya es `async`. Se hace en un paso aparte para
+  no mezclar la migración async con la construcción del DAG.
 
 ## Rama y orden de commits
 
@@ -239,17 +254,36 @@ entre uno y otro:
    `tests/jobs/test_generation_backend.py`) — interfaz +
    `LocalComfyBackend` envolviendo el `ComfyLocal` existente. Verificable
    con un `ComfyLocal` mockeado, igual que ya se mockea en los tests
-   actuales del paquete `integrations/comfyui`. ⬜ pendiente.
+   actuales del paquete `integrations/comfyui`. ✅ hecho (`3b9c734`).
+   Desviación: `generate` quedó `async` con `asyncio.to_thread`, porque
+   `ComfyLocal` es bloqueante y colgaría el event loop de la `Queue` (ver
+   "Async nativo en el código bloqueante" en Caminos futuros).
 4. **`jobs/tasks.py`** — `run_plan`/`run_generate_image`/`run_schedule`,
    conectando `JobStore`+`Queue`+`GenerationBackend` con `PlanningManager`,
    `DirectoryManager`, `ImageGeneratorService`/`_parse_day` y
    `PostingScheduler` reales. Tests mockeando esas 4 dependencias externas
-   (mismo patrón de mocking que ya usa el repo para límites externos). ⬜
-   pendiente.
+   (mismo patrón de mocking que ya usa el repo para límites externos). ✅
+   hecho (`70586ce`). Decisiones no previstas en este plan: el `group_key` del
+   fan-in incluye el hash del `planning.json` (un replan cambia el número de
+   imágenes, así que el contador viejo miente) y `run_plan` encola `schedule`
+   directamente cuando todas las imágenes ya están `done`, porque en ese caso
+   nadie decrementa el contador hasta 0.
 5. **`cli/commands/jobs.py`** — subcomando Typer `jobs run`, registro en el
    CLI principal, reentrancia (siembra solo lo pendiente). Aquí es donde se
    hace la prueba manual end-to-end (verificación 4-7 del apartado
-   anterior) antes de dar el commit por bueno. ⬜ pendiente.
+   anterior) antes de dar el commit por bueno. ✅ código hecho (`d03d5b8`),
+   más el flag `--skip-schedule` (`cca0d8b`) para poder validar
+   plan/generate/resume sin publicar en Meta/Fanvue ni dormir hasta
+   `upload_time`. ⬜ **prueba manual pendiente**: pasos 1 y 2 con
+   `-n laura_vigne,maria_larsen --skip-schedule` (run completo + Ctrl+C y
+   relanzar), y paso 3 sin el flag para publicar de verdad.
+   Otras decisiones: un `LocalComfyBackend` por perfil (el workflow es por
+   perfil; `pipeline.generate` reusaba el de `profiles[0]` para todos),
+   `schedule` con un worker por job posible (Meta duerme hasta `upload_time`
+   y no debe bloquear a las demás plataformas), y ruta de la DB vía el nuevo
+   setting `JOBS_DB_PATH` (default `.cache/jobs/state.db`, fuera de
+   `resources/`). `jobs run` nunca limpia `outputs/`, al revés que
+   `all run_all`: esos ficheros son parte del checkpoint.
 6. **Documentación** — actualizar `AGENTS.md` (raíz y/o
    `apps/ai-content-pipeline/AGENTS.md`) con el nuevo comando `jobs run`,
    las 3 interfaces y la decisión de mantener `all run_all` como fallback,
