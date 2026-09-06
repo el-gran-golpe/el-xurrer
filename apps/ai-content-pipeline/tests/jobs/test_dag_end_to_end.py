@@ -171,3 +171,31 @@ async def test_seed_plans_seeds_one_plan_per_profile_and_platform(profile):
     assert sorted(job.id for job in seeded) == sorted(
         tasks.plan_job_id(profile, platform) for platform in Platform
     )
+
+
+@pytest.mark.asyncio
+async def test_skip_schedule_generates_everything_but_never_publishes(
+    profile, store, fakes
+):
+    _, uploaded = fakes
+    backend = FakeBackend()
+    queue = Queue()
+    jobs_cli.register_handlers(
+        queue,
+        store,
+        {profile.name: backend},
+        use_initial_conditions=True,
+        refresh_model_cache=False,
+        schedule_concurrency=2,
+        skip_schedule=True,
+    )
+    await jobs_cli.seed_plans(queue, [profile])
+    await queue.run()
+
+    assert len(backend.generated) == 2 * len(Platform)
+    assert uploaded == []
+    for platform in Platform:
+        # Left pending, so a later run without the flag still publishes it.
+        assert (
+            store.status(tasks.schedule_job_id(profile, platform)) is JobStatus.PENDING
+        )
