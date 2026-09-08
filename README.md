@@ -28,10 +28,30 @@ Copy the relevant example env file before running an app:
 
 ```bash
 uv run python apps/ai-content-pipeline/main.py --help
-uv run python apps/ai-content-pipeline/main.py meta plan -p 0
-uv run python apps/ai-content-pipeline/main.py meta generate -p 0
-uv run python apps/ai-content-pipeline/main.py meta schedule -p 0
+uv run python apps/ai-content-pipeline/main.py all run_all
+uv run python apps/ai-content-pipeline/main.py all debug
+uv run python apps/ai-content-pipeline/main.py meta plan
+uv run python apps/ai-content-pipeline/main.py meta generate
+uv run python apps/ai-content-pipeline/main.py meta schedule
+uv run python apps/ai-content-pipeline/main.py fanvue plan
+uv run python apps/ai-content-pipeline/main.py fanvue generate
+uv run python apps/ai-content-pipeline/main.py fanvue schedule
+uv run python apps/ai-content-pipeline/main.py fanvue auth
+```
+
+Every command above that accepts profile selectors runs **all loaded profiles**
+when neither `-p/--profile-indexes` nor `-n/--profile-names` is supplied. This applies
+to `all run_all`, `all debug`, Meta/Fanvue `plan`, `generate`, and `schedule`, and
+`fanvue auth`.
+
+To run a command for specific profiles, pass an index with `-p` (repeat it to select
+multiple profiles) or comma-separated names with `-n`. Indexes take precedence when
+both selectors are supplied:
+
+```bash
 uv run python apps/ai-content-pipeline/main.py all run_all -p 0
+uv run python apps/ai-content-pipeline/main.py meta generate -p 0 -p 1
+uv run python apps/ai-content-pipeline/main.py fanvue plan -n laura_vigne,maria_larsen
 ```
 
 The Instagram publishing path uses a Facebook staging Page only to obtain public media URLs for Instagram. It is not a Facebook cross-posting flow.

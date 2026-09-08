@@ -1,10 +1,18 @@
 from typing import Optional
 
-import typer
-
 from ai_content_pipeline.integrations.google_drive.sync_resources import GoogleDriveSync
 from ai_content_pipeline.paths import RESOURCES_DIR
 from ai_content_pipeline.profiles.profile import ProfileManager, Profile
+
+
+PROFILE_INDEXES_HELP = (
+    "Profile indexes (repeat -p to select multiple); overrides -n. "
+    "Defaults to all loaded profiles when neither -p nor -n is provided."
+)
+PROFILE_NAMES_HELP = (
+    "Comma-separated profile names. "
+    "Defaults to all loaded profiles when neither -p nor -n is provided."
+)
 
 
 def get_gdrive_sync() -> GoogleDriveSync:
@@ -18,18 +26,15 @@ profile_manager = ProfileManager(RESOURCES_DIR)
 def resolve_profiles(
     indexes: list[int],
     names: Optional[str],
-    *,
-    default_all: bool = False,
 ) -> list[Profile]:
     """
-    Pick profiles by index list or comma‑separated names. Indexes win.
+    Pick profiles by indexes or comma-separated names, defaulting to all loaded
+    profiles when neither selector is provided. Indexes take precedence.
     """
     if indexes:
         return [profile_manager.get_profile_by_index(i) for i in indexes]
-    if names:
+    if names is not None:
         return [
             profile_manager.get_profile_by_name(n.strip()) for n in names.split(",")
         ]
-    if default_all:
-        return profile_manager.get_all_profiles()
-    raise typer.BadParameter("Provide --profile-indexes or --profile-names.")
+    return profile_manager.get_all_profiles()

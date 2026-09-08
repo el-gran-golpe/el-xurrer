@@ -10,6 +10,8 @@ from ai_content_pipeline.profiles.profile import Profile
 from ai_content_pipeline.domain.types import Platform
 
 from ai_content_pipeline.cli.commands.utils import (
+    PROFILE_INDEXES_HELP,
+    PROFILE_NAMES_HELP,
     resolve_profiles,
     get_gdrive_sync,
     RESOURCES_DIR,
@@ -112,8 +114,12 @@ async def _execute_all(
 
 @app.command("run_all")
 def run_all(
-    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
-    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+    profile_indexes: list[int] = typer.Option(
+        [], "-p", "--profile-indexes", help=PROFILE_INDEXES_HELP
+    ),
+    profile_names: Optional[str] = typer.Option(
+        None, "-n", "--profile-names", help=PROFILE_NAMES_HELP
+    ),
     overwrite: bool = typer.Option(
         True, "--overwrite-outputs/--no-overwrite-outputs", "-o"
     ),
@@ -130,7 +136,7 @@ def run_all(
     """
     Run the full pipeline (Instagram Page-token posting with shared staging -> Fanvue) at INFO level.
     """
-    profiles = resolve_profiles(profile_indexes, profile_names, default_all=True)
+    profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process")
         return
@@ -149,8 +155,12 @@ def run_all(
 
 @app.command("debug")
 def debug(
-    profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
-    profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+    profile_indexes: list[int] = typer.Option(
+        [], "-p", "--profile-indexes", help=PROFILE_INDEXES_HELP
+    ),
+    profile_names: Optional[str] = typer.Option(
+        None, "-n", "--profile-names", help=PROFILE_NAMES_HELP
+    ),
     overwrite: bool = typer.Option(
         True, "--overwrite-outputs/--no-overwrite-outputs", "-o"
     ),
@@ -167,7 +177,7 @@ def debug(
     """
     Run the full pipeline with DEBUG-level logging for Instagram Page-token posting and Fanvue.
     """
-    profiles = resolve_profiles(profile_indexes, profile_names, default_all=True)
+    profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process")
         return
