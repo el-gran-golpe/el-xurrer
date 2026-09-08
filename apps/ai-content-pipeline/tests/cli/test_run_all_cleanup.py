@@ -3,30 +3,11 @@ import inspect
 from types import SimpleNamespace
 
 import pytest
-import typer
 
 from ai_content_pipeline.domain.types import Platform
 
 
 all_commands = importlib.import_module("ai_content_pipeline.cli.commands.all")
-utils = importlib.import_module("ai_content_pipeline.cli.commands.utils")
-
-
-class FakeProfileManager:
-    def __init__(self, profiles):
-        self.profiles = list(profiles)
-
-    def get_profile_by_index(self, index: int):
-        return self.profiles[index]
-
-    def get_profile_by_name(self, name: str):
-        for profile in self.profiles:
-            if profile.name == name:
-                return profile
-        raise KeyError(name)
-
-    def get_all_profiles(self):
-        return list(self.profiles)
 
 
 def _profile(name, tmp_path):
@@ -59,21 +40,6 @@ def _output_entries(profile):
     }
 
 
-def test_resolve_profiles_can_default_to_all_loaded_profiles(monkeypatch, tmp_path):
-    profiles = [_profile("laura_vigne", tmp_path), _profile("maria_larsen", tmp_path)]
-    monkeypatch.setattr(utils, "profile_manager", FakeProfileManager(profiles))
-
-    assert utils.resolve_profiles([], None, default_all=True) == profiles
-
-
-def test_resolve_profiles_still_requires_selection_by_default(monkeypatch, tmp_path):
-    profiles = [_profile("laura_vigne", tmp_path)]
-    monkeypatch.setattr(utils, "profile_manager", FakeProfileManager(profiles))
-
-    with pytest.raises(typer.BadParameter):
-        utils.resolve_profiles([], None)
-
-
 def test_run_all_cleans_selected_profile_outputs_before_pipeline(monkeypatch, tmp_path):
     profiles = [_profile("laura_vigne", tmp_path), _profile("maria_larsen", tmp_path)]
     for profile in profiles:
@@ -81,8 +47,7 @@ def test_run_all_cleans_selected_profile_outputs_before_pipeline(monkeypatch, tm
 
     observed = {}
 
-    def fake_resolve_profiles(indexes, names, *, default_all=False):
-        observed["default_all"] = default_all
+    def fake_resolve_profiles(indexes, names):
         return profiles
 
     async def fake_execute_all(
@@ -116,7 +81,6 @@ def test_run_all_cleans_selected_profile_outputs_before_pipeline(monkeypatch, tm
         cleanup_local_outputs=True,
     )
 
-    assert observed["default_all"] is True
     assert observed["profiles"] == profiles
     for profile_entries in observed["entries_during_execute"].values():
         assert profile_entries == {Platform.META: [], Platform.FANVUE: []}
@@ -142,7 +106,7 @@ def test_run_all_can_keep_existing_outputs(monkeypatch, tmp_path):
     monkeypatch.setattr(
         all_commands,
         "resolve_profiles",
-        lambda indexes, names, *, default_all=False: profiles,
+        lambda indexes, names: profiles,
     )
     monkeypatch.setattr(
         all_commands, "validate_meta_profile_auth", lambda profile: None
@@ -192,7 +156,7 @@ def test_run_all_validates_meta_auth_before_cleanup_and_pipeline(
     monkeypatch.setattr(
         all_commands,
         "resolve_profiles",
-        lambda indexes, names, *, default_all=False: profiles,
+        lambda indexes, names: profiles,
     )
     monkeypatch.setattr(
         all_commands,
