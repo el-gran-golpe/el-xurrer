@@ -18,11 +18,13 @@ uv sync
 uv run pre-commit install
 ```
 
-Copy the relevant example env file before running an app:
+Both apps use the repository-root `.env`. For a new checkout, copy the shared template from the repository root, then fill in the values needed by your app:
 
-- Full monorepo example: `.env.example`
-- AI content app: `apps/ai-content-pipeline/.env.example`
-- Fanvue FastAPI app: `apps/fanvue-fastapi/.env.example`
+```bash
+cp -n .env.example .env
+```
+
+Run the AI content CLI with the repository root as the working directory, including in IDE run configurations: it resolves `.env` relative to the working directory. Fanvue FastAPI resolves the root `.env` by absolute path.
 
 ## AI Content CLI
 

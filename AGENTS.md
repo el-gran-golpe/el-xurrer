@@ -26,6 +26,7 @@
 - `shared/fanvue-api-client/` contains shared Fanvue OAuth, media upload, post creation, and token-store primitives used by both apps.
 - Runtime profile resources live under `resources/`, which is gitignored. Profile details are organized by profile and platform, with `inputs/` for source prompt data and `outputs/` for local generated planning/publication artifacts.
 - Do not add root-level app code or root-level test folders. Root files should be workspace-wide config or documentation only.
+- Keep environment setup centralized in the repository-root `.env` and `.env.example`; do not add app-local copies. The AI content CLI resolves `.env` relative to the current working directory, so launch it from the repository root (including IDE configurations). Fanvue FastAPI uses an absolute repository-root `.env` path.
 
 ## Commands
 - Install/sync dependencies: `uv sync`
