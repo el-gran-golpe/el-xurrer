@@ -26,7 +26,7 @@
     </EXTENSION>
     <option name="RUN_TOOL" value="true" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/apps/ai-content-pipeline/main.py" />
-    <option name="PARAMETERS" value="fanvue schedule -p 1 -p 0" />
+    <option name="PARAMETERS" value="fanvue schedule" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />
