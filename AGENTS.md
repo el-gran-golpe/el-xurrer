@@ -17,6 +17,7 @@
 ## Project Map
 - `pyproject.toml` is the source of truth for dependencies and tool configuration for `uv`, Ruff, mypy, and pytest.
 - `.pre-commit-config.yaml` runs the same `uv run ...` quality commands that agents should run manually.
+- `.run/` contains shared PyCharm run configurations; review these when changing CLI commands, options, defaults, or entrypoints.
 - `apps/ai-content-pipeline/` contains the AI content Typer app, its app-local entrypoint, tests, README, and app-specific agent instructions.
 - `apps/ai-content-pipeline/ai_content_pipeline/cli/` contains Typer command modules and orchestration helpers.
 - `apps/ai-content-pipeline/ai_content_pipeline/domain/`, `profiles/`, `planning/`, `generation/`, and `publishing/` contain domain models and workflow services.
@@ -38,7 +39,9 @@
 - Run the AI content CLI: `uv run python apps/ai-content-pipeline/main.py --help`
 - Run Fanvue FastAPI locally only when needed: `uv run python apps/fanvue-fastapi/main.py`
 - Run the full AI content pipeline for all loaded profiles: `uv run python apps/ai-content-pipeline/main.py all run_all`
-- `all run_all` defaults to every loaded profile when no `-p/--profile-indexes` or `-n/--profile-names` selector is passed. Selectors still limit the run.
+- Every CLI command with profile selectors defaults to all loaded profiles when neither `-p/--profile-indexes` nor `-n/--profile-names` is passed. This includes `all run_all`, `all debug`, Meta/Fanvue `plan`, `generate`, and `schedule`, and `fanvue auth`.
+- Explicit selectors limit the run: repeat `-p` for multiple indexes or pass comma-separated names with `-n`. Indexes take precedence when both selectors are provided. Invalid explicit selections, including an empty `-n ""`, must never fall back to all profiles. Keep this behavior centralized in `resolve_profiles()`.
+- PyCharm's general and all-profile CLI configurations omit profile selectors; configurations explicitly named for a particular profile keep their selector. Use `all run_all` for normal runs and `all debug` for debug runs. The "No overwrite" configuration needs both `--no-overwrite-outputs` and `--keep-local-outputs` to preserve existing planning files at startup.
 - `all run_all` clears each selected profile's Meta and Fanvue `outputs/` folders before planning/generation by default. Pass `--keep-local-outputs` only when intentionally reusing existing outputs.
 
 ## Model Router Behavior

@@ -18,7 +18,8 @@
 - Run this app's tests: `uv run pytest apps/ai-content-pipeline/tests -q`
 - Exchange a Meta short-lived user token for a profile Page token: fill in `GRAPH_API_BASE_URL`, `DEFAULT_PROFILE_ALIAS`, `DEFAULT_PAGE_ID`, and `META_APP_ID` inside the `if __name__ == "__main__"` block in `apps/ai-content-pipeline/scripts/exchange_meta_page_token.py`, then run `uv run python apps/ai-content-pipeline/scripts/exchange_meta_page_token.py` or a PyCharm run configuration.
 - Run the full Meta and Fanvue pipeline for all loaded profiles: `uv run python apps/ai-content-pipeline/main.py all run_all`
-- `all run_all` defaults to every loaded profile when no `-p/--profile-indexes` or `-n/--profile-names` selector is passed. Selectors still limit the run.
+- Every CLI command with profile selectors defaults to all loaded profiles when neither `-p/--profile-indexes` nor `-n/--profile-names` is passed. This includes `all run_all`, `all debug`, Meta/Fanvue `plan`, `generate`, and `schedule`, and `fanvue auth`.
+- Explicit selectors limit the run: repeat `-p` for multiple indexes or pass comma-separated names with `-n`. Indexes take precedence when both selectors are provided. Invalid explicit selections, including an empty `-n ""`, must never fall back to all profiles. Keep this behavior centralized in `resolve_profiles()`.
 - `all run_all` clears each selected profile's `meta/outputs` and `fanvue/outputs` before planning/generation by default. Pass `--keep-local-outputs` only when intentionally preserving previous outputs.
 
 ## Local Notes
