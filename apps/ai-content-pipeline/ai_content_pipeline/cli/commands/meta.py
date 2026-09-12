@@ -48,7 +48,17 @@ def generate(
 def schedule(
     profile_indexes: list[int] = typer.Option([], "-p", "--profile-indexes"),
     profile_names: Optional[str] = typer.Option(None, "-n", "--profile-names"),
+    resume: bool = typer.Option(
+        False,
+        "--resume",
+        help=(
+            "Skip days whose upload time has already passed; continue from "
+            "today's post if still ahead, otherwise tomorrow's."
+        ),
+    ),
 ):
     """Stage media on Facebook CDN and publish Instagram posts via Page tokens."""
     profiles = resolve_profiles(profile_indexes, profile_names)
-    asyncio.run(pipeline.schedule(Platform.META, profiles, MetaPublisher))
+    asyncio.run(
+        pipeline.schedule(Platform.META, profiles, MetaPublisher, resume=resume)
+    )

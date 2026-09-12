@@ -53,9 +53,12 @@ def generate(platform: Platform, profiles: list[Profile]):
         logger.success("{} assets generated for {}.", platform.name, p.name)
 
 
-async def schedule(platform: Platform, profiles: list[Profile], publisher_cls):
+async def schedule(
+    platform: Platform, profiles: list[Profile], publisher_cls, resume: bool = False
+):
     await PostingScheduler(
         template_profiles=profiles,
         platform_name=platform,
         publisher=publisher_cls,
+        resume=resume,
     ).upload()

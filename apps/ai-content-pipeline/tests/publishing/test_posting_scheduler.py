@@ -1,11 +1,15 @@
 import asyncio
 import time
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
 from ai_content_pipeline.domain.types import Platform
-from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler
+from ai_content_pipeline.publishing.posting_scheduler import (
+    PostingScheduler,
+    _pending_publications,
+)
 
 
 def _profile(name):
@@ -57,3 +61,11 @@ async def test_upload_isolates_one_profile_failure_from_the_rest(monkeypatch):
     await scheduler.upload()
 
     assert processed == ["ok"]
+
+
+def test_pending_publications_skips_past_due():
+    now = datetime.now(timezone.utc)
+    past = SimpleNamespace(upload_time=now - timedelta(days=1))
+    future = SimpleNamespace(upload_time=now + timedelta(hours=1))
+
+    assert _pending_publications([past, future]) == [future]

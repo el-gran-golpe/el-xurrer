@@ -59,6 +59,13 @@ class Publication(BaseModel):
         return paths
 
 
+def _pending_publications(publications: list[Publication]) -> list[Publication]:
+    """Drop publications whose upload_time has already passed."""
+    return [
+        p for p in publications if p.upload_time >= datetime.now(p.upload_time.tzinfo)
+    ]
+
+
 def _iter_day_folders(root: Path) -> Iterator[Path]:
     """
     Yield day folders sorted by week then day, validating folder names.
@@ -83,11 +90,12 @@ class PostingScheduler:
         template_profiles: List[Profile],
         platform_name: Platform,
         publisher: Union[Type[MetaPublisher], Type[FanvueAPIPublisher]],
+        resume: bool = False,
     ):
-        self.platform_name = platform_name
         self.platform_name = platform_name
         self.template_profiles = template_profiles
         self.publisher = publisher
+        self.resume = resume
 
     async def upload(self) -> None:
         results = await asyncio.gather(
@@ -138,6 +146,15 @@ class PostingScheduler:
             except (FileNotFoundError, ValueError, ValidationError) as err:
                 logger.error(f"Failed to create publication for {day_folder}: {err}")
                 continue
+
+        if self.resume:
+            pending_publications = _pending_publications(publications)
+            skipped = len(publications) - len(pending_publications)
+            if skipped:
+                logger.info(
+                    f"[resume] Skipping {skipped} already-past-due day(s) for {profile.name}"
+                )
+            publications = pending_publications
 
         if self.platform_name == Platform.FANVUE:
             try:
