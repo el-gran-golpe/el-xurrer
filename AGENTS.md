@@ -26,6 +26,7 @@
 - `apps/fanvue-fastapi/` contains the Fanvue FastAPI app, tests, README, and app-specific agent instructions.
 - `shared/fanvue-api-client/` contains shared Fanvue OAuth, media upload, post creation, and token-store primitives used by both apps.
 - Runtime profile resources live under `resources/`, which is gitignored. Profile details are organized by profile and platform, with `inputs/` for source prompt data and `outputs/` for local generated planning/publication artifacts.
+- `scripts/start_pipeline_with_comfyui.sh` launches ComfyUI (sibling repo) and the pipeline detached via `setsid`. By default it binds ComfyUI's `--listen` to `COMFY_LISTEN_HOST` (`0.0.0.0`, reachable from other machines on the LAN/ZeroTier), separate from `COMFY_HOST` (`127.0.0.1`, used by the wrapper's readiness curl and by the pipeline's own ComfyUI client since both run on this same machine). Override `COMFY_LISTEN_HOST` to restrict binding, or `COMFY_HOST` to point the pipeline at a ComfyUI instance running elsewhere.
 - Do not add root-level app code or root-level test folders. Root files should be workspace-wide config or documentation only.
 - Keep environment setup centralized in the repository-root `.env` and `.env.example`; do not add app-local copies. The AI content CLI resolves `.env` relative to the current working directory, so launch it from the repository root (including IDE configurations). Fanvue FastAPI uses an absolute repository-root `.env` path.
 

@@ -11,6 +11,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMFYUI_DIR="${COMFYUI_DIR:-$REPO_ROOT/../ComfyUI}"
 COMFY_HOST="${COMFY_HOST:-127.0.0.1}"
+COMFY_LISTEN_HOST="${COMFY_LISTEN_HOST:-0.0.0.0}"
 COMFY_PORT="${COMFY_PORT:-8188}"
 COMFYUI_READY_TIMEOUT="${COMFYUI_READY_TIMEOUT:-180}"
 
@@ -42,7 +43,7 @@ if [[ ! -d "$COMFYUI_DIR" ]]; then
 fi
 
 echo "Starting ComfyUI in $COMFYUI_DIR (log: $COMFYUI_LOG)..."
-setsid env -C "$COMFYUI_DIR" uv run python main.py --listen "$COMFY_HOST" --port "$COMFY_PORT" \
+setsid env -C "$COMFYUI_DIR" uv run python main.py --listen "$COMFY_LISTEN_HOST" --port "$COMFY_PORT" \
     </dev/null >"$COMFYUI_LOG" 2>&1 &
 COMFYUI_PID=$!
 disown
