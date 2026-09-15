@@ -68,8 +68,8 @@ def schedule(
         False,
         "--resume",
         help=(
-                "Skip days whose upload time has already passed; continue from "
-                "today's post if still ahead, otherwise tomorrow's."
+            "Skip days whose upload time has already passed; continue from "
+            "today's post if still ahead, otherwise tomorrow's."
         ),
     ),
 ):

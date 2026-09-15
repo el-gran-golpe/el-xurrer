@@ -148,9 +148,14 @@ def test_commands_run_for_all_or_selected_profiles(
             publisher = (
                 meta.MetaPublisher if group == "meta" else fanvue.FanvueAPIPublisher
             )
-            command_spies.schedule.assert_awaited_once_with(
-                platform, selected, publisher
-            )
+            if group == "meta":
+                command_spies.schedule.assert_awaited_once_with(
+                    platform, selected, publisher, resume=False
+                )
+            else:
+                command_spies.schedule.assert_awaited_once_with(
+                    platform, selected, publisher
+                )
 
 
 @pytest.mark.parametrize(("group", "command"), PROFILE_COMMANDS)
