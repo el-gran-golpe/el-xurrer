@@ -36,6 +36,13 @@ class Settings(BaseSettings):
         default=Path(".cache/model_router"),
         validation_alias="MODEL_CACHE_DIR",
     )
+    # SQLite file backing the jobs DAG state (ai_content_pipeline.jobs.store).
+    # Kept out of resources/ so Google Drive sync never sees it. Point
+    # JOBS_DB_PATH at shared storage to resume a run from another machine.
+    jobs_db_path: Path = Field(
+        default=Path(".cache/jobs/state.db"),
+        validation_alias="JOBS_DB_PATH",
+    )
     # How long a provider's model catalog and capabilities cache are considered fresh.
     model_cache_ttl_hours: int = Field(
         default=24,
