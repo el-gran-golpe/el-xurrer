@@ -7,7 +7,7 @@ from ai_content_pipeline.generation.publications_generator import PublicationsGe
 from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler
 from ai_content_pipeline.integrations.comfyui.local import ComfyLocal
 
-from ai_content_pipeline.cli.commands.utils import RESOURCES_DIR
+from ai_content_pipeline.cli.commands.utils import RESOURCES_DIR, profile_repository
 from ai_content_pipeline.config import settings
 
 
@@ -23,6 +23,7 @@ def plan(
             platform_name=platform,
             use_initial_conditions=use_initial_conditions,
             refresh_model_cache=refresh_model_cache,
+            repository=profile_repository,
         ).plan()
         logger.success("{} planning done for {}.", platform.name, p.name)
 
@@ -49,6 +50,7 @@ def generate(platform: Platform, profiles: list[Profile]):
             template_profiles=[p],
             platform_name=platform,
             image_generator_tool=client,
+            repository=profile_repository,
         ).generate()
         logger.success("{} assets generated for {}.", platform.name, p.name)
 

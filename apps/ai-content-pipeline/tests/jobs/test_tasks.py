@@ -5,7 +5,7 @@ import pytest
 
 from ai_content_pipeline.domain.plans import WeekPlan
 from ai_content_pipeline.domain.types import Platform, Profile
-from conftest import repository_for
+from conftest import repository_for, write_persona
 from ai_content_pipeline.generation.publications_generator import ImageSpec
 from ai_content_pipeline.jobs import tasks
 from ai_content_pipeline.jobs.queue import Job
@@ -101,7 +101,13 @@ async def test_run_plan_plans_writes_text_artifacts_and_fans_out_per_image(
     _fake_planning_manager(monkeypatch, profile, calls)
     queue = FakeQueue()
 
-    await tasks.run_plan(_plan_job(profile), store, queue, use_initial_conditions=True)
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        queue,
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
 
     assert len(calls) == 1
     assert calls[0]["platform_name"] is Platform.META
@@ -123,11 +129,21 @@ async def test_run_plan_does_not_replan_when_inputs_are_unchanged_but_still_fans
     calls: list = []
     _fake_planning_manager(monkeypatch, profile, calls)
     await tasks.run_plan(
-        _plan_job(profile), store, FakeQueue(), use_initial_conditions=True
+        _plan_job(profile),
+        store,
+        FakeQueue(),
+        use_initial_conditions=True,
+        repository=repository_for(profile),
     )
 
     queue = FakeQueue()
-    await tasks.run_plan(_plan_job(profile), store, queue, use_initial_conditions=True)
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        queue,
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
 
     assert len(calls) == 1  # not re-planned
     assert len(queue.ids(JobType.GENERATE_IMAGE)) == 3  # children re-enqueued
@@ -140,7 +156,11 @@ async def test_run_plan_replans_when_the_prompt_inputs_changed(
     calls: list = []
     _fake_planning_manager(monkeypatch, profile, calls)
     await tasks.run_plan(
-        _plan_job(profile), store, FakeQueue(), use_initial_conditions=True
+        _plan_job(profile),
+        store,
+        FakeQueue(),
+        use_initial_conditions=True,
+        repository=repository_for(profile),
     )
 
     inputs = Path(profile.platform_info[Platform.META].inputs_path)
@@ -148,7 +168,35 @@ async def test_run_plan_replans_when_the_prompt_inputs_changed(
     prompts["lang"] = "es"
     (inputs / "haru.json").write_text(json.dumps(prompts), encoding="utf-8")
     await tasks.run_plan(
-        _plan_job(profile), store, FakeQueue(), use_initial_conditions=True
+        _plan_job(profile),
+        store,
+        FakeQueue(),
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
+
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_editing_the_persona_does_trigger_a_replan(profile, store, monkeypatch):
+    calls: list = []
+    _fake_planning_manager(monkeypatch, profile, calls)
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        FakeQueue(),
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
+
+    write_persona(profile, "29 now, moved to Lisbon")
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        FakeQueue(),
+        use_initial_conditions=True,
+        repository=repository_for(profile),
     )
 
     assert len(calls) == 2
@@ -161,12 +209,24 @@ async def test_run_plan_enqueues_schedule_directly_when_every_image_is_already_d
     calls: list = []
     _fake_planning_manager(monkeypatch, profile, calls)
     queue = FakeQueue()
-    await tasks.run_plan(_plan_job(profile), store, queue, use_initial_conditions=True)
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        queue,
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
     for job_id in queue.ids(JobType.GENERATE_IMAGE):
         store.mark_done(job_id)
 
     second = FakeQueue()
-    await tasks.run_plan(_plan_job(profile), store, second, use_initial_conditions=True)
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        second,
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
 
     assert second.ids(JobType.GENERATE_IMAGE) == []
     assert second.ids(JobType.SCHEDULE) == ["schedule:haru:meta"]
@@ -174,7 +234,13 @@ async def test_run_plan_enqueues_schedule_directly_when_every_image_is_already_d
 
 async def _plan_and_get_image_jobs(profile, store, queue, monkeypatch) -> list[Job]:
     _fake_planning_manager(monkeypatch, profile, [])
-    await tasks.run_plan(_plan_job(profile), store, queue, use_initial_conditions=True)
+    await tasks.run_plan(
+        _plan_job(profile),
+        store,
+        queue,
+        use_initial_conditions=True,
+        repository=repository_for(profile),
+    )
     return [job for t, job in queue.enqueued if t == JobType.GENERATE_IMAGE.value]
 
 
@@ -243,7 +309,11 @@ async def test_resume_finishes_the_remaining_images_and_still_reaches_schedule(
     # and finishing it must still trip the fan-in counter.
     resumed = FakeQueue()
     await tasks.run_plan(
-        _plan_job(profile), store, resumed, use_initial_conditions=True
+        _plan_job(profile),
+        store,
+        resumed,
+        use_initial_conditions=True,
+        repository=repository_for(profile),
     )
     assert len(resumed.ids(JobType.GENERATE_IMAGE)) == 1
 

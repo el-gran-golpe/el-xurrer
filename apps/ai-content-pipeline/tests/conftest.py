@@ -64,3 +64,9 @@ def repository_for(profile: Profile) -> FilesystemProfileRepository:
     """
     root = profile.platform_info[Platform.META].inputs_path.parents[2]
     return FilesystemProfileRepository(root)
+
+
+def write_persona(profile: Profile, text: str) -> None:
+    """The shared persona file sits in the profile folder, next to the platforms."""
+    profile_dir = profile.platform_info[Platform.META].inputs_path.parents[1]
+    (profile_dir / "persona.md").write_text(text, encoding="utf-8")

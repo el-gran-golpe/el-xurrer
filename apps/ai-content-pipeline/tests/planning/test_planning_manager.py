@@ -5,7 +5,7 @@ import pytest
 
 from ai_content_pipeline.domain.plans import WeekPlan
 from ai_content_pipeline.domain.types import Platform, Profile
-from conftest import repository_for
+from conftest import repository_for, write_persona
 from ai_content_pipeline.planning import planning_manager as planning_manager_module
 from ai_content_pipeline.planning.planning_manager import PlanningManager
 
@@ -62,6 +62,7 @@ def _plan(profile: Profile, platform: Platform, use_initial_conditions=True) -> 
         template_profiles=[profile],
         platform_name=platform,
         use_initial_conditions=use_initial_conditions,
+        repository=repository_for(profile),
     ).plan()
 
 
@@ -69,22 +70,40 @@ def _initial_conditions(profile: Profile) -> Path:
     return profile.platform_info[Platform.META].inputs_path / "initial_conditions.md"
 
 
-def test_plan_feeds_the_platform_prompts_and_initial_conditions_to_the_llm(
+def test_plan_feeds_the_shared_persona_and_the_platform_notes_to_the_llm(
     profile: Profile,
 ):
-    _initial_conditions(profile).write_text("the story so far", encoding="utf-8")
+    write_persona(profile, "28, grew up in Porto")
+    _initial_conditions(profile).write_text("keep it SFW", encoding="utf-8")
 
     _plan(profile, Platform.META)
 
     llm = FakeBaseLLM.instances[0]
-    assert llm.previous_storyline == "the story so far"
+    assert llm.previous_storyline == (
+        "## Who she is\n28, grew up in Porto\n\n## Platform notes\nkeep it SFW"
+    )
     assert [p.cache_key for p in llm.prompts] == ["week"]
 
 
-def test_plan_skips_initial_conditions_when_disabled(profile: Profile):
+def test_no_initial_conditions_drops_the_platform_notes_but_keeps_the_persona(
+    profile: Profile,
+):
+    write_persona(profile, "28, grew up in Porto")
+    _initial_conditions(profile).write_text("keep it SFW", encoding="utf-8")
+
     _plan(profile, Platform.META, use_initial_conditions=False)
 
-    assert FakeBaseLLM.instances[0].previous_storyline == ""
+    storyline = FakeBaseLLM.instances[0].previous_storyline
+    assert storyline == "## Who she is\n28, grew up in Porto"
+
+
+def test_sections_the_profile_has_not_got_yet_are_left_out(profile: Profile):
+    _initial_conditions(profile).write_text("keep it SFW", encoding="utf-8")
+
+    _plan(profile, Platform.META)
+
+    storyline = FakeBaseLLM.instances[0].previous_storyline
+    assert storyline == "## Platform notes\nkeep it SFW"
 
 
 def test_plan_saves_the_generated_week_plan(profile: Profile):
@@ -104,14 +123,16 @@ def test_plan_rejects_an_llm_reply_that_is_not_a_week_plan(profile: Profile):
     assert list(outputs.iterdir()) == []  # nothing half-saved
 
 
-def test_plan_appends_the_storyline_summary(profile: Profile):
+def test_planning_never_writes_back_into_the_profile_inputs(profile: Profile):
+    """
+    Planning used to append its own summary to initial_conditions.md, which is
+    what broke resume: the file it hashed changed on every run.
+    """
     before = _initial_conditions(profile).read_text(encoding="utf-8")
 
     _plan(profile, Platform.META)
 
-    after = _initial_conditions(profile).read_text(encoding="utf-8")
-    assert after.startswith(before)
-    assert "a short summary" in after
+    assert _initial_conditions(profile).read_text(encoding="utf-8") == before
 
 
 def test_saved_file_keeps_the_week_keyed_shape_consumers_read(profile: Profile):

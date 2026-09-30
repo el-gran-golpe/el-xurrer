@@ -1,6 +1,5 @@
 import re
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -73,9 +72,7 @@ class ProfileRepository(Protocol):
         self, profile: Profile, platform: Platform, plan: WeekPlan
     ) -> None: ...
 
-    def add_storyline_summary(
-        self, profile: Profile, platform: Platform, summary: str
-    ) -> None: ...
+    def get_persona(self, profile: Profile) -> str: ...
 
 
 class FilesystemProfileRepository:
@@ -283,11 +280,15 @@ class FilesystemProfileRepository:
         with open(self._planning_path(profile, platform), "w", encoding="utf-8") as f:
             json.dump(plan.to_planning_dict(), f, indent=4, ensure_ascii=False)
 
-    def add_storyline_summary(
-        self, profile: Profile, platform: Platform, summary: str
-    ) -> None:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"\n\n---\n**[{timestamp}] - Recent Content Summary:**\n{summary}\n"
-        path = self._initial_conditions_path(profile, platform)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(entry)
+    # --- Shared by both platforms: who she is ---
+    #
+    # Hangs off the profile root, not off `PlatformInfo`, so Meta and Fanvue
+    # read the same file. A profile not yet migrated has no persona.md and
+    # reads as empty rather than failing to load.
+
+    def _persona_path(self, profile: Profile) -> Path:
+        return self.resource_path / profile.name / "persona.md"
+
+    def get_persona(self, profile: Profile) -> str:
+        path = self._persona_path(profile)
+        return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
