@@ -14,7 +14,7 @@ from loguru import logger
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 
-from ai_content_pipeline.profiles.profile import ProfileManager
+from ai_content_pipeline.profiles.repository import FilesystemProfileRepository
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.config import settings
 
@@ -160,7 +160,9 @@ class GoogleDriveSync:
         profile_name = profile_dir.name
         manifest: dict[Path, Path] = {}
 
-        workflow_path = profile_dir / f"{profile_name}{ProfileManager.WORKFLOW_SUFFIX}"
+        workflow_path = (
+            profile_dir / f"{profile_name}{FilesystemProfileRepository.WORKFLOW_SUFFIX}"
+        )
         if not workflow_path.is_file():
             raise ValueError(f"Missing workflow JSON: {workflow_path}")
         manifest[workflow_path.relative_to(root)] = workflow_path
@@ -222,7 +224,10 @@ class GoogleDriveSync:
     ) -> dict[Path, RemoteFile]:
         manifest: dict[Path, RemoteFile] = {}
         profile_root = Path(profile_name)
-        workflow_path = profile_root / f"{profile_name}{ProfileManager.WORKFLOW_SUFFIX}"
+        workflow_path = (
+            profile_root
+            / f"{profile_name}{FilesystemProfileRepository.WORKFLOW_SUFFIX}"
+        )
 
         workflow_file = remote_index.files.get(workflow_path)
         if workflow_file is None:
@@ -524,4 +529,4 @@ class GoogleDriveSync:
         return digest.hexdigest()
 
     def _is_valid_profile_name(self, name: str) -> bool:
-        return ProfileManager.PROFILE_NAME_REGEX.match(name) is not None
+        return FilesystemProfileRepository.PROFILE_NAME_REGEX.match(name) is not None

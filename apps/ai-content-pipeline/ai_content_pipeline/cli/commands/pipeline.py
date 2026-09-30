@@ -1,7 +1,7 @@
 from loguru import logger
 
 from ai_content_pipeline.domain.types import Platform
-from ai_content_pipeline.profiles.profile import Profile
+from ai_content_pipeline.domain.types import Profile
 from ai_content_pipeline.planning.planning_manager import PlanningManager
 from ai_content_pipeline.generation.publications_generator import PublicationsGenerator
 from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler

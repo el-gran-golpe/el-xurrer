@@ -2,7 +2,7 @@ import sys
 import typer
 from loguru import logger
 
-from ai_content_pipeline.cli.commands.utils import profile_manager, get_gdrive_sync
+from ai_content_pipeline.cli.commands.utils import profile_repository, get_gdrive_sync
 from ai_content_pipeline.cli.commands.meta import app as meta_app
 from ai_content_pipeline.cli.commands.fanvue import app as fanvue_app
 from ai_content_pipeline.cli.commands.all import (
@@ -58,13 +58,13 @@ def main_callback(ctx: typer.Context):
     _print_startup_preflight_banner()
 
     try:
-        get_gdrive_sync().pull(profile_manager.resource_path)
+        get_gdrive_sync().pull(profile_repository.resource_path)
     except Exception as e:
         logger.error("Failed to sync resources from Google Drive: {}", e)
         raise typer.Exit(1)
 
     try:
-        profile_manager.load_profiles()
+        profile_repository.load_profiles()
     except Exception as e:
         logger.error("Failed to load profiles: {}", e)
         raise typer.Exit(1)

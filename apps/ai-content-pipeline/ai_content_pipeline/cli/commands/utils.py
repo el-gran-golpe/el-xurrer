@@ -2,7 +2,8 @@ from typing import Optional
 
 from ai_content_pipeline.integrations.google_drive.sync_resources import GoogleDriveSync
 from ai_content_pipeline.paths import RESOURCES_DIR
-from ai_content_pipeline.profiles.profile import ProfileManager, Profile
+from ai_content_pipeline.domain.types import Profile
+from ai_content_pipeline.profiles.repository import FilesystemProfileRepository
 
 
 PROFILE_INDEXES_HELP = (
@@ -20,7 +21,7 @@ def get_gdrive_sync() -> GoogleDriveSync:
     return GoogleDriveSync()
 
 
-profile_manager = ProfileManager(RESOURCES_DIR)
+profile_repository = FilesystemProfileRepository(RESOURCES_DIR)
 
 
 def resolve_profiles(
@@ -32,9 +33,9 @@ def resolve_profiles(
     profiles when neither selector is provided. Indexes take precedence.
     """
     if indexes:
-        return [profile_manager.get_profile_by_index(i) for i in indexes]
+        return [profile_repository.get_profile_by_index(i) for i in indexes]
     if names is not None:
         return [
-            profile_manager.get_profile_by_name(n.strip()) for n in names.split(",")
+            profile_repository.get_profile_by_name(n.strip()) for n in names.split(",")
         ]
-    return profile_manager.get_all_profiles()
+    return profile_repository.get_all_profiles()

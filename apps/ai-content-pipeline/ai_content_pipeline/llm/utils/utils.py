@@ -1,6 +1,4 @@
-import json
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from ai_content_pipeline.domain.types import PromptItem
 
@@ -26,26 +24,18 @@ def get_closest_monday():
         return today + timedelta(days=(7 - weekday))
 
 
-def load_and_prepare_prompts(
-    prompt_json_template_path: Path,
+def prepare_prompts(
+    prompts: list[PromptItem],
     previous_storyline: str,
 ) -> list[PromptItem]:
     """
-    Load the prompt JSON, apply dynamic fields, and return list[PromptItem].
+    Apply dynamic fields to already-validated prompts and return copies.
     """
-    # Load raw JSON
-    with prompt_json_template_path.open("r", encoding="utf-8") as file:
-        payload = json.load(file)
-
-    prompts_data = payload.get("prompts", [])
-    # 1. Validate raw items while placeholders still present
-    raw_items = [PromptItem(**p) for p in prompts_data]
-
-    # 2. Format copies (do not mutate originals)
+    # Format copies (do not mutate originals)
     day_str = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
     formatted_items: list[PromptItem] = []
 
-    for idx, item in enumerate(raw_items):
+    for idx, item in enumerate(prompts):
         sys_prompt = item.system_prompt
         if "{day}" in sys_prompt:
             sys_prompt = sys_prompt.format(day=day_str)

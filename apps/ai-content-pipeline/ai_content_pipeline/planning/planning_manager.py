@@ -1,6 +1,3 @@
-import json
-from pathlib import Path
-from typing import Any
 from loguru import logger
 
 from ai_content_pipeline.llm.api_keys import api_keys
@@ -8,17 +5,13 @@ from ai_content_pipeline.llm.base_llm import BaseLLM
 from ai_content_pipeline.llm.routing.model_router import ModelRouter
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.domain.types import Profile
+from ai_content_pipeline.domain.plans import WeekPlan
+from ai_content_pipeline.paths import RESOURCES_DIR
+from ai_content_pipeline.profiles.repository import (
+    FilesystemProfileRepository,
+    ProfileRepository,
+)
 from ai_content_pipeline.planning.storyline_tracker import StorylineTracker
-
-
-def _save_planning(planning: dict[str, Any], output_path: Path) -> None:
-    try:
-        with open(output_path, "w", encoding="utf-8") as file:
-            json.dump(planning, file, indent=4, ensure_ascii=False)
-        logger.success(f"Planning saved to: {output_path}")
-    except Exception as e:
-        logger.error(f"Error writing to file {output_path}: {e}")
-        raise
 
 
 class PlanningManager:
@@ -30,11 +23,15 @@ class PlanningManager:
         platform_name: Platform,
         use_initial_conditions: bool,
         refresh_model_cache: bool = False,
+        repository: ProfileRepository | None = None,
     ):
         self.template_profiles = template_profiles
         self.platform_name = platform_name
         self.use_initial_conditions = use_initial_conditions
         self.refresh_model_cache = refresh_model_cache
+        self.repository: ProfileRepository = repository or FilesystemProfileRepository(
+            RESOURCES_DIR
+        )
 
     def plan(self) -> None:
         openrouter_api_keys: list[str] = api_keys.extract_openrouter_keys()
@@ -51,34 +48,24 @@ class PlanningManager:
         )  # TODO: put this into the env or settings
 
         for profile in self.template_profiles:
-            inputs_path = profile.platform_info[self.platform_name].inputs_path
-            outputs_path = profile.platform_info[self.platform_name].outputs_path
-
-            storyline: str = (
-                (inputs_path / "initial_conditions.md")
-                .read_text(encoding="utf-8")
-                .strip()
-                if self.use_initial_conditions
-                else ""
+            platform_profile = self.repository.get_platform_profile(
+                profile, self.platform_name
             )
-
-            # It is a bit odd because I am passing the .json of prompts
-            # as a Path, but the previous_storyline as the full text itself (str).
-            # Anyway, I'll take it like this for now.
             llm = BaseLLM(
-                prompt_json_template_path=inputs_path / f"{profile.name}.json",
-                previous_storyline=storyline,
+                prompts=platform_profile.prompts,
+                previous_storyline=(
+                    platform_profile.initial_conditions
+                    if self.use_initial_conditions
+                    else ""
+                ),
                 platform_name=self.platform_name,
                 model_router=model_router,
             )
-            planning = llm.generate_dict_from_prompts()
-
-            output_filename = "".join(word[0] for word in profile.name.split("_"))
-            _save_planning(
-                planning,
-                outputs_path / f"{output_filename}_planning.json",
-            )
+            plan = WeekPlan.from_planning_dict(llm.generate_dict_from_prompts())
+            self.repository.save_week_plan(profile, self.platform_name, plan)
+            logger.success("Planning saved for {}", profile.name)
 
             # Update storyline after planning generation
-            storyline_tracker = StorylineTracker(profile, self.platform_name, llm)
-            storyline_tracker.update_storyline()
+            StorylineTracker(
+                profile, self.platform_name, llm, self.repository
+            ).update_storyline(plan)

@@ -15,7 +15,7 @@ def test_main_callback_prints_startup_preflight_markers_around_sync_and_load(
             print("SYNC STARTED", file=sys.stderr)
             events.append(("sync", resource_path))
 
-    class FakeProfileManager:
+    class FakeProfileRepository:
         resource_path = "resources"
 
         def load_profiles(self):
@@ -23,7 +23,7 @@ def test_main_callback_prints_startup_preflight_markers_around_sync_and_load(
             events.append(("load", None))
 
     monkeypatch.setattr(cli_main, "get_gdrive_sync", lambda: FakeGoogleDriveSync())
-    monkeypatch.setattr(cli_main, "profile_manager", FakeProfileManager())
+    monkeypatch.setattr(cli_main, "profile_repository", FakeProfileRepository())
 
     cli_main.main_callback(SimpleNamespace(invoked_subcommand="meta"))
 
