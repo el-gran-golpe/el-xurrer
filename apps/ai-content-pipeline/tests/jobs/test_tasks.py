@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from ai_content_pipeline.domain.plans import WeekPlan
 from ai_content_pipeline.domain.types import Platform, Profile
+from conftest import repository_for
 from ai_content_pipeline.generation.publications_generator import ImageSpec
 from ai_content_pipeline.jobs import tasks
 from ai_content_pipeline.jobs.queue import Job
@@ -66,10 +68,10 @@ class FakeBackend:
         self.generated.append(output_path)
 
 
-def _write_planning(profile: Profile, planning: dict = PLANNING) -> Path:
-    path = tasks._planning_path(profile, Platform.META)
-    path.write_text(json.dumps(planning), encoding="utf-8")
-    return path
+def _write_planning(profile: Profile, planning: dict = PLANNING) -> None:
+    repository_for(profile).save_week_plan(
+        profile, Platform.META, WeekPlan.from_planning_dict(planning)
+    )
 
 
 def _plan_job(profile: Profile) -> Job:
@@ -142,7 +144,9 @@ async def test_run_plan_replans_when_the_prompt_inputs_changed(
     )
 
     inputs = Path(profile.platform_info[Platform.META].inputs_path)
-    (inputs / "haru.json").write_text('{"prompts": ["new"]}', encoding="utf-8")
+    prompts = json.loads((inputs / "haru.json").read_text(encoding="utf-8"))
+    prompts["lang"] = "es"
+    (inputs / "haru.json").write_text(json.dumps(prompts), encoding="utf-8")
     await tasks.run_plan(
         _plan_job(profile), store, FakeQueue(), use_initial_conditions=True
     )

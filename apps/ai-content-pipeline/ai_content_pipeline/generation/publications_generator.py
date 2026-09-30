@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 
 from slugify import slugify
 from tqdm import tqdm
@@ -10,6 +9,12 @@ from dataclasses import dataclass
 from ai_content_pipeline.integrations.comfyui.local import ComfyLocal
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.domain.types import Profile
+from ai_content_pipeline.domain.plans import DayPlan, WeekPlan
+from ai_content_pipeline.paths import RESOURCES_DIR
+from ai_content_pipeline.profiles.repository import (
+    FilesystemProfileRepository,
+    ProfileRepository,
+)
 
 # -- Data Models --------------------------------------------------------------
 
@@ -39,34 +44,28 @@ class DirectoryManager:
     def __init__(self, base_path: Path):
         self.base_path = base_path
 
-    def create_structure(self, planning: dict[str, list[dict[str, Any]]]) -> None:
+    def create_structure(self, plan: WeekPlan) -> None:
         self.base_path.mkdir(parents=True, exist_ok=True)
-        for week_key, days in planning.items():
-            week_folder = self.base_path / week_key
-            week_folder.mkdir(exist_ok=True)
+        week_folder = self.base_path / plan.week
+        week_folder.mkdir(exist_ok=True)
 
-            for day_data in days:
-                day_folder = week_folder / f"day_{day_data['day']}"
-                day_folder.mkdir(exist_ok=True)
+        for day in plan.days:
+            day_folder = week_folder / f"day_{day.day}"
+            day_folder.mkdir(exist_ok=True)
 
-                # Combine caption and hashtags into single text
-                captions = []
-                for post in day_data.get("posts", []):
-                    caption_text = post.get("caption", "").strip()
-                    hashtags = post.get("hashtags", [])
-                    if hashtags:
-                        caption_text = f"{caption_text}\n{''.join(hashtags)}"
-                    captions.append(caption_text)
-                (day_folder / "captions.txt").write_text(
-                    "\n\n".join(captions), encoding="utf-8"
-                )
+            # Combine caption and hashtags into single text
+            captions = []
+            for post in day.posts:
+                caption_text = post.caption.strip()
+                if post.hashtags:
+                    caption_text = f"{caption_text}\n{''.join(post.hashtags)}"
+                captions.append(caption_text)
+            (day_folder / "captions.txt").write_text(
+                "\n\n".join(captions), encoding="utf-8"
+            )
 
-                upload_times = "\n".join(
-                    post.get("upload_time", "") for post in day_data.get("posts", [])
-                )
-                (day_folder / "upload_times.txt").write_text(
-                    upload_times, encoding="utf-8"
-                )
+            upload_times = "\n".join(post.upload_time for post in day.posts)
+            (day_folder / "upload_times.txt").write_text(upload_times, encoding="utf-8")
 
 
 # -- Image Generation Service ------------------------------------------------
@@ -102,27 +101,21 @@ class ImageGeneratorService:
 # -- Main Publications Generator ----------------------------------------------
 
 
-def _load_planning(planning_path: Path) -> dict[str, list[dict[str, Any]]]:
-    with planning_path.open(encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _parse_day(day_data: dict[str, Any]) -> list[PublicationContent]:
+def _parse_day(day: DayPlan) -> list[PublicationContent]:
     publications: List[PublicationContent] = []
-    for post in day_data.get("posts", []):
-        title = post.get("title", "")
-        slug = slugify(title) if title else f"publication_{day_data.get('day')}"
+    for post in day.posts:
+        slug = slugify(post.title) if post.title else f"publication_{day.day}"
         images = [
-            ImageSpec(image.get("image_description", ""), idx)
-            for idx, image in enumerate(post.get("images", []))
+            ImageSpec(image.image_description, idx)
+            for idx, image in enumerate(post.images)
         ]
         publications.append(
             PublicationContent(
-                title=title,
+                title=post.title,
                 slug=slug,
-                caption=post.get("caption", ""),
-                hashtags=post.get("hashtags", []),
-                upload_time=post.get("upload_time", ""),
+                caption=post.caption,
+                hashtags=post.hashtags,
+                upload_time=post.upload_time,
                 images=images,
             )
         )
@@ -137,39 +130,35 @@ class PublicationsGenerator:
         template_profiles: List[Profile],
         platform_name: Platform,
         image_generator_tool: Any,  # TODO: Should be a ComfyLocal instance
+        repository: ProfileRepository | None = None,
     ):
         self.platform_name = platform_name
         self.template_profiles = template_profiles
         self.image_service = ImageGeneratorService(image_generator_tool)
+        self.repository: ProfileRepository = repository or FilesystemProfileRepository(
+            RESOURCES_DIR
+        )
 
-    def generate_publications_from_planning(
-        self, planning_file: Path, output_folder: Path
+    def generate_publications_from_plan(
+        self, plan: WeekPlan, output_folder: Path
     ) -> None:
-        planning = _load_planning(planning_file)
+        DirectoryManager(output_folder).create_structure(plan)
 
-        publications_base_dir = output_folder
-        DirectoryManager(publications_base_dir).create_structure(planning)
-
-        for week, days in tqdm(planning.items(), desc="Weeks"):
-            week_folder = publications_base_dir / week
-            for day_data in tqdm(days, desc=f"Days in {week}"):
-                day_folder = week_folder / f"day_{day_data['day']}"
-                publications = _parse_day(day_data)
-                if self.image_service and publications:
-                    self.image_service.generate_images(publications, day_folder)
+        week_folder = output_folder / plan.week
+        for day in tqdm(plan.days, desc=f"Days in {plan.week}"):
+            publications = _parse_day(day)
+            if self.image_service and publications:
+                self.image_service.generate_images(
+                    publications, week_folder / f"day_{day.day}"
+                )
 
     def generate(self) -> None:
         for profile in self.template_profiles:
-            initials = "".join(part[0] for part in profile.name.split("_"))
-            planning_path = (
-                Path(profile.platform_info[self.platform_name].outputs_path)
-                / f"{initials}_planning.json"
-            )
             publications_folder = (
                 Path(profile.platform_info[self.platform_name].outputs_path)
                 / "publications"
             )
-            self.generate_publications_from_planning(
-                planning_path,
+            self.generate_publications_from_plan(
+                self.repository.get_week_plan(profile, self.platform_name),
                 publications_folder,
             )

@@ -12,28 +12,59 @@ Decisiones tomadas con el usuario:
 1. Clave de semana real ahora, y como `--weeks N` sale casi gratis una vez que el flujo semanal es correcto (ver más abajo), se incluye en este cambio.
 2. Continuidad: backstory estático compartido + arco narrativo semanal compartido entre Meta y Fanvue.
 3. El bug del hash roto se arregla aquí mismo, como consecuencia natural del rediseño (no como parche aparte).
-4. **Capa repositorio primero, como refactor puro.** Antes de tocar cualquier ruta o formato de fichero, se introduce una interfaz `PlanningResourcesRepository` (prompt template, `initial_conditions.md`, guardar/leer planning, actualizar continuidad narrativa) con una implementación V1 sobre filesystem que reproduce 1:1 el comportamiento actual. Mismo patrón que `JobStore`/`Queue`/`GenerationBackend` en `docs/jobs-dag-plan.md`: interfaz pequeña + V1 concreta, migrable a otro backend (p.ej. una DB) más adelante sin tocar `PlanningManager`/`StorylineTracker`/`jobs/tasks.py`. Este commit no cambia ningún comportamiento observable — es lo que permite que `all.py`/`pipeline.py`/`jobs run` sigan funcionando exactamente igual mientras se construye el resto del plan encima.
+4. **Capa repositorio primero.** Antes de tocar ninguna ruta o formato de fichero, se introduce la interfaz del repositorio con una implementación V1 sobre filesystem que mantiene el layout actual. Mismo patrón que `JobStore`/`Queue`/`GenerationBackend` en `docs/jobs-dag-plan.md`: interfaz pequeña + V1 concreta, migrable a otro backend (p.ej. una DB) sin tocar los consumidores. Ver sección 0 para lo que finalmente se entregó, que se desvió del boceto inicial en dos puntos.
 5. **Alcance narrativo mínimo en esta primera pasada.** Solo se implementa lo que el comando `plan` ya usa hoy: persona estática + un arco activo, sin historial. `arcs/history/` (rollover trimestral) y `chapters/` (mensual, derivado del arco) quedan fuera de esta v1 — son conceptuales hasta que exista un comando que gestione esas cadencias; la interfaz del repositorio se diseña para poder añadirlos después sin reescribir los consumidores.
 
 ## Diseño
 
-### 0. Capa repositorio para recursos de planning
+### 0. Capa repositorio para recursos de planning — HECHO
 
-- Interfaz `PlanningResourcesRepository` (`typing.Protocol`, mismo estilo que
-  `jobs/generation_backend.py::GenerationBackend`), con los métodos que `PlanningManager.plan()` y
-  `StorylineTracker` ya usan hoy contra `Path` directamente: ruta del prompt template, lectura de
-  `initial_conditions.md`, guardar/leer el planning, y actualizar la continuidad narrativa (hoy
-  apéndice a `initial_conditions.md`, más adelante sobrescritura de `arcs/current.md`).
-- V1: `FilesystemPlanningResourcesRepository`, con `resources_root: Path` como **parámetro del
-  constructor** (no una constante `RESOURCES_DIR` importada dentro de la clase) — permite apuntar
-  a una copia en tests o a otra raíz en producción sin tocar el código del repositorio. Reproduce
-  exactamente las rutas/formato actuales; no introduce `persona.md`/`arcs/`/archivado todavía —
-  eso llega en los pasos siguientes, ya apoyados en esta interfaz.
+Entregado en `05c901e` (modelos), `273eef3` (repositorio) y `344a249` (consumidores). Se desvió
+del boceto inicial en dos puntos, ambos a petición del usuario durante el review:
+
+- **La interfaz habla de modelos de dominio, no de `Path`.** El boceto original devolvía la ruta
+  del prompt template y el markdown de `initial_conditions.md` en crudo, con el planning como
+  `dict`; así una DB no podría implementarla sin imitar ficheros. La versión entregada expone
+  `get_platform_profile` → `PlatformProfile`, `get_week_plan`/`save_week_plan` → `WeekPlan`, y
+  `add_storyline_summary(summary)` (el separador y el timestamp son detalle de almacenamiento, y
+  pasaron al repositorio).
+- **El repositorio absorbió `ProfileManager`.** Descubrir qué perfiles existen y leer sus ficheros
+  de planning son el mismo trabajo — el árbol `resources/` en disco — así que
+  `profiles/profile.py` desaparece y todo vive en `profiles/repository.py`. `Profile` se importa
+  de `domain/types.py`, que es a donde apuntaba el re-export accidental. Esto adelanta lo que el
+  plan aplazaba al paso 2.
+
+Lo entregado:
+
+- `domain/plans.py`: `WeekPlan` → `DayPlan` → `PostPlan` → `ImagePlan`, con
+  `from_planning_dict`/`to_planning_dict` para la forma `{week: [días]}` que usan el fichero y la
+  respuesta del LLM. `upload_time` sigue siendo `str` a propósito: tiparlo como datetime con
+  offset convertiría un fallo de publicación en un fallo de planificación, y eso merece su propio
+  commit.
+- `domain/types.py`: `PlatformProfile` (lang + prompts validados + initial conditions).
+- `profiles/repository.py`: `ProfileRepository` (`Protocol`) y `FilesystemProfileRepository`, con
+  `resource_path: Path` como **parámetro obligatorio del constructor** — sin valor por defecto, para
+  que ningún test pueda apuntar al `resources/` real por accidente. Los tests usan el helper
+  `repository_for(profile)` del conftest sobre `tmp_path`.
+- `BaseLLM` recibe los prompts ya validados en vez de una ruta JSON, que es lo que permite que el
+  repositorio sea dueño de ese fichero: `load_and_prepare_prompts` pierde su mitad de carga y pasa
+  a ser `prepare_prompts`.
+- Se eliminó una lectura duplicada: la carga de perfiles ya parseaba cada `{profile}.json` y se
+  quedaba solo el `lang`, tirando los prompts, mientras la planificación releía el mismo fichero.
+  Ahora ambas pasan por `_read_profile_input`.
+
+Dos cambios de comportamiento que conviene recordar al ejecutar:
+
+- `run_plan` hashea los prompts validados en vez del texto crudo de los ficheros de entrada, así
+  que el primer `jobs run` tras este cambio replanifica semanas ya marcadas como hechas.
+- Los campos que ningún consumidor lee dejan de round-tripear al `*_planning.json` guardado.
+
+Queda pendiente para los pasos siguientes: `persona.md`, `arcs/` y el archivado current/history.
 - Detalle importante: las rutas nuevas (`persona.md`, `arcs/current.md`) las resuelve el
   repositorio a partir de `resources_root`/`profile.name`, **no** se cuelgan de
   `Profile.platform_info`. `PlatformInfo` (`domain/types.py`) valida con `field_validator` que sus
   `inputs_path`/`outputs_path` ya existan (`exists()`/`is_dir()`) en el momento de cargar perfiles
-  (`profiles/profile.py::_gather_platforms`); si las rutas nuevas dependieran de ahí, cualquier
+  (`profiles/repository.py::_gather_platforms`); si las rutas nuevas dependieran de ahí, cualquier
   perfil aún no migrado a la nueva estructura rompería `ProfileManager.load_profiles()`. Mantener
   esta resolución fuera de `Profile` es lo que permite migrar perfil a perfil sin tumbar la carga
   de perfiles ni el resto de comandos.
@@ -67,14 +98,14 @@ Decisiones tomadas con el usuario:
 
 ## Ficheros clave a tocar
 
-- `apps/ai-content-pipeline/ai_content_pipeline/planning/resources_repository.py` — **nuevo.** Interfaz `PlanningResourcesRepository` (`Protocol`) + `FilesystemPlanningResourcesRepository(resources_root: Path)`, ver sección 0. Se implementa primero, como refactor puro.
+- `apps/ai-content-pipeline/ai_content_pipeline/profiles/repository.py` — **hecho.** `ProfileRepository` (`Protocol`) + `FilesystemProfileRepository(resource_path: Path)`, ver sección 0. Los pasos 2-4 añaden métodos aquí (`get_persona`, `get_current_arc`/`save_arc`, resolución current-vs-history), no rutas nuevas en los consumidores.
 - `apps/ai-content-pipeline/ai_content_pipeline/llm/utils/utils.py` — nueva función de fecha, retirar el uso puramente cosmético de `get_closest_monday()`.
 - `apps/ai-content-pipeline/ai_content_pipeline/planning/planning_manager.py` — deja de tocar `Path` directamente y pasa a usar `PlanningResourcesRepository` (paso 1); después, leer/archivar planning existente en vez de sobreescribir sin más (paso 3); ensamblar `persona.md` + `arcs/current.md` + `initial_conditions.md` propio de la plataforma (paso 2).
 - `apps/ai-content-pipeline/ai_content_pipeline/planning/storyline_tracker.py` — deja de tocar `Path` directamente (paso 1); después, cambiar destino de escritura (de apéndice en `initial_conditions.md` a sobreescritura de `arcs/current.md`, paso 2), condicionado a la plataforma que "posee" el arco.
 - `apps/ai-content-pipeline/ai_content_pipeline/jobs/tasks.py` — `plan_job_id` con dimensión semana, resolución current-vs-history en `_fan_out_images` (vía el repositorio, ver sección 2), y el cálculo de hash de `run_plan` (excluir `arcs/current.md`, incluir `persona.md`). `schedule_job_id` se deja tal cual, sin semana. Se toca en el paso 3-4, no en el paso 1 (repositorio).
 - `apps/ai-content-pipeline/ai_content_pipeline/cli/commands/jobs.py` — opción `--weeks N` y `seed_plans` encolando un job `plan` por semana (no uno por perfil+plataforma).
 - `apps/ai-content-pipeline/ai_content_pipeline/publishing/posting_scheduler.py` — **añadido tras revisar el código real de la rama DAG.** `_iter_day_folders` valida los nombres de carpeta de semana con la regex `^week_\d+$`; en cuanto la clave de nivel superior del planning (y por tanto el nombre de carpeta que usa `jobs/tasks.py:_fan_out_images`) pase a ser una fecha ISO, esa validación revienta con `ValueError: Invalid week folder name` y el scheduler deja de funcionar. Hay que adaptar el patrón a fechas ISO (o desacoplar el nombre de carpeta de la clave del JSON, pero el diseño actual los liga 1:1).
-- `apps/ai-content-pipeline/ai_content_pipeline/profiles/profile.py` / `domain/types.py` — **no hace falta tocarlos para `persona.md`/`arcs/current.md`**: esas rutas las resuelve el repositorio de la sección 0 directamente desde `resources_root`/`profile.name`, no `Profile.platform_info` (ver el porqué en la sección 0 — evita romper `ProfileManager.load_profiles()` para perfiles no migrados).
+- `domain/types.py` — **no hace falta tocarlo para `persona.md`/`arcs/current.md`**: esas rutas las resuelve el repositorio desde su `resource_path` + `profile.name`, no desde `Profile.platform_info` (ver el porqué en la sección 0 — evita romper `load_profiles()` para perfiles aún no migrados).
 - Migración manual de contenido para los perfiles existentes (`laura_vigne`, `maria_larsen`): extraer backstory de sus `initial_conditions.md`/`{profile}.json` actuales a `persona.md` nuevo, y sembrar `arcs/current.md` inicial — contenido curado, no automatizable, requiere aprobación explícita del usuario (regla de `AGENTS.md` sobre editar esos ficheros). Se hace en el paso 2, no en el paso 1.
 - `AGENTS.md` — actualizar la nota de cadencia semanal para reflejar semanas con clave real, `--weeks N`, y la existencia de `persona.md`/`arcs/current.md` (instrucción del propio repo: agent instructions se actualizan en el mismo cambio que altera el flujo). Se hace al final, cuando el flujo completo esté validado.
 
@@ -84,10 +115,9 @@ Cada paso deja `all.py`/`pipeline.py`/`jobs run` funcionando igual que antes de 
 (mismos ficheros, mismo comportamiento observable), igual que `docs/jobs-dag-plan.md` exige para
 sus propios commits:
 
-1. **Repositorio** (`resources_repository.py` + refactor de `planning_manager.py`/
-   `storyline_tracker.py` para usarlo) — refactor puro, sin cambiar ningún fichero ni formato en
-   disco. Probado contra una copia de `resources/` bajo `tmp_path` (mismo patrón que
-   `tests/jobs/conftest.py::make_profile`), nunca contra el `resources/` real.
+1. ~~**Repositorio**~~ — **HECHO** (`05c901e`, `273eef3`, `344a249`). Sin cambios de formato en
+   disco. Probado contra un árbol bajo `tmp_path`, nunca contra el `resources/` real. Incluyó,
+   adelantándose al paso 2, la absorción de `ProfileManager` dentro del repositorio.
 2. **`persona.md` + `arcs/current.md`** (sin `history/`, sin `chapters/`) — `initial_conditions.md`
    se adelgaza, `StorylineTracker` escribe al arco en vez de apendizar. Migración manual de
    contenido de los perfiles existentes.
@@ -105,3 +135,59 @@ sus propios commits:
 - Test para `posting_scheduler.py:_iter_day_folders` con una carpeta de semana nombrada como fecha ISO (`"2026-09-21"`), confirmando que ya no la rechaza como nombre de carpeta inválido.
 - `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`.
 - Prueba manual con `--skip-schedule --weeks 2` sobre un perfil, confirmando: dos semanas distintas archivadas correctamente en `outputs/`/`outputs/history/` (claves de fecha reales, no `"week_1"` repetido), `arcs/current.md` actualizado tras la semana de Meta antes de que arranque la de Fanvue, y una segunda ejecución del mismo comando sin cambios no vuelve a replanear nada ya hecho.
+
+## Notas: acceso a disco que todavía no pasa por el repositorio
+
+**Fuera del alcance de este plan.** Son observaciones recogidas al implementar la capa
+repositorio, apuntadas aquí para no perderlas. Nada de esto se toca mientras duren los pasos 1-4;
+es material para un roadmap posterior.
+
+El repositorio es hoy la única fuente de verdad para *inputs de perfil* y para el fichero de
+planning. El resto del árbol `resources/` — sobre todo `outputs/publications/` — se sigue
+manipulando con `Path` desde varios sitios, cada uno con su propia copia del layout.
+
+### 1. La estructura de publicaciones se escribe y se lee desde dos sitios distintos, sin contrato común
+
+- `generation/publications_generator.py::DirectoryManager.create_structure` crea
+  `outputs/publications/{week}/day_{n}/` y escribe `captions.txt` y `upload_times.txt`.
+- `publishing/posting_scheduler.py::_iter_day_folders` recorre esas mismas carpetas, valida sus
+  nombres con `^week_\d+$` / `^day_\d+$`, lee los dos ficheros y hace `glob` de
+  `*.png`/`*.jpg`/`*.jpeg`.
+
+Son el lado escritor y el lado lector del mismo formato, y ninguno lo declara: el contrato vive
+implícito en dos módulos que no se conocen. Por eso el paso 3 de este plan tiene que acordarse de
+tocar la regex de `_iter_day_folders` al cambiar la clave de semana — justo el tipo de acoplamiento
+que el repositorio existe para eliminar. `_upload_profile` ya lleva un
+`# TODO: should be this included in the Profile class?` en ese punto.
+
+### 2. Rutas de salida construidas a mano en los consumidores
+
+- `jobs/tasks.py`: `_outputs_dir`, `_publications_dir` y el nombre de cada imagen
+  (`{slug}_{index}.jpeg`), además del `output_path.exists()` que decide saltarse una generación.
+- `generation/publications_generator.py::ImageGeneratorService`: misma convención de nombre de
+  imagen, resuelta por segunda vez.
+- `cli/commands/all.py`: vacía `outputs/` con `rmtree` y comprueba si está vacío para
+  `--no-overwrite-outputs`.
+
+### 3. Otros sitios que conocen el layout de `resources/`
+
+- `domain/types.py::PlatformInfo` valida con `exists()`/`is_dir()` que las rutas existan: un modelo
+  de dominio comprobando disco. Sacarlo de ahí es lo que permitiría que el repositorio resuelva
+  las rutas desde `resources_root` + nombre de perfil, en vez de recibirlas ya resueltas dentro del
+  `Profile`.
+- `integrations/google_drive/sync_resources.py` recorre el árbol por su cuenta (carpetas de perfil,
+  `inputs/`, fichero de workflow). Ya toma prestadas `WORKFLOW_SUFFIX` y `PROFILE_NAME_REGEX` de
+  `FilesystemProfileRepository`, señal de que comparten contrato pero no implementación.
+- `integrations/comfyui/local.py` lee `{profile}_comfyworkflow.json`, un fichero cuya existencia
+  valida el repositorio al cargar perfiles, pero que el repositorio no sirve.
+
+### Hacia dónde apunta esto
+
+El siguiente escalón natural, una vez cerrado este plan, es que el repositorio sirva también las
+publicaciones como modelos (algo tipo `get_publications(profile, platform, week)` y
+`save_publication_assets(...)`) en lugar de que cada consumidor recomponga rutas. Eso dejaría
+`PostingScheduler` y `PublicationsGenerator` hablando de días y publicaciones, no de carpetas, y
+haría que cambiar el nombre de una carpeta de semana fuera un cambio de un solo fichero.
+
+No conviene hacerlo dentro de este plan: los pasos 1-4 ya cambian la clave de semana y el formato
+de continuidad, y mezclar ambas cosas haría irrevisable el diff.
