@@ -184,3 +184,12 @@ class ProfileInput(BaseModel):
                 )
             seen.add(p.cache_key)
         return prompts
+
+
+class PlatformProfile(BaseModel):
+    """What one platform of a profile feeds into planning."""
+
+    platform: Platform
+    lang: str
+    prompts: list[PromptItem]
+    initial_conditions: str
