@@ -66,14 +66,15 @@ class ComfyLocal:
         self,
         prompt: str,
         output_path: Path,
-        width: int = 512,
-        height: int = 640,
-        format: str = "jpeg",
-        max_size: Optional[int] = None,  # TODO: make this happen
         seed: Optional[int] = None,
         timeout_in_seconds: int = 1000,
     ) -> bool:
-        """Generate an image based on the provided prompt and save it to output_path."""
+        """
+        Generate an image based on the provided prompt and save it to output_path.
+
+        Resolution and output format come from the workflow JSON
+        (`EmptySD3LatentImage` / the save node), not from here.
+        """
         prompt = prompt.strip()
         if not prompt:
             raise ValueError("Prompt cannot be empty")
