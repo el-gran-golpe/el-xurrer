@@ -3,7 +3,7 @@ import hashlib
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Type, Union
+from typing import Iterator, Type, Union
 
 from loguru import logger
 
@@ -11,7 +11,6 @@ from ai_content_pipeline.domain.types import Platform, Profile
 from ai_content_pipeline.generation.publications_generator import (
     DirectoryManager,
     ImageSpec,
-    _load_planning,
     _parse_day,
 )
 from ai_content_pipeline.integrations.fanvue.publisher import FanvueAPIPublisher
@@ -20,6 +19,11 @@ from ai_content_pipeline.jobs.generation_backend import GenerationBackend
 from ai_content_pipeline.jobs.queue import Job, Queue
 from ai_content_pipeline.jobs.store import JobStatus, JobStore, JobType
 from ai_content_pipeline.planning.planning_manager import PlanningManager
+from ai_content_pipeline.paths import RESOURCES_DIR
+from ai_content_pipeline.profiles.repository import (
+    FilesystemProfileRepository,
+    ProfileRepository,
+)
 from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler
 
 Publisher = Union[Type[MetaPublisher], Type[FanvueAPIPublisher]]
@@ -50,12 +54,6 @@ def _hash(text: str) -> str:
 
 def _outputs_dir(profile: Profile, platform: Platform) -> Path:
     return Path(profile.platform_info[platform].outputs_path)
-
-
-def _planning_path(profile: Profile, platform: Platform) -> Path:
-    # Same filename convention as PublicationsGenerator.generate.
-    initials = "".join(part[0] for part in profile.name.split("_"))
-    return _outputs_dir(profile, platform) / f"{initials}_planning.json"
 
 
 def _publications_dir(profile: Profile, platform: Platform) -> Path:
@@ -105,6 +103,7 @@ async def run_plan(
     *,
     use_initial_conditions: bool,
     refresh_model_cache: bool = False,
+    repository: ProfileRepository | None = None,
 ) -> None:
     """
     Plans one profile+platform, then fans out one `generate_image` per image.
@@ -115,24 +114,17 @@ async def run_plan(
     """
     payload: ProfileJob = job.payload
     profile, platform = payload.profile, payload.platform
-    inputs = Path(profile.platform_info[platform].inputs_path)
+    repository = repository or FilesystemProfileRepository(RESOURCES_DIR)
 
-    prompts = (inputs / f"{profile.name}.json").read_text(encoding="utf-8")
-    conditions = (
-        (inputs / "initial_conditions.md").read_text(encoding="utf-8")
-        if use_initial_conditions
-        else ""
-    )
-    status = store.create(
-        job.id, JobType.PLAN, profile.name, platform, _hash(prompts + conditions)
-    )
+    platform_profile = repository.get_platform_profile(profile, platform)
+    inputs = platform_profile.model_dump_json(include={"lang", "prompts"})
+    if use_initial_conditions:
+        inputs += platform_profile.initial_conditions
+    status = store.create(job.id, JobType.PLAN, profile.name, platform, _hash(inputs))
 
     if status is JobStatus.DONE:
         logger.info(
-            "Plan already done for {} {}, reusing {}",
-            profile.name,
-            platform.value,
-            _planning_path(profile, platform).name,
+            "Plan already done for {} {}, reusing it", profile.name, platform.value
         )
     else:
         with _running(store, job.id):
@@ -142,41 +134,44 @@ async def run_plan(
                     platform_name=platform,
                     use_initial_conditions=use_initial_conditions,
                     refresh_model_cache=refresh_model_cache,
+                    repository=repository,
                 ).plan
             )
         logger.success("{} planning done for {}.", platform.name, profile.name)
 
-    await _fan_out_images(profile, platform, store, queue)
+    await _fan_out_images(profile, platform, store, queue, repository)
 
 
 async def _fan_out_images(
-    profile: Profile, platform: Platform, store: JobStore, queue: Queue
+    profile: Profile,
+    platform: Platform,
+    store: JobStore,
+    queue: Queue,
+    repository: ProfileRepository,
 ) -> None:
-    planning_path = _planning_path(profile, platform)
-    planning: dict[str, list[dict[str, Any]]] = _load_planning(planning_path)
-    planning_hash = _hash(planning_path.read_text(encoding="utf-8"))
+    plan = repository.get_week_plan(profile, platform)
+    planning_hash = _hash(plan.model_dump_json())
     publications_dir = _publications_dir(profile, platform)
 
     # captions.txt / upload_times.txt belong to the plan node, not to any
     # image: schedule reads them, so they must exist before any child runs.
-    DirectoryManager(publications_dir).create_structure(planning)
+    DirectoryManager(publications_dir).create_structure(plan)
 
     children: list[ImageJob] = []
-    for week, days in planning.items():
-        for day_data in days:
-            day_folder = publications_dir / week / f"day_{day_data['day']}"
-            for publication in _parse_day(day_data):
-                for spec in publication.images:
-                    children.append(
-                        ImageJob(
-                            profile=profile,
-                            platform=platform,
-                            spec=spec,
-                            output_path=day_folder
-                            / f"{publication.slug}_{spec.index}.jpeg",
-                            planning_hash=planning_hash,
-                        )
+    for day in plan.days:
+        day_folder = publications_dir / plan.week / f"day_{day.day}"
+        for publication in _parse_day(day):
+            for spec in publication.images:
+                children.append(
+                    ImageJob(
+                        profile=profile,
+                        platform=platform,
+                        spec=spec,
+                        output_path=day_folder
+                        / f"{publication.slug}_{spec.index}.jpeg",
+                        planning_hash=planning_hash,
                     )
+                )
 
     store.init_counter(_group_key(profile, platform, planning_hash), len(children))
 

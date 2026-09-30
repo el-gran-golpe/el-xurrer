@@ -4,13 +4,14 @@ seed_plans), with only the 3 external boundaries faked: the LLM planner,
 ComfyUI, and the publisher. This is what proves the pieces fit together.
 """
 
-import json
 from pathlib import Path
 
 import pytest
 
 from ai_content_pipeline.cli.commands import jobs as jobs_cli
+from ai_content_pipeline.domain.plans import WeekPlan
 from ai_content_pipeline.domain.types import Platform, Profile
+from conftest import repository_for
 from ai_content_pipeline.generation.publications_generator import ImageSpec
 from ai_content_pipeline.integrations.fanvue.publisher import FanvueAPIPublisher
 from ai_content_pipeline.integrations.meta.graph_api import MetaPublisher
@@ -61,9 +62,11 @@ def fakes(monkeypatch, profile: Profile):
 
         def plan(self) -> None:
             planned.append(self.kwargs)
-            tasks._planning_path(
-                self.kwargs["template_profiles"][0], self.kwargs["platform_name"]
-            ).write_text(json.dumps(PLANNING), encoding="utf-8")
+            repository_for(self.kwargs["template_profiles"][0]).save_week_plan(
+                self.kwargs["template_profiles"][0],
+                self.kwargs["platform_name"],
+                WeekPlan.from_planning_dict(PLANNING),
+            )
 
     class FakePostingScheduler:
         def __init__(self, **kwargs):
