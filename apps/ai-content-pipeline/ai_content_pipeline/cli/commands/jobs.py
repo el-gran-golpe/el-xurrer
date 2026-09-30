@@ -6,6 +6,7 @@ import typer
 from loguru import logger
 
 from ai_content_pipeline.cli.commands.utils import (
+    profile_repository,
     get_gdrive_sync,
     resolve_profiles,
 )
@@ -31,6 +32,7 @@ from ai_content_pipeline.jobs.tasks import (
     run_plan,
     run_schedule,
 )
+from ai_content_pipeline.profiles.repository import ProfileRepository
 from ai_content_pipeline.paths import RESOURCES_DIR
 
 app = typer.Typer(help="Run the plan -> generate -> schedule DAG with resume support")
@@ -46,6 +48,7 @@ def register_handlers(
     store: JobStore,
     backends: dict[str, GenerationBackend],
     *,
+    repository: ProfileRepository,
     use_initial_conditions: bool,
     refresh_model_cache: bool,
     schedule_concurrency: int,
@@ -69,6 +72,7 @@ def register_handlers(
             queue,
             use_initial_conditions=use_initial_conditions,
             refresh_model_cache=refresh_model_cache,
+            repository=repository,
         )
 
     async def handle_generate_image(batch: list[Job]) -> None:
@@ -145,6 +149,7 @@ async def _execute(
             queue,
             store,
             build_backends(profiles),
+            repository=profile_repository,
             use_initial_conditions=use_initial_conditions,
             refresh_model_cache=refresh_model_cache,
             schedule_concurrency=max(1, len(profiles) * len(Platform)),

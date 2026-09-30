@@ -6,12 +6,7 @@ from ai_content_pipeline.llm.routing.model_router import ModelRouter
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.domain.types import Profile
 from ai_content_pipeline.domain.plans import WeekPlan
-from ai_content_pipeline.paths import RESOURCES_DIR
-from ai_content_pipeline.profiles.repository import (
-    FilesystemProfileRepository,
-    ProfileRepository,
-)
-from ai_content_pipeline.planning.storyline_tracker import StorylineTracker
+from ai_content_pipeline.profiles.repository import ProfileRepository
 
 
 class PlanningManager:
@@ -22,16 +17,14 @@ class PlanningManager:
         template_profiles: list[Profile],
         platform_name: Platform,
         use_initial_conditions: bool,
+        repository: ProfileRepository,
         refresh_model_cache: bool = False,
-        repository: ProfileRepository | None = None,
     ):
         self.template_profiles = template_profiles
         self.platform_name = platform_name
         self.use_initial_conditions = use_initial_conditions
         self.refresh_model_cache = refresh_model_cache
-        self.repository: ProfileRepository = repository or FilesystemProfileRepository(
-            RESOURCES_DIR
-        )
+        self.repository: ProfileRepository = repository
 
     def plan(self) -> None:
         openrouter_api_keys: list[str] = api_keys.extract_openrouter_keys()
@@ -53,11 +46,7 @@ class PlanningManager:
             )
             llm = BaseLLM(
                 prompts=platform_profile.prompts,
-                previous_storyline=(
-                    platform_profile.initial_conditions
-                    if self.use_initial_conditions
-                    else ""
-                ),
+                previous_storyline=self._build_storyline(profile, platform_profile),
                 platform_name=self.platform_name,
                 model_router=model_router,
             )
@@ -65,7 +54,14 @@ class PlanningManager:
             self.repository.save_week_plan(profile, self.platform_name, plan)
             logger.success("Planning saved for {}", profile.name)
 
-            # Update storyline after planning generation
-            StorylineTracker(
-                profile, self.platform_name, llm, self.repository
-            ).update_storyline(plan)
+    def _build_storyline(self, profile: Profile, platform_profile) -> str:
+        """
+        What the prompt gets as `previous_storyline`: who she is, shared by
+        both platforms, plus the platform's own notes. Narrative state (where
+        the story is now) is not here on purpose — that is the chapter's job,
+        and the chapter does not exist yet.
+        """
+        sections = [("Who she is", self.repository.get_persona(profile))]
+        if self.use_initial_conditions:
+            sections.append(("Platform notes", platform_profile.initial_conditions))
+        return "\n\n".join(f"## {title}\n{body}" for title, body in sections if body)

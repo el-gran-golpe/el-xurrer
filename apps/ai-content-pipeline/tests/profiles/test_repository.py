@@ -2,7 +2,7 @@ import json
 
 from ai_content_pipeline.domain.plans import DayPlan, PostPlan, WeekPlan
 from ai_content_pipeline.domain.types import Platform, Profile
-from conftest import repository_for
+from conftest import repository_for, write_persona
 
 PLAN = WeekPlan(
     week="week_1",
@@ -51,12 +51,13 @@ def test_week_plan_round_trips_and_platforms_do_not_collide(profile: Profile):
     assert repo.get_week_plan(profile, Platform.FANVUE) == fanvue_plan
 
 
-def test_add_storyline_summary_appends_a_timestamped_entry(profile: Profile):
-    path = profile.platform_info[Platform.META].inputs_path / "initial_conditions.md"
-    before = path.read_text(encoding="utf-8")
+def test_the_persona_is_shared_by_the_whole_profile(profile: Profile):
+    write_persona(profile, "  28, grew up in Porto.  ")
 
-    repository_for(profile).add_storyline_summary(profile, Platform.META, "beach week")
+    assert repository_for(profile).get_persona(profile) == "28, grew up in Porto."
 
-    after = path.read_text(encoding="utf-8")
-    assert after.startswith(before)
-    assert "Recent Content Summary:**\nbeach week\n" in after
+
+def test_a_profile_without_a_persona_reads_empty_rather_than_failing(
+    profile: Profile,
+):
+    assert repository_for(profile).get_persona(profile) == ""

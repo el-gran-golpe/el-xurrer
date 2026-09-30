@@ -10,11 +10,7 @@ from ai_content_pipeline.integrations.comfyui.local import ComfyLocal
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.domain.types import Profile
 from ai_content_pipeline.domain.plans import DayPlan, WeekPlan
-from ai_content_pipeline.paths import RESOURCES_DIR
-from ai_content_pipeline.profiles.repository import (
-    FilesystemProfileRepository,
-    ProfileRepository,
-)
+from ai_content_pipeline.profiles.repository import ProfileRepository
 
 # -- Data Models --------------------------------------------------------------
 
@@ -130,14 +126,12 @@ class PublicationsGenerator:
         template_profiles: List[Profile],
         platform_name: Platform,
         image_generator_tool: Any,  # TODO: Should be a ComfyLocal instance
-        repository: ProfileRepository | None = None,
+        repository: ProfileRepository,
     ):
         self.platform_name = platform_name
         self.template_profiles = template_profiles
         self.image_service = ImageGeneratorService(image_generator_tool)
-        self.repository: ProfileRepository = repository or FilesystemProfileRepository(
-            RESOURCES_DIR
-        )
+        self.repository: ProfileRepository = repository
 
     def generate_publications_from_plan(
         self, plan: WeekPlan, output_folder: Path

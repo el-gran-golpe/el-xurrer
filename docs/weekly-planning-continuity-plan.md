@@ -10,10 +10,10 @@ Investigación (2 exploradores + 3 opiniones independientes: arquitecto, crític
 
 Decisiones tomadas con el usuario:
 1. Clave de semana real ahora, y como `--weeks N` sale casi gratis una vez que el flujo semanal es correcto (ver más abajo), se incluye en este cambio.
-2. Continuidad: backstory estático compartido + arco narrativo semanal compartido entre Meta y Fanvue.
+2. Continuidad: backstory estático compartido entre Meta y Fanvue. El estado narrativo compartido **no** es parte de `plan` — ver sección 4.
 3. El bug del hash roto se arregla aquí mismo, como consecuencia natural del rediseño (no como parche aparte).
 4. **Capa repositorio primero.** Antes de tocar ninguna ruta o formato de fichero, se introduce la interfaz del repositorio con una implementación V1 sobre filesystem que mantiene el layout actual. Mismo patrón que `JobStore`/`Queue`/`GenerationBackend` en `docs/jobs-dag-plan.md`: interfaz pequeña + V1 concreta, migrable a otro backend (p.ej. una DB) sin tocar los consumidores. Ver sección 0 para lo que finalmente se entregó, que se desvió del boceto inicial en dos puntos.
-5. **Alcance narrativo mínimo en esta primera pasada.** Solo se implementa lo que el comando `plan` ya usa hoy: persona estática + un arco activo, sin historial. `arcs/history/` (rollover trimestral) y `chapters/` (mensual, derivado del arco) quedan fuera de esta v1 — son conceptuales hasta que exista un comando que gestione esas cadencias; la interfaz del repositorio se diseña para poder añadirlos después sin reescribir los consumidores.
+5. **Alcance narrativo mínimo en esta primera pasada.** Solo se implementa lo que el comando `plan` ya usa hoy: la persona estática. Todo el estado narrativo (arco y capítulo) queda fuera, porque cada nivel es un comando con su propia cadencia — ver sección 4, reescrita tras descubrir en review que el primer intento colgaba el arco de una plataforma.
 
 ## Diseño
 
@@ -88,13 +88,43 @@ Queda pendiente para los pasos siguientes: `persona.md`, `arcs/` y el archivado 
 - El hash de "¿ya está hecho, no replanees?" pasa a calcularse solo sobre contenido **estático** (prompt template + backstory compartido, ver punto 4) — nunca sobre el estado narrativo que el propio plan actualiza como efecto (punto 4). Así, planear la semana 2 no invalida el hash de la semana 1, y volver a lanzar `jobs run` el mismo día no dispara un replan espurio.
 - `StorylineTracker` deja de escribir dentro de `initial_conditions.md` (que vuelve a ser un fichero puramente estático, editado a mano, con la semántica de "cambios aquí sí deben afectar a semanas aún no planeadas" ya documentada en `run_plan`). Su salida se redirige al fichero nuevo del punto 4.
 
-### 4. Backstory + arco narrativo compartidos entre Meta y Fanvue
+### 4. Persona compartida, y por qué el arco no entra aquí
+
+**Corregido en review.** El primer intento hizo que `plan` escribiera `arcs/current.md` tras
+planear, y que solo Meta lo hiciera, con Fanvue leyéndolo después. Eso ponía el nivel narrativo más
+alto a depender de una plataforma y del orden de dos jobs. El error de fondo fue confundir dos
+cosas distintas y guardarlas en el mismo fichero:
+
+1. **Arco**: la intención narrativa. El nivel más alto, cadencia lenta, independiente de plataforma
+   y también de `plan`.
+2. **Recap semanal**: el resumen de lo que se acaba de planear. Derivado, por plataforma.
+
+El arco es **entrada**, nunca salida de `plan`. El modelo acordado son tres niveles, cada uno con
+su comando y su cadencia, y cada uno dependiendo solo del de encima:
+
+```
+arco      (cadencia lenta, p.ej. temporada)   — comando propio
+  └─ chapter (cadencia media, mayor que semanal) — depende del arco
+       └─ plan  (semanal)                        — depende del chapter
+```
+
+El arco puede tener en cuenta los planes anteriores si existe histórico, pero a priori es
+independiente. Como `plan` depende del **chapter** y el chapter todavía no existe, `plan` tampoco
+lee el arco: leerlo sería saltarse un nivel. Hasta que existan esos dos comandos, `plan` no tiene
+continuidad automática entre semanas, y la continuidad Meta/Fanvue vendrá del chapter cuando
+llegue.
+
+Lo que sí entra en este plan:
 
 - `resources/{profile}/persona.md`: hechos fijos de personaje (edad, backstory, descripción física base) — un solo fichero por perfil, ya no duplicado en los dos `{profile}.json`/`initial_conditions.md`. Se lee y se concatena al construir el prompt de ambas plataformas (mismo punto de integración que ya existe: `PlanningManager` arma hoy un `storyline: str` a partir de `initial_conditions.md` y se lo pasa a `BaseLLM` como `previous_storyline` — solo cambia qué texto se concatena ahí, no la mecánica). Incluido en el hash de la sección 3 (editarlo a mano es una señal intencional).
-- `resources/{profile}/arcs/current.md`: estado rotativo pequeño en markdown (ubicación/temporada actual, hilo narrativo activo, últimos 1-2 eventos), **no** un log que crece sin fin — sustituye la idea original de `narrative_arc.json` (JSON) por el formato markdown del boceto de reestructuración de `resources/`. Se actualiza tras planear cada semana usando la misma llamada LLM de resumen que ya hace `StorylineTracker` hoy, pero sobreescribiendo el fichero en vez de apendizar. Se lee (igual que persona.md) al construir el prompt de ambas plataformas, para que la semana de Fanvue sea consistente con lo que le pasó a la influencer esa semana en Meta. Excluido del hash de la sección 3 a propósito.
-- **Fuera de esta v1, explícitamente diferido:** `arcs/history/{year}_q{n}.md` (archivar el arco al rotar de trimestre) y `chapters/current.md`+`chapters/history/` (una capa mensual de beats concretos derivados del arco). Son conceptuales hasta que exista un comando que gestione esas cadencias (trimestral/mensual) — no las necesita el comando `plan` tal como existe hoy. La interfaz del repositorio (sección 0) se diseña para poder añadirlas después sin reescribir `PlanningManager`/`StorylineTracker`.
-- **Decisión de diseño abierta, con valor por defecto propuesto**: solo Meta actualiza `arcs/current.md` tras su plan (es la capa "pública"/canónica según el análisis de estrategia — Fanvue reinterpreta esos mismos hechos en su propio tono, no genera hechos nuevos). Fanvue solo lee. Evita duplicar/mezclar dos resúmenes del mismo evento y no requiere ninguna sincronización nueva en el DAG. Fácil de cambiar después (una constante `Platform.META` en un solo sitio).
-- `StorylineTracker._extract_all_captions` hoy itera `planning_data.items()` (el fichero **completo**) para generar el resumen. Con el archivado current/history (punto 1), esto deja de ser un problema por sí solo porque el fichero current vuelve a tener una sola semana — pero conviene revisar que, tras el cambio, se siga resumiendo solo la semana recién planeada y no una que quedó archivada por error.
+- **`StorylineTracker` desaparece.** Era lo único que escribía estado narrativo desde `plan`, y
+  ahora sabemos que está en el nivel equivocado. Con él se va el bug del hash de la sección 3: al
+  no escribir nadie dentro de `inputs/`, el hash de resume vuelve a ser estable sin ningún parche.
+  `initial_conditions.md` vuelve a ser un fichero estático, editado a mano.
+
+**Fuera de este plan, ahora con forma concreta:** los comandos de arco y de chapter, cada uno con
+su cadencia y su fichero, y `plan` pasando a leer el chapter en vez de la persona a secas. Es un
+camino nuevo, no un paso más de esta lista.
 
 ## Ficheros clave a tocar
 
@@ -118,9 +148,10 @@ sus propios commits:
 1. ~~**Repositorio**~~ — **HECHO** (`05c901e`, `273eef3`, `344a249`). Sin cambios de formato en
    disco. Probado contra un árbol bajo `tmp_path`, nunca contra el `resources/` real. Incluyó,
    adelantándose al paso 2, la absorción de `ProfileManager` dentro del repositorio.
-2. **`persona.md` + `arcs/current.md`** (sin `history/`, sin `chapters/`) — `initial_conditions.md`
-   se adelgaza, `StorylineTracker` escribe al arco en vez de apendizar. Migración manual de
-   contenido de los perfiles existentes.
+2. **`persona.md`** — **HECHO** (`a99d4a6` inyección obligatoria del repositorio, y el commit de
+   persona). `initial_conditions.md` se adelgaza y deja de recibir escrituras; `StorylineTracker`
+   se elimina. Sin `arcs/` ni `chapters/`: son comandos aparte. Queda pendiente la migración manual
+   de contenido de los perfiles existentes, que requiere aprobación explícita.
 3. **Semana real + archivado current/history** (secciones 1-3 del diseño).
 4. **Identidad de job por semana / `--weeks N`** (sección 2), que ya encaja de forma natural sobre
    los pasos 1-3.

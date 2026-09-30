@@ -19,11 +19,7 @@ from ai_content_pipeline.jobs.generation_backend import GenerationBackend
 from ai_content_pipeline.jobs.queue import Job, Queue
 from ai_content_pipeline.jobs.store import JobStatus, JobStore, JobType
 from ai_content_pipeline.planning.planning_manager import PlanningManager
-from ai_content_pipeline.paths import RESOURCES_DIR
-from ai_content_pipeline.profiles.repository import (
-    FilesystemProfileRepository,
-    ProfileRepository,
-)
+from ai_content_pipeline.profiles.repository import ProfileRepository
 from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler
 
 Publisher = Union[Type[MetaPublisher], Type[FanvueAPIPublisher]]
@@ -103,7 +99,7 @@ async def run_plan(
     *,
     use_initial_conditions: bool,
     refresh_model_cache: bool = False,
-    repository: ProfileRepository | None = None,
+    repository: ProfileRepository,
 ) -> None:
     """
     Plans one profile+platform, then fans out one `generate_image` per image.
@@ -114,10 +110,13 @@ async def run_plan(
     """
     payload: ProfileJob = job.payload
     profile, platform = payload.profile, payload.platform
-    repository = repository or FilesystemProfileRepository(RESOURCES_DIR)
 
+    # Static inputs only, so a run that changes nothing re-plans nothing.
+    # Whatever narrative state the chapter layer adds later must stay out of
+    # this hash if planning is what advances it.
     platform_profile = repository.get_platform_profile(profile, platform)
     inputs = platform_profile.model_dump_json(include={"lang", "prompts"})
+    inputs += repository.get_persona(profile)
     if use_initial_conditions:
         inputs += platform_profile.initial_conditions
     status = store.create(job.id, JobType.PLAN, profile.name, platform, _hash(inputs))
