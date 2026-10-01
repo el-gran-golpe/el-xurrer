@@ -75,6 +75,7 @@
 - The Drive sync contract covers only each profile workflow JSON plus each platform's flat `inputs/initial_conditions.md` and `inputs/{profile}.json`.
 - Google Drive push is not append-only. For locally pushed profile folders, `GoogleDriveSync.push()` deletes remote files and folders outside the sync contract, while preserving valid remote profile folders that are not part of the local push.
 - Generated images, captions, planning files, publication folders, and other assets under `outputs/` are local runtime artifacts. Do not assume they are committed or synced to Drive.
+- `DRIVE_SYNC_ENABLED=false` in the root `.env` turns both directions of the sync into no-ops, guarded inside `GoogleDriveSync.pull()`/`push()` rather than at each call site. Use it when testing a `resources/` layout that is not on Drive yet, so a run can neither overwrite the source of truth nor be overwritten by it. It is per machine: another machine still syncs normally, so pull there before running once the new layout is pushed.
 - Do not inspect or modify `resources/` unless the task explicitly requires profile/resource work.
 - Do not edit `resources/*/*/inputs/initial_conditions.md` or `resources/*/*/inputs/{profile}.json` without explicit user approval. These files define persona/profile setup and prompt behavior.
 

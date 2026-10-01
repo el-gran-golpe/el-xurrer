@@ -63,6 +63,8 @@ class GoogleDriveSync:
 
     def pull(self, dest: Path) -> None:
         """Download the validated managed files from Drive into the local resources root."""
+        if self._sync_disabled("pull", "local resources/ left untouched"):
+            return
         service = self._get_drive_service()
         dest = dest.expanduser()
         dest.mkdir(parents=True, exist_ok=True)
@@ -75,6 +77,8 @@ class GoogleDriveSync:
 
     def push(self, src: Path) -> None:
         """Upload the validated managed files from the local resources root to Drive."""
+        if self._sync_disabled("push", "Drive left untouched"):
+            return
         service = self._get_drive_service()
         src = src.expanduser()
 
@@ -83,6 +87,21 @@ class GoogleDriveSync:
         self._push_manifest(service, local_manifest, remote_index)
 
         logger.success("Local → Google Drive sync complete: {}", src)
+
+    def _sync_disabled(self, direction: str, consequence: str) -> bool:
+        """
+        Guard both directions here rather than at each call site, so a command
+        added later cannot forget it. Loud on purpose: a sync that silently
+        does nothing is its own trap.
+        """
+        if self.settings.drive_sync_enabled:
+            return False
+        logger.warning(
+            "DRIVE_SYNC_ENABLED=false → skipping Google Drive {}; {}.",
+            direction,
+            consequence,
+        )
+        return True
 
     # TODO: check that this has no vulnerabilities
     def _get_drive_service(self):

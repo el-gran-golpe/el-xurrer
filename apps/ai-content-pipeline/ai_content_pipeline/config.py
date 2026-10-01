@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     # account, summed to increase free-tier quota.
 
     # Google Drive OAuth
+    # Set DRIVE_SYNC_ENABLED=false to work entirely off the local resources/
+    # tree: both the startup pull and the end-of-run push become no-ops. Use it
+    # while testing a resources layout that is not on Drive yet, so a test run
+    # cannot overwrite the source of truth (or be overwritten by it).
+    drive_sync_enabled: bool = Field(
+        default=True,
+        validation_alias="DRIVE_SYNC_ENABLED",
+    )
     client_id: str = Field(validation_alias="client_id")
     client_secret: str = Field(validation_alias="client_secret")
     folder_id: str = Field(validation_alias="folder_id")
