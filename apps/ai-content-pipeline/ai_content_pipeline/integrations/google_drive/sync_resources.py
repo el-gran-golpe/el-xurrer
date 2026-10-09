@@ -17,6 +17,7 @@ from google.auth.exceptions import RefreshError
 from ai_content_pipeline.profiles.repository import FilesystemProfileRepository
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.config import settings
+from ai_content_pipeline.paths import REPO_ROOT
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,7 @@ class GoogleDriveSync:
         """Download the validated managed files from Drive into the local resources root."""
         if self._sync_disabled("pull", "local resources/ left untouched"):
             return
+        self._refuse_non_default_root(dest, "pull")
         service = self._get_drive_service()
         dest = dest.expanduser()
         dest.mkdir(parents=True, exist_ok=True)
@@ -79,6 +81,7 @@ class GoogleDriveSync:
         """Upload the validated managed files from the local resources root to Drive."""
         if self._sync_disabled("push", "Drive left untouched"):
             return
+        self._refuse_non_default_root(src, "push")
         service = self._get_drive_service()
         src = src.expanduser()
 
@@ -102,6 +105,27 @@ class GoogleDriveSync:
             consequence,
         )
         return True
+
+    def _refuse_non_default_root(self, target: Path, direction: str) -> None:
+        """
+        Refuse to sync any resources directory other than the repo's default
+        resources/, unless explicitly allowed. This exists so an
+        AI_CONTENT_RESOURCES_DIR pointed at a non-default tree (e.g. a
+        migration sandbox) can never push to or pull from Drive by accident.
+        Checked after _sync_disabled, so DRIVE_SYNC_ENABLED=false still wins
+        as a silent no-op regardless of the target directory.
+        """
+        default_root = (REPO_ROOT / "resources").resolve()
+        resolved_target = target.expanduser().resolve()
+        if resolved_target == default_root:
+            return
+        if self.settings.drive_sync_allow_custom_root:
+            return
+        raise ValueError(
+            f"Refusing Google Drive {direction} for a non-default resources "
+            f"directory ({resolved_target}); expected {default_root}. Set "
+            "DRIVE_SYNC_ALLOW_CUSTOM_ROOT=true to override."
+        )
 
     # TODO: check that this has no vulnerabilities
     def _get_drive_service(self):

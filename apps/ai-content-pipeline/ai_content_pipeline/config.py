@@ -32,6 +32,14 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="DRIVE_SYNC_ENABLED",
     )
+    # GoogleDriveSync.pull()/push() refuse to sync any resources directory
+    # other than the repo's default resources/ unless this is set, so an
+    # AI_CONTENT_RESOURCES_DIR pointed at a migration sandbox can never push
+    # to or pull from Drive by accident. Checked after drive_sync_enabled.
+    drive_sync_allow_custom_root: bool = Field(
+        default=False,
+        validation_alias="DRIVE_SYNC_ALLOW_CUSTOM_ROOT",
+    )
     client_id: str = Field(validation_alias="client_id")
     client_secret: str = Field(validation_alias="client_secret")
     folder_id: str = Field(validation_alias="folder_id")
