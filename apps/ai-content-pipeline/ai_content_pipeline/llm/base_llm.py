@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 from tqdm import tqdm
 from loguru import logger
@@ -17,16 +18,19 @@ class BaseLLM:
         previous_storyline: str,
         platform_name: Platform,
         model_router: ModelRouter,
+        week_start: date,
     ):
         self.prompts = prompts
         self.previous_storyline = previous_storyline
         self.platform_name = platform_name
         self.model_router = model_router
+        self.week_start = week_start
 
     def generate_dict_from_prompts(self) -> dict:
         prompt_items: list[PromptItem] = prepare_prompts(
             prompts=self.prompts,
             previous_storyline=self.previous_storyline,
+            week_start=self.week_start,
         )
         cache: dict[str, str] = {}
         last_reply: str = ""
@@ -89,6 +93,7 @@ if __name__ == "__main__":
         previous_storyline=storyline,
         platform_name=platform,
         model_router=router,
+        week_start=date.today(),
     )
     result = llm.generate_dict_from_prompts()
     print("Generated result:", result)

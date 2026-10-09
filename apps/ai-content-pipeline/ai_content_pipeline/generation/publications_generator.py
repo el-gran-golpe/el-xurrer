@@ -26,7 +26,7 @@ class PublicationContent:
     title: str
     slug: str
     caption: str
-    hashtags: list[str]
+    hashtags: str
     upload_time: str
     images: list[ImageSpec]
 
@@ -54,7 +54,7 @@ class DirectoryManager:
             for post in day.posts:
                 caption_text = post.caption.strip()
                 if post.hashtags:
-                    caption_text = f"{caption_text}\n{''.join(post.hashtags)}"
+                    caption_text = f"{caption_text}\n{post.hashtags}"
                 captions.append(caption_text)
             (day_folder / "captions.txt").write_text(
                 "\n\n".join(captions), encoding="utf-8"

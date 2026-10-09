@@ -74,6 +74,37 @@ class ModelRouter:
             provider_id: 0 for provider_id, _ in self.classifier_groups
         }
 
+        # (provider_id, identifier) of the model that answered the most
+        # recent successful `get_response()` call. Overwritten on every
+        # success, so after a multi-prompt chain (`BaseLLM.generate_dict_from_prompts`)
+        # it reflects the model that produced the LAST prompt's reply.
+        self.last_model: tuple[str, str] | None = None
+
+        # In-memory-only exclusion set, scoped to this router instance (one
+        # per `PlanningManager.plan()` call). Never persisted to the model
+        # cache: a model that produced one bad reply is not broken for every
+        # prompt, just unusable for the rest of this call.
+        self._excluded: set[tuple[str, str]] = set()
+        # When set, `get_response` only tries the last group (the paid
+        # fallback). Same scope as `_excluded`: this router instance only.
+        self._fallback_only = False
+
+    def exclude_model(self, provider_id: str, identifier: str) -> None:
+        """Stop offering this (provider, model) pair as a candidate for the
+        rest of this router instance's lifetime."""
+        self._excluded.add((provider_id, identifier))
+
+    def use_fallback_only(self) -> None:
+        """
+        Route every further request on this instance straight to the last
+        provider group (the paid fallback), skipping the free ones. Any
+        exclusion on the fallback provider itself is lifted, so a caller's
+        last-resort attempt always has a candidate to land on.
+        """
+        fallback_id = self.classifier_groups[-1][0]
+        self._excluded = {pair for pair in self._excluded if pair[0] != fallback_id}
+        self._fallback_only = True
+
     def classifiers_for(self, provider_id: str) -> list[ModelClassifier]:
         for group_provider_id, classifiers in self.classifier_groups:
             if group_provider_id == provider_id:
@@ -137,7 +168,12 @@ class ModelRouter:
         # Try each provider group in order (free providers first, paid DeepSeek
         # last); the last group's failure is what surfaces if everything fails.
         last_error: Optional[Exception] = None
-        for provider_id, classifiers in self.classifier_groups:
+        groups = (
+            self.classifier_groups[-1:]
+            if self._fallback_only
+            else self.classifier_groups
+        )
+        for provider_id, classifiers in groups:
             reply, _, group_error = self._try_provider_group(
                 provider_id, classifiers, conversation, output_as_json, prompt_item
             )
@@ -204,6 +240,9 @@ class ModelRouter:
     ) -> list[LLMModel]:
         """Get ranked, capability-filtered models for one key; highest ELO first."""
         models = clf.get_ranked_models(prompt_item)
+        models = [
+            m for m in models if (clf.provider_id, m.identifier) not in self._excluded
+        ]
         models.sort(key=lambda m: m.elo, reverse=True)
         logger.debug(
             "Key classifier collected {} candidates: {}",
@@ -249,6 +288,7 @@ class ModelRouter:
                                 first_error = json_error
                             break  # next candidate
                         classifier.mark_model_json_support(model, True)
+                    self.last_model = (classifier.provider_id, model.identifier)
                     return reply, soonest, first_error
 
                 except RateLimitError as e:

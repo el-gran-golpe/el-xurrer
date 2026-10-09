@@ -1,5 +1,6 @@
 import re
 import json
+import shutil
 from pathlib import Path
 from typing import Protocol
 
@@ -15,6 +16,12 @@ from ai_content_pipeline.domain.types import (
     ProfileInput,
 )
 from ai_content_pipeline.config import settings
+
+# A planning week's key is either today's real format (an ISO date, the
+# Monday it starts on, e.g. "2026-10-12") or the legacy literal the prompts
+# used before this ("week_1" etc.) — both can still be on disk at once while
+# a profile has plans from before and after the switch.
+_DATED_WEEK_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _read_profile_input(inputs_path: Path, profile_name: str) -> ProfileInput:
@@ -66,11 +73,17 @@ class ProfileRepository(Protocol):
         self, profile: Profile, platform: Platform
     ) -> PlatformProfile: ...
 
-    def get_week_plan(self, profile: Profile, platform: Platform) -> WeekPlan: ...
+    def get_week_plan(
+        self, profile: Profile, platform: Platform, week: str | None = None
+    ) -> WeekPlan: ...
 
     def save_week_plan(
         self, profile: Profile, platform: Platform, plan: WeekPlan
     ) -> None: ...
+
+    def get_previous_week_plan(
+        self, profile: Profile, platform: Platform, before: str
+    ) -> WeekPlan | None: ...
 
     def get_persona(self, profile: Profile) -> str: ...
 
@@ -252,6 +265,15 @@ class FilesystemProfileRepository:
         outputs = profile.platform_info[platform].outputs_path
         return outputs / f"{initials}_planning.json"
 
+    def _history_dir(self, profile: Profile, platform: Platform) -> Path:
+        return profile.platform_info[platform].outputs_path / "history"
+
+    def _history_path(self, profile: Profile, platform: Platform, week: str) -> Path:
+        return self._history_dir(profile, platform) / f"{week}_planning.json"
+
+    def _read_week_plan(self, path: Path) -> WeekPlan:
+        return WeekPlan.from_planning_dict(json.loads(path.read_text(encoding="utf-8")))
+
     def get_platform_profile(
         self, profile: Profile, platform: Platform
     ) -> PlatformProfile:
@@ -270,15 +292,166 @@ class FilesystemProfileRepository:
             initial_conditions=initial_conditions,
         )
 
-    def get_week_plan(self, profile: Profile, platform: Platform) -> WeekPlan:
-        text = self._planning_path(profile, platform).read_text(encoding="utf-8")
-        return WeekPlan.from_planning_dict(json.loads(text))
+    def get_week_plan(
+        self, profile: Profile, platform: Platform, week: str | None = None
+    ) -> WeekPlan:
+        """
+        `week=None` (today's behaviour, used by the `all run_all`/`jobs run`
+        current-week readers) returns whatever is current. With a week, the
+        current plan is returned if it matches; otherwise the archived
+        `history/{week}_planning.json`; otherwise `FileNotFoundError`, so a
+        caller resuming a `plan` job for an already-archived week still finds
+        it.
+        """
+        planning_path = self._planning_path(profile, platform)
+        if week is None:
+            return self._read_week_plan(planning_path)
+
+        if planning_path.is_file():
+            current = self._read_week_plan(planning_path)
+            if current.week == week:
+                return current
+
+        history_path = self._history_path(profile, platform, week)
+        if history_path.is_file():
+            return self._read_week_plan(history_path)
+
+        raise FileNotFoundError(
+            f"No plan for week {week} ({profile.name}/{platform.value})"
+        )
 
     def save_week_plan(
         self, profile: Profile, platform: Platform, plan: WeekPlan
     ) -> None:
-        with open(self._planning_path(profile, platform), "w", encoding="utf-8") as f:
+        """
+        `{initials}_planning.json` holds only the current week, same as
+        before this plan — see `get_previous_week_plan` for why. If a
+        different week was current, archive it to `outputs/history/` first —
+        unless `plan.week` is *older* than the current week (see
+        `_is_older_week`): writing an older week as "current" would demote
+        the newer week that is already there, so instead `plan` is written
+        straight into `outputs/history/` and current is left untouched. This
+        matters for the `--weeks N` plan chain: if week k is (re-)planned
+        after week k+1 already became current (e.g. a retry on a later run),
+        week k must not displace it.
+        """
+        planning_path = self._planning_path(profile, platform)
+        if planning_path.is_file():
+            current = self._read_week_plan(planning_path)
+            if current.week != plan.week:
+                if self._is_older_week(plan.week, current.week):
+                    logger.warning(
+                        "Not overwriting current plan for {} {} (week {}) "
+                        "with older week {}; saving it to history instead",
+                        profile.name,
+                        platform.value,
+                        current.week,
+                        plan.week,
+                    )
+                    self._write_to_history(profile, platform, plan)
+                    return
+                self._archive_current(profile, platform, current, planning_path)
+
+        with open(planning_path, "w", encoding="utf-8") as f:
             json.dump(plan.to_planning_dict(), f, indent=4, ensure_ascii=False)
+
+    @staticmethod
+    def _is_older_week(candidate: str, current: str) -> bool:
+        """
+        True when `candidate` is strictly older than `current`. Dated (ISO)
+        weeks compare lexicographically, which is also chronological. A
+        legacy (non-dated) `candidate` is always older than a dated
+        `current` — the legacy key predates the switch to real week dates.
+        A legacy `current` is never treated as newer than anything (the
+        normal archive-then-write path handles it, same as before dated
+        weeks existed).
+        """
+        if not _DATED_WEEK_RE.match(current):
+            return False
+        if not _DATED_WEEK_RE.match(candidate):
+            return True
+        return candidate < current
+
+    def _write_to_history(
+        self, profile: Profile, platform: Platform, plan: WeekPlan
+    ) -> None:
+        history_dir = self._history_dir(profile, platform)
+        history_dir.mkdir(parents=True, exist_ok=True)
+        destination = self._history_path(profile, platform, plan.week)
+        if destination.exists():
+            logger.warning(
+                "Overwriting existing history plan at {} for {} {}",
+                destination,
+                profile.name,
+                platform.value,
+            )
+        with open(destination, "w", encoding="utf-8") as f:
+            json.dump(plan.to_planning_dict(), f, indent=4, ensure_ascii=False)
+
+    def _archive_current(
+        self, profile: Profile, platform: Platform, current: WeekPlan, path: Path
+    ) -> None:
+        history_dir = self._history_dir(profile, platform)
+        history_dir.mkdir(parents=True, exist_ok=True)
+        destination = self._history_path(profile, platform, current.week)
+        if destination.exists():
+            logger.warning(
+                "Overwriting existing history plan at {} for {} {}",
+                destination,
+                profile.name,
+                platform.value,
+            )
+            destination.unlink()
+        shutil.move(str(path), str(destination))
+
+    def get_previous_week_plan(
+        self, profile: Profile, platform: Platform, before: str
+    ) -> WeekPlan | None:
+        """
+        Among the current plan and every archived history plan for this
+        platform, the latest ISO-dated week strictly before `before`. With no
+        dated plan (a profile still on the legacy `"week_1"` key, or no
+        history yet), falls back to the latest non-dated legacy plan by file
+        mtime. `None` when there are no plans at all.
+
+        Platform-own only: Meta reads Meta's previous week, Fanvue reads
+        Fanvue's. Cross-platform continuity is the future "chapter" command's
+        job, not this one's.
+        """
+        candidates: list[tuple[Path, WeekPlan]] = []
+
+        planning_path = self._planning_path(profile, platform)
+        if planning_path.is_file():
+            candidates.append((planning_path, self._read_week_plan(planning_path)))
+
+        history_dir = self._history_dir(profile, platform)
+        if history_dir.is_dir():
+            for path in history_dir.glob("*_planning.json"):
+                try:
+                    candidates.append((path, self._read_week_plan(path)))
+                except (json.JSONDecodeError, ValidationError, ValueError) as e:
+                    logger.warning("Skipping unreadable history plan {}: {}", path, e)
+
+        if not candidates:
+            return None
+
+        dated = [
+            (path, plan)
+            for path, plan in candidates
+            if _DATED_WEEK_RE.match(plan.week) and plan.week < before
+        ]
+        if dated:
+            return max(dated, key=lambda item: item[1].week)[1]
+
+        legacy = [
+            (path, plan)
+            for path, plan in candidates
+            if not _DATED_WEEK_RE.match(plan.week)
+        ]
+        if legacy:
+            return max(legacy, key=lambda item: item[0].stat().st_mtime)[1]
+
+        return None
 
     # --- Shared by both platforms: who she is ---
     #

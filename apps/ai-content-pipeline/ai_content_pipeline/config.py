@@ -59,6 +59,13 @@ class Settings(BaseSettings):
         default=Path(".cache/jobs/state.db"),
         validation_alias="JOBS_DB_PATH",
     )
+    # Where `jobs run` writes its end-of-run summary as a Markdown file
+    # ({YYYY-MM-DD_HHMMSS}_jobs_run.md), relative to CWD like jobs_db_path.
+    # logs/ is already gitignored.
+    jobs_report_dir: Path = Field(
+        default=Path("logs/runs"),
+        validation_alias="JOBS_REPORT_DIR",
+    )
     # How long a provider's model catalog and capabilities cache are considered fresh.
     model_cache_ttl_hours: int = Field(
         default=24,

@@ -83,6 +83,27 @@ class _KeyAwareProvider(LLMProvider):
         return f"reply from {api_key}"
 
 
+class _MultiModelProvider(LLMProvider):
+    """A free provider with two same-ELO models (model-a ranks first by
+    catalog/insertion order), both of which succeed — lets a test observe
+    which model answered and verify that excluding one routes to the other."""
+
+    def __init__(self, provider_id: str) -> None:
+        self.provider_id = provider_id
+        self.is_paid = False
+        self.calls: list[str] = []
+
+    def fetch_catalog(self, api_key: str) -> list[dict[str, Any]]:
+        return [
+            {"id": "model-a", "limits": {}},
+            {"id": "model-b", "limits": {}},
+        ]
+
+    def chat_completion(self, api_key, model_id, conversation, output_as_json) -> str:
+        self.calls.append(model_id)
+        return f"reply from {model_id}"
+
+
 class _JsonMisbehavingProvider(LLMProvider):
     """A free provider whose first model claims success but returns malformed
     JSON when JSON mode is requested; its second model behaves correctly."""
@@ -164,3 +185,94 @@ def test_multi_key_rotation_advances_cursor_on_exhaustion(tmp_path):
     reply_again = router.get_response(_prompt_item())
     assert reply_again == "reply from key2"
     assert provider.calls == ["key1", "key2", "key2"]
+
+
+def _router_with_multi_model_provider(
+    tmp_path,
+) -> tuple[ModelRouter, _MultiModelProvider]:
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    provider = _MultiModelProvider("openrouter")
+    router = ModelRouter(
+        free_provider_keys={"openrouter": ["key1"]},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[provider],
+        deepseek_provider=_UnreachableProvider("deepseek"),
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+    return router, provider
+
+
+def test_last_model_records_the_model_that_answered(tmp_path):
+    router, _ = _router_with_multi_model_provider(tmp_path)
+
+    router.get_response(_prompt_item())
+
+    assert router.last_model == ("openrouter", "model-a")
+
+
+def test_excluded_model_is_skipped_in_favor_of_the_next_candidate(tmp_path):
+    router, provider = _router_with_multi_model_provider(tmp_path)
+
+    router.exclude_model("openrouter", "model-a")
+    reply = router.get_response(_prompt_item())
+
+    assert reply == "reply from model-b"
+    assert provider.calls == ["model-b"]
+    assert router.last_model == ("openrouter", "model-b")
+
+
+def test_excluding_every_candidate_falls_over_to_the_next_provider_group(tmp_path):
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    free_provider = _MultiModelProvider("openrouter")
+    deepseek_provider = _SucceedingProvider("deepseek", is_paid=True)
+    router = ModelRouter(
+        free_provider_keys={"openrouter": ["key1"]},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[free_provider],
+        deepseek_provider=deepseek_provider,
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+    router.exclude_model("openrouter", "model-a")
+    router.exclude_model("openrouter", "model-b")
+
+    reply = router.get_response(_prompt_item())
+
+    assert reply == "reply from deepseek"
+    assert free_provider.calls == []
+
+
+def _router_with_free_and_deepseek(tmp_path):
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    free_provider = _MultiModelProvider("openrouter")
+    deepseek_provider = _SucceedingProvider("deepseek", is_paid=True)
+    router = ModelRouter(
+        free_provider_keys={"openrouter": ["key1"]},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[free_provider],
+        deepseek_provider=deepseek_provider,
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+    return router, free_provider
+
+
+def test_fallback_only_skips_the_free_providers_even_when_they_work(tmp_path):
+    router, free_provider = _router_with_free_and_deepseek(tmp_path)
+
+    router.use_fallback_only()
+    reply = router.get_response(_prompt_item())
+
+    assert reply == "reply from deepseek"
+    assert free_provider.calls == []
+    assert router.last_model == ("deepseek", "deepseek-chat")
+
+
+def test_fallback_only_lifts_an_earlier_exclusion_of_the_fallback_model(tmp_path):
+    router, _ = _router_with_free_and_deepseek(tmp_path)
+    router.exclude_model("deepseek", "deepseek-chat")
+
+    router.use_fallback_only()
+
+    assert router.get_response(_prompt_item()) == "reply from deepseek"

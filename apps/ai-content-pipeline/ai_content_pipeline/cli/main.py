@@ -48,6 +48,13 @@ def main_callback(ctx: typer.Context):
         typer.echo(ctx.get_help())
         return
 
+    # `jobs status` is a read-only report off the local jobs DB: it must
+    # never pull from Google Drive or load profiles (no network, no
+    # dependency on resources/ being in any particular state), so it skips
+    # this whole preflight instead of just no-opping it.
+    if len(sys.argv) >= 3 and (sys.argv[1], sys.argv[2]) == ("jobs", "status"):
+        return
+
     # If running the full pipeline, switch to INFO before sync/load.
     if len(sys.argv) >= 3 and (sys.argv[1], sys.argv[2]) in {
         ("all", "run_all"),
