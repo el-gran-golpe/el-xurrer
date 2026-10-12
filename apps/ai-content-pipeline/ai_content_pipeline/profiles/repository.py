@@ -353,20 +353,20 @@ class FilesystemProfileRepository:
         """
         planning_path = self._planning_path(profile, platform)
         if planning_path.is_file():
-            current = self._read_week_plan(planning_path)
-            if current.week != plan.week:
-                if self._is_older_week(plan.week, current.week):
+            current_week = self._read_week_key(planning_path)
+            if current_week != plan.week:
+                if self._is_older_week(plan.week, current_week):
                     logger.warning(
                         "Not overwriting current plan for {} {} (week {}) "
                         "with older week {}; saving it to history instead",
                         profile.name,
                         platform.value,
-                        current.week,
+                        current_week,
                         plan.week,
                     )
                     self._write_to_history(profile, platform, plan)
                     return
-                self._archive_current(profile, platform, current, planning_path)
+                self._archive_current(profile, platform, current_week, planning_path)
 
         with open(planning_path, "w", encoding="utf-8") as f:
             json.dump(plan.to_planning_dict(), f, indent=4, ensure_ascii=False)
@@ -404,12 +404,29 @@ class FilesystemProfileRepository:
         with open(destination, "w", encoding="utf-8") as f:
             json.dump(plan.to_planning_dict(), f, indent=4, ensure_ascii=False)
 
+    @staticmethod
+    def _read_week_key(path: Path) -> str:
+        """
+        The week key of a planning file, without validating its content.
+        Archiving only needs to know which week a file is: an old plan that
+        no longer validates (legacy `run_all` output was never validated)
+        must not stop a new week from being saved. A file with no single
+        top-level key reads as `"unreadable"`, so it is still archived.
+        """
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return "unreadable"
+        if isinstance(data, dict) and len(data) == 1:
+            return str(next(iter(data)))
+        return "unreadable"
+
     def _archive_current(
-        self, profile: Profile, platform: Platform, current: WeekPlan, path: Path
+        self, profile: Profile, platform: Platform, current_week: str, path: Path
     ) -> None:
         history_dir = self._history_dir(profile, platform)
         history_dir.mkdir(parents=True, exist_ok=True)
-        destination = self._history_path(profile, platform, current.week)
+        destination = self._history_path(profile, platform, current_week)
         if destination.exists():
             logger.warning(
                 "Overwriting existing history plan at {} for {} {}",

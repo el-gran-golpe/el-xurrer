@@ -181,6 +181,22 @@ def test_a_legacy_current_plan_is_archived_normally_when_a_dated_week_is_saved(
     assert _history_file(profile, Platform.META, "week_1").is_file()
 
 
+def test_a_malformed_legacy_current_plan_is_archived_as_is(profile: Profile):
+    """A real legacy `run_all` plan had a day whose posts were a flat list of
+    strings: it never validated. Saving a new week must still archive it,
+    untouched, instead of failing on it."""
+    repo = repository_for(profile)
+    malformed = {"week_1": [{"day": 1, "posts": ["title", "Saturday Crypt"]}]}
+    _planning_file(profile, Platform.META).write_text(json.dumps(malformed))
+    dated = WeekPlan.model_validate({"week": "2026-10-12", "days": PLAN.days})
+
+    repo.save_week_plan(profile, Platform.META, dated)
+
+    assert repo.get_week_plan(profile, Platform.META).week == "2026-10-12"
+    archived = _history_file(profile, Platform.META, "week_1")
+    assert json.loads(archived.read_text()) == malformed
+
+
 # --- get_week_plan: current vs history vs missing ------------------------
 
 
