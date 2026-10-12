@@ -259,3 +259,119 @@ def test_render_runs_list_includes_failure_counts():
 
 def test_render_runs_list_with_no_runs():
     assert report.render_runs_list([]) == "No runs recorded yet."
+
+
+# ---------------- story events + frozen weeks ----------------
+
+
+def test_build_run_rows_story_events_land_on_their_own_pseudo_row():
+    events = [
+        _event(platform=None, kind="arc_reused", job_id="story:haru:2026-09-01"),
+        _event(platform=None, kind="chapter_done", job_id="story:haru:2026-09-01"),
+        _event(kind="plan_done", detail={"attempt": 1, "max_attempts": 5}),
+    ]
+
+    rows = report.build_run_rows(events)
+
+    story_row = next(r for r in rows if r.platform == "")
+    assert "arc reused" in story_row.story
+    assert "chapter generated" in story_row.story
+    # A `chapter_done` after an `arc_reused` is still "planned now" overall.
+    assert story_row.outcome == report.OUTCOME_PLANNED
+    plan_row = next(r for r in rows if r.platform == "meta")
+    assert plan_row.story == ""
+
+
+def test_build_run_rows_story_failed_sets_outcome_and_error():
+    events = [
+        _event(platform=None, kind="story_failed", detail={"error": "boom"}),
+    ]
+
+    rows = report.build_run_rows(events)
+
+    assert rows[0].outcome == report.OUTCOME_FAILED
+    assert rows[0].error == "boom"
+
+
+def test_build_run_rows_plan_frozen_sets_the_frozen_outcome():
+    events = [_event(kind="plan_frozen")]
+
+    rows = report.build_run_rows(events)
+
+    assert rows[0].outcome == report.OUTCOME_FROZEN
+
+
+def test_render_table_includes_the_story_column_header():
+    table = report.render_table(report.build_run_rows([_event(kind="plan_reused")]))
+
+    assert "Story" in table
+
+
+# ---------------- overview: story status ----------------
+
+
+def test_build_overview_rows_attaches_story_status_to_every_platform_row():
+    jobs = [
+        {
+            "profile": "a",
+            "platform": None,
+            "week": "2026-09-01",
+            "type": "story",
+            "status": "done",
+        },
+        {
+            "profile": "a",
+            "platform": "meta",
+            "week": "2026-09-01",
+            "type": "plan",
+            "status": "done",
+        },
+        {
+            "profile": "a",
+            "platform": "fanvue",
+            "week": "2026-09-01",
+            "type": "plan",
+            "status": "pending",
+        },
+    ]
+
+    rows = report.build_overview_rows(jobs)
+
+    assert {r.platform: r.story_status for r in rows} == {
+        "meta": "done",
+        "fanvue": "done",
+    }
+
+
+def test_build_overview_rows_story_status_defaults_to_dash_without_a_story_job():
+    jobs = [
+        {
+            "profile": "a",
+            "platform": "meta",
+            "week": "2026-09-01",
+            "type": "plan",
+            "status": "done",
+        },
+    ]
+
+    rows = report.build_overview_rows(jobs)
+
+    assert rows[0].story_status == "-"
+
+
+def test_render_overview_includes_the_story_column_header():
+    rows = report.build_overview_rows(
+        [
+            {
+                "profile": "a",
+                "platform": "meta",
+                "week": "w",
+                "type": "plan",
+                "status": "done",
+            }
+        ]
+    )
+
+    table = report.render_overview(rows)
+
+    assert "Story" in table

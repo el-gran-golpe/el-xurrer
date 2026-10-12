@@ -16,6 +16,7 @@ OUTCOME_PLANNED = "planned now"
 OUTCOME_REUSED = "reused"
 OUTCOME_FAILED = "failed"
 OUTCOME_NOT_REACHED = "not reached"
+OUTCOME_FROZEN = "frozen (not re-planned)"
 
 SCHEDULE_PUBLISHED = "published"
 SCHEDULE_SKIPPED = "skipped"
@@ -26,7 +27,12 @@ SCHEDULE_NOT_REACHED = "not reached"
 # does not blow up the table.
 _ERROR_TRUNCATE_CHARS = 200
 
-_FAILED_EVENT_KINDS = {"plan_failed", "image_failed", "schedule_failed"}
+_FAILED_EVENT_KINDS = {
+    "plan_failed",
+    "image_failed",
+    "schedule_failed",
+    "story_failed",
+}
 
 
 @dataclass
@@ -37,6 +43,7 @@ class RunRow:
     platform: str
     week: str
     outcome: str = OUTCOME_NOT_REACHED
+    story: str = ""
     planning_detail: str = ""
     images: str = ""
     schedule: str = SCHEDULE_NOT_REACHED
@@ -55,6 +62,7 @@ class OverviewRow:
     profile: str
     platform: str
     week: str
+    story_status: str = "-"
     plan_status: str = "-"
     images_done: int = 0
     images_total: int = 0
@@ -84,16 +92,34 @@ _IMAGE_KIND_LABELS = {
 }
 
 
+_STORY_KIND_LABELS = {
+    "arc_done": "arc generated",
+    "arc_reused": "arc reused",
+    "chapter_done": "chapter generated",
+    "chapter_reused": "chapter reused",
+}
+
+
+def _append_story(existing: str, text: str) -> str:
+    return f"{existing}, {text}" if existing else text
+
+
 def build_run_rows(events: list[dict[str, Any]]) -> list[RunRow]:
     """
     One row per profile+platform+week touched by the run, from this run's
     `job_events` rows (`JobStore.events_for_run`), processed in the order
     they were recorded.
 
-    A `week_not_enqueued` event (recorded on the week whose plan failed)
-    carries the *next* week in its detail; that next week never got a job of
-    its own this run, so it is synthesized here as a "not reached" row
-    rather than being silently absent from the report.
+    A `story` event has no platform (an arc/chapter covers a whole
+    profile+week, not one platform): it lands on its own pseudo-row with
+    `platform=""`, alongside — not merged into — the per-platform `plan`
+    rows for the same profile+week.
+
+    A `week_not_enqueued` event (recorded on the week whose plan, or whose
+    story generation, failed) carries the *next* week in its detail; that
+    next week never got a job of its own this run, so it is synthesized
+    here as a "not reached" row rather than being silently absent from the
+    report.
     """
     rows: dict[tuple[str, str, str], RunRow] = {}
     image_counts: dict[tuple[str, str, str], Counter] = {}
@@ -106,7 +132,8 @@ def build_run_rows(events: list[dict[str, Any]]) -> list[RunRow]:
         return rows[key]
 
     for event in events:
-        profile, platform, week = event["profile"], event["platform"], event["week"]
+        profile, week = event["profile"], event["week"]
+        platform = event["platform"] or ""
         kind = event["kind"]
         detail = event.get("detail") or {}
         row = row_for(profile, platform, week)
@@ -121,6 +148,18 @@ def build_run_rows(events: list[dict[str, Any]]) -> list[RunRow]:
             row.error = _truncate(str(detail.get("error", "")))
         elif kind == "plan_attempt_invalid":
             continue  # folded into plan_done/plan_failed's own detail
+        elif kind == "plan_frozen":
+            row.outcome = OUTCOME_FROZEN
+        elif kind in ("arc_done", "chapter_done"):
+            row.story = _append_story(row.story, _STORY_KIND_LABELS[kind])
+            row.outcome = OUTCOME_PLANNED
+        elif kind in ("arc_reused", "chapter_reused"):
+            row.story = _append_story(row.story, _STORY_KIND_LABELS[kind])
+            if row.outcome == OUTCOME_NOT_REACHED:
+                row.outcome = OUTCOME_REUSED
+        elif kind == "story_failed":
+            row.outcome = OUTCOME_FAILED
+            row.error = _truncate(str(detail.get("error", "")))
         elif kind == "week_not_enqueued":
             next_week = detail.get("next_week")
             if next_week:
@@ -196,6 +235,7 @@ def render_table(rows: list[RunRow]) -> str:
         "Platform",
         "Week",
         "Outcome",
+        "Story",
         "Planning",
         "Images",
         "Schedule",
@@ -207,6 +247,7 @@ def render_table(rows: list[RunRow]) -> str:
             row.platform,
             row.week,
             row.outcome,
+            row.story,
             row.planning_detail,
             row.images,
             row.schedule,
@@ -224,8 +265,14 @@ def build_overview_rows(jobs: list[dict[str, Any]]) -> list[OverviewRow]:
     so the caller (`jobs status`) parses it out of each job id first (see
     `jobs/tasks.py:parse_job_id`) and passes it in already resolved, keeping
     this module free of any job-id format knowledge.
+
+    A `story` job has no platform of its own (it covers a whole
+    profile+week); its status is looked up by (profile, week) and applied
+    to every platform row sharing that profile+week, rather than creating a
+    separate platform-less row.
     """
     rows: dict[tuple[str, str, str], OverviewRow] = {}
+    story_status: dict[tuple[str, str], str] = {}
 
     def row_for(profile: str, platform: str, week: str) -> OverviewRow:
         key = (profile, platform, week)
@@ -238,6 +285,9 @@ def build_overview_rows(jobs: list[dict[str, Any]]) -> list[OverviewRow]:
         # a week dimension carry no week; they say nothing about any week.
         if job["week"] == "unknown":
             continue
+        if job["type"] == "story":
+            story_status[(job["profile"], job["week"])] = job["status"]
+            continue
         row = row_for(job["profile"], job["platform"], job["week"])
         if job["type"] == "plan":
             row.plan_status = job["status"]
@@ -248,18 +298,22 @@ def build_overview_rows(jobs: list[dict[str, Any]]) -> list[OverviewRow]:
             if job["status"] == "done":
                 row.images_done += 1
 
+    for row in rows.values():
+        row.story_status = story_status.get((row.profile, row.week), "-")
+
     return sorted(rows.values(), key=lambda r: (r.profile, r.platform, r.week))
 
 
 def render_overview(rows: list[OverviewRow]) -> str:
     if not rows:
         return "No jobs recorded yet."
-    headers = ["Profile", "Platform", "Week", "Plan", "Images", "Schedule"]
+    headers = ["Profile", "Platform", "Week", "Story", "Plan", "Images", "Schedule"]
     body = [
         [
             row.profile,
             row.platform,
             row.week,
+            row.story_status,
             row.plan_status,
             f"{row.images_done}/{row.images_total}",
             row.schedule_status,

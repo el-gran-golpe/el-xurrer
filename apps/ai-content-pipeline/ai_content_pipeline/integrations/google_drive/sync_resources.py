@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import hashlib
 import io
+import re
 
 from tqdm import tqdm
 
@@ -51,6 +52,12 @@ class GoogleDriveSync:
     SCOPES = ["https://www.googleapis.com/auth/drive"]
     FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
     INITIAL_CONDITIONS_FILENAME = "initial_conditions.md"
+    PERSONA_FILENAME = "persona.md"
+    STORY_DIRNAME = "story"
+    STORY_CONFIG_FILENAME = "config.json"
+    STORY_SUBDIRS = ("arcs", "chapters")
+    # story/arcs and story/chapters file names: the ISO Monday they cover.
+    _DATED_STORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
 
     def __init__(self):
         self.settings = settings
@@ -210,6 +217,17 @@ class GoogleDriveSync:
             raise ValueError(f"Missing workflow JSON: {workflow_path}")
         manifest[workflow_path.relative_to(root)] = workflow_path
 
+        # persona.md and story/ are both optional in the contract: a profile
+        # not yet migrated to the shared persona / arc-chapter story has
+        # neither, and that is not an error.
+        persona_path = profile_dir / self.PERSONA_FILENAME
+        if persona_path.is_file():
+            manifest[persona_path.relative_to(root)] = persona_path
+
+        story_dir = profile_dir / self.STORY_DIRNAME
+        if story_dir.is_dir():
+            manifest.update(self._validate_local_story(root, story_dir))
+
         for platform in Platform:
             platform_dir = profile_dir / platform
             if not platform_dir.is_dir():
@@ -245,6 +263,43 @@ class GoogleDriveSync:
 
         return manifest
 
+    def _validate_local_story(self, root: Path, story_dir: Path) -> dict[Path, Path]:
+        """
+        `story/`: an optional `config.json` plus the optional `arcs/` and
+        `chapters/` folders, each flat and holding only `YYYY-MM-DD.json`
+        files (the ISO Monday each arc/chapter starts on).
+        """
+        manifest: dict[Path, Path] = {}
+        allowed_names = {self.STORY_CONFIG_FILENAME, *self.STORY_SUBDIRS}
+        unexpected = [
+            e.name for e in story_dir.iterdir() if e.name not in allowed_names
+        ]
+        if unexpected:
+            raise ValueError(
+                f"{story_dir} must only contain {sorted(allowed_names)}, "
+                f"found extra: {sorted(unexpected)}"
+            )
+
+        config_path = story_dir / self.STORY_CONFIG_FILENAME
+        if config_path.is_file():
+            manifest[config_path.relative_to(root)] = config_path
+
+        for sub_name in self.STORY_SUBDIRS:
+            sub_dir = story_dir / sub_name
+            if not sub_dir.is_dir():
+                continue
+            for entry in sorted(sub_dir.iterdir()):
+                if entry.is_dir():
+                    raise ValueError(f"{sub_dir} must be flat: {entry}")
+                if not self._DATED_STORY_FILE_RE.match(entry.name):
+                    raise ValueError(
+                        f"{sub_dir} file names must be YYYY-MM-DD.json, "
+                        f"got: {entry.name}"
+                    )
+                manifest[entry.relative_to(root)] = entry
+
+        return manifest
+
     def _build_remote_pull_manifest(
         self, remote_index: RemoteIndex
     ) -> dict[Path, RemoteFile]:
@@ -276,6 +331,16 @@ class GoogleDriveSync:
         if workflow_file is None:
             raise ValueError(f"Missing workflow JSON on Drive: {workflow_path}")
         manifest[workflow_path] = workflow_file
+
+        # Optional, same as locally: a profile not yet migrated has neither.
+        persona_path = profile_root / self.PERSONA_FILENAME
+        persona_file = remote_index.files.get(persona_path)
+        if persona_file is not None:
+            manifest[persona_path] = persona_file
+
+        story_path = profile_root / self.STORY_DIRNAME
+        if story_path in remote_index.folders:
+            manifest.update(self._validate_remote_story(remote_index, story_path))
 
         for platform in Platform:
             platform_path = profile_root / platform
@@ -321,6 +386,47 @@ class GoogleDriveSync:
 
             for file_name in sorted(expected_names):
                 manifest[inputs_path / file_name] = direct_files[file_name]
+
+        return manifest
+
+    def _validate_remote_story(
+        self, remote_index: RemoteIndex, story_path: Path
+    ) -> dict[Path, RemoteFile]:
+        """Drive-side mirror of `_validate_local_story`."""
+        manifest: dict[Path, RemoteFile] = {}
+        allowed_names = {self.STORY_CONFIG_FILENAME, *self.STORY_SUBDIRS}
+
+        top_names = {p.name for p in remote_index.folders if p.parent == story_path} | {
+            p.name for p in remote_index.files if p.parent == story_path
+        }
+        unexpected = top_names - allowed_names
+        if unexpected:
+            raise ValueError(
+                f"Drive story directory {story_path} must only contain "
+                f"{sorted(allowed_names)}, found extra: {sorted(unexpected)}"
+            )
+
+        config_path = story_path / self.STORY_CONFIG_FILENAME
+        config_file = remote_index.files.get(config_path)
+        if config_file is not None:
+            manifest[config_path] = config_file
+
+        for sub_name in self.STORY_SUBDIRS:
+            sub_path = story_path / sub_name
+            if sub_path not in remote_index.folders:
+                continue
+            nested_folders = [p for p in remote_index.folders if p.parent == sub_path]
+            if nested_folders:
+                raise ValueError(f"Drive story directory must be flat: {sub_path}")
+            for file_path, remote_file in remote_index.files.items():
+                if file_path.parent != sub_path:
+                    continue
+                if not self._DATED_STORY_FILE_RE.match(file_path.name):
+                    raise ValueError(
+                        f"{sub_path} file names must be YYYY-MM-DD.json, "
+                        f"got: {file_path.name}"
+                    )
+                manifest[file_path] = remote_file
 
         return manifest
 
@@ -409,7 +515,16 @@ class GoogleDriveSync:
     ) -> None:
         local_profile_names = {path.parts[0] for path in local_manifest}
         keep_files = set(local_manifest)
-        keep_folders = self._build_required_folder_paths(local_profile_names)
+        # The fixed per-profile/platform tree (profile/, profile/<platform>/,
+        # .../inputs/) plus every parent directory any locally pushed file
+        # actually sits under — covers the optional story/ tree (and any
+        # future optional addition) without hardcoding its folder names here:
+        # a profile that has no story/ locally simply contributes none of
+        # those paths, so an orphaned remote story/ for that profile is still
+        # correctly deleted.
+        keep_folders = self._build_required_folder_paths(
+            local_profile_names
+        ) | self._all_parent_paths(keep_files)
 
         # Valid profile directories on Drive that are NOT part of this push are
         # preserved in full — their files and folders are never touched.
@@ -497,6 +612,17 @@ class GoogleDriveSync:
                 folders.add(platform_path)
                 folders.add(platform_path / "inputs")
         return folders
+
+    @staticmethod
+    def _all_parent_paths(paths: set[Path]) -> set[Path]:
+        """Every ancestor directory of each path, stopping before `.`."""
+        parents: set[Path] = set()
+        for path in paths:
+            parent = path.parent
+            while parent != Path("."):
+                parents.add(parent)
+                parent = parent.parent
+        return parents
 
     def _ensure_remote_folder_path(
         self,

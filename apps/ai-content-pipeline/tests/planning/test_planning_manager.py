@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from ai_content_pipeline.domain.plans import DayPlan, PostPlan, WeekPlan
+from ai_content_pipeline.domain.plans import WeekPlan
+from ai_content_pipeline.domain.story import Arc
 from ai_content_pipeline.domain.types import Platform, Profile
-from conftest import repository_for, write_persona
+from conftest import repository_for, write_arc, write_chapter, write_persona
 from ai_content_pipeline.planning import planning_manager as planning_manager_module
+from ai_content_pipeline.planning import story_manager as story_manager_module
 from ai_content_pipeline.planning.planning_manager import (
     PlanningFailedError,
     PlanningManager,
@@ -85,12 +87,31 @@ class FakeBaseLLM:
         return "a short summary"
 
 
+class _StoryGenerationTripwire:
+    """
+    `StoryManager.plan_arc`/`plan_chapter` only build a `ModelRouter` (and
+    only then construct a `BaseLLM`) when something is actually missing —
+    every test in this file has both the arc and the chapter seeded by the
+    `_story_for_target_week` autouse fixture below, so any accidental real
+    generation attempt must fail loudly here instead of silently reaching
+    the network. Tests that specifically exercise self-healing swap this
+    out for a real fake that answers.
+    """
+
+    def __init__(self, *args, **kwargs):
+        raise AssertionError(
+            "story generation must not run when an arc/chapter already exist"
+        )
+
+
 @pytest.fixture(autouse=True)
 def _fake_llm_boundary(monkeypatch):
     """
     Fakes the 3 external boundaries `plan()` talks to (ModelRouter, api_keys,
     BaseLLM) so these tests exercise only the repository wiring, not the LLM
-    stack.
+    stack. Also tripwires `StoryManager`'s own `ModelRouter`/`BaseLLM` (see
+    `_StoryGenerationTripwire`) so `PlanningManager._ensure_story` calling
+    through to real story generation fails the test instead of the network.
     """
     FakeBaseLLM.instances = []
     FakeBaseLLM.reply = PLANNING
@@ -106,6 +127,23 @@ def _fake_llm_boundary(monkeypatch):
     monkeypatch.setattr(
         planning_manager_module.api_keys, "extract_deepseek_key", lambda: "key"
     )
+    monkeypatch.setattr(story_manager_module, "ModelRouter", _StoryGenerationTripwire)
+    monkeypatch.setattr(story_manager_module, "BaseLLM", _StoryGenerationTripwire)
+
+
+@pytest.fixture(autouse=True)
+def _story_for_target_week(profile: Profile):
+    """
+    `build_previous_storyline` requires a chapter covering the target week
+    (see isolation tests below for why `plan` reads a chapter rather than
+    the arc or the other platform's notes), and `PlanningManager._ensure_story`
+    now ensures the arc too before building it. Every test in this file
+    plans for `TARGET_WEEK_KEY` by default, so seed both up front; tests
+    that care about their exact content overwrite them, and the dedicated
+    self-healing tests below delete them again on purpose.
+    """
+    write_arc(profile, TARGET_WEEK_KEY, weeks=12)
+    write_chapter(profile, TARGET_WEEK_KEY)
 
 
 def _plan(
@@ -127,6 +165,19 @@ def _initial_conditions(profile: Profile) -> Path:
     return profile.platform_info[Platform.META].inputs_path / "initial_conditions.md"
 
 
+def _this_week_section(platform: Platform) -> str:
+    """The `## This week` text `write_chapter`'s default chapter produces
+    for `platform`, for `TARGET_WEEK_KEY` — matches what every plan test
+    below gets from the autouse `_story_for_target_week` fixture."""
+    angle = "Meta angle" if platform is Platform.META else "Fanvue angle"
+    lines = [
+        f"- 2026-10-{12 + i}: Situation: Something happens (day {i + 1}) | "
+        f"Angle (direction only): {angle} (day {i + 1})"
+        for i in range(7)
+    ]
+    return "## This week\n" + "\n".join(lines)
+
+
 def test_plan_feeds_the_shared_persona_and_the_platform_notes_to_the_llm(
     profile: Profile,
 ):
@@ -138,6 +189,7 @@ def test_plan_feeds_the_shared_persona_and_the_platform_notes_to_the_llm(
     llm = FakeBaseLLM.instances[0]
     assert llm.previous_storyline == (
         "## Who she is\n28, grew up in Porto\n\n## Platform notes\nkeep it SFW"
+        f"\n\n{_this_week_section(Platform.META)}"
     )
     assert [p.cache_key for p in llm.prompts] == ["week"]
     assert llm.week_start == TARGET_WEEK
@@ -152,7 +204,9 @@ def test_no_initial_conditions_drops_the_platform_notes_but_keeps_the_persona(
     _plan(profile, Platform.META, use_initial_conditions=False)
 
     storyline = FakeBaseLLM.instances[0].previous_storyline
-    assert storyline == "## Who she is\n28, grew up in Porto"
+    assert storyline == (
+        f"## Who she is\n28, grew up in Porto\n\n{_this_week_section(Platform.META)}"
+    )
 
 
 def test_sections_the_profile_has_not_got_yet_are_left_out(profile: Profile):
@@ -161,33 +215,201 @@ def test_sections_the_profile_has_not_got_yet_are_left_out(profile: Profile):
     _plan(profile, Platform.META)
 
     storyline = FakeBaseLLM.instances[0].previous_storyline
-    assert storyline == "## Platform notes\nkeep it SFW"
-
-
-def test_previous_week_recap_is_included_when_a_previous_plan_exists(profile: Profile):
-    previous = WeekPlan(
-        week="2026-10-05",
-        days=[
-            DayPlan(
-                day=1,
-                posts=[
-                    PostPlan(
-                        title="Beach day",
-                        caption="sun",
-                        upload_time="2026-10-05T10:00:00Z",
-                    )
-                ],
-            )
-        ],
+    assert storyline == (
+        f"## Platform notes\nkeep it SFW\n\n{_this_week_section(Platform.META)}"
     )
-    repository_for(profile).save_week_plan(profile, Platform.META, previous)
+
+
+def test_this_week_section_is_the_platforms_slice_of_the_chapter(profile: Profile):
+    write_chapter(
+        profile,
+        TARGET_WEEK_KEY,
+        situation="A trip to Lisbon",
+        meta_angle="Posts a sunny beach photo",
+        fanvue_angle="Shares the private aftermath",
+    )
 
     _plan(profile, Platform.META, use_initial_conditions=False)
 
     storyline = FakeBaseLLM.instances[0].previous_storyline
-    assert "## Last week (2026-10-05)" in storyline
-    assert "Beach day" in storyline
-    assert "sun" in storyline
+    assert "## This week" in storyline
+    assert (
+        "2026-10-12: Situation: A trip to Lisbon (day 1) | "
+        "Angle (direction only): Posts a sunny beach photo (day 1)" in (storyline)
+    )
+    assert "2026-10-18" in storyline  # day 7, the last day of the week
+
+
+def test_build_previous_storyline_raises_a_clear_error_when_no_chapter_covers_the_week(
+    profile: Profile,
+):
+    """
+    Direct unit test of `build_previous_storyline` itself (not through
+    `PlanningManager.plan()`, which now self-heals a missing chapter — see
+    `test_plan_self_heals_a_missing_arc_and_chapter_then_plans` below). This
+    is still the error a caller gets if it reads a chapter for a week
+    `_ensure_story` never covered (e.g. `jobs/tasks.py:run_plan`'s hash
+    computation, if the DAG's own guarantee were ever violated).
+    """
+    repo = repository_for(profile)
+    platform_profile = repo.get_platform_profile(profile, Platform.META)
+
+    with pytest.raises(ValueError, match="No chapter covers week"):
+        planning_manager_module.build_previous_storyline(
+            repo, profile, Platform.META, platform_profile, True, "2099-01-04"
+        )
+
+
+def test_plan_self_heals_a_missing_arc_and_chapter_then_plans(
+    profile: Profile, monkeypatch
+):
+    """
+    Standalone callers (`meta plan`, `fanvue plan`, `all run_all`) have no
+    DAG "story" step guaranteeing an arc/chapter exists. `PlanningManager`
+    must generate both itself — once — before it can build the storyline
+    and plan.
+    """
+    repo = repository_for(profile)
+    for path in (
+        profile.platform_info[Platform.META].inputs_path.parents[1] / "story"
+    ).glob("**/*.json"):
+        path.unlink()
+    assert repo.get_arc_covering(profile, TARGET_WEEK_KEY) is None
+    assert repo.get_chapter_covering(profile, TARGET_WEEK_KEY) is None
+
+    class RealStoryFakeModelRouter(FakeModelRouter):
+        pass
+
+    class RealStoryFakeBaseLLM:
+        """
+        Dispatches on `prompts[0].cache_key` rather than call order, since
+        `plan_chapter` now makes several calls (one outline, one per week)
+        instead of one: "arc", "chapter_outline", or "chapter_week_{i}".
+        """
+
+        instances: list["RealStoryFakeBaseLLM"] = []
+
+        def __init__(
+            self, prompts, previous_storyline, platform_name, model_router, week_start
+        ):
+            self.week_start = week_start
+            self.model_router = model_router
+            self.cache_key = prompts[0].cache_key
+            RealStoryFakeBaseLLM.instances.append(self)
+
+        def generate_dict_from_prompts(self) -> dict:
+            from datetime import timedelta
+
+            if self.cache_key == "arc":
+                return {
+                    "title": "t",
+                    "premise": "p",
+                    "goal": "g",
+                    "conflict": "c",
+                    "starting_point": "s",
+                    "ending_point": "e",
+                    "summary": "sum",
+                }
+            if self.cache_key == "chapter_outline":
+                return {
+                    "title": "chapter",
+                    "summary": "chapter summary",
+                    # Default StoryConfig.chapter_weeks is 4.
+                    "week_summaries": ["w0", "w1", "w2", "w3"],
+                }
+            week_index = int(self.cache_key.rsplit("_", 1)[1])
+            start = self.week_start
+            return {
+                "days": [
+                    {
+                        "date": (start + timedelta(days=i)).isoformat(),
+                        "situation": f"s{week_index * 7 + i}",
+                        "angles": {
+                            "meta": f"m{week_index * 7 + i}",
+                            "fanvue": f"f{week_index * 7 + i}",
+                        },
+                    }
+                    for i in range(7)
+                ],
+            }
+
+    RealStoryFakeBaseLLM.instances = []
+    monkeypatch.setattr(story_manager_module, "ModelRouter", RealStoryFakeModelRouter)
+    monkeypatch.setattr(story_manager_module, "BaseLLM", RealStoryFakeBaseLLM)
+
+    _plan(profile, Platform.META)
+
+    # One arc call, one chapter outline call, one call per week (4).
+    assert len(RealStoryFakeBaseLLM.instances) == 6
+    assert repo.get_arc_covering(profile, TARGET_WEEK_KEY) is not None
+    assert repo.get_chapter_covering(profile, TARGET_WEEK_KEY) is not None
+    # The plan itself still went through, using the freshly generated chapter.
+    saved = repo.get_week_plan(profile, Platform.META)
+    assert saved.week == TARGET_WEEK_KEY
+
+
+def test_plan_makes_no_story_generation_calls_when_arc_and_chapter_already_exist(
+    profile: Profile,
+):
+    """
+    The autouse fixtures already seed both the arc and the chapter, and
+    tripwire `StoryManager`'s `ModelRouter`/`BaseLLM`
+    (`_StoryGenerationTripwire`) so this would fail loudly if `plan()` ever
+    reached real story generation. A plain, successful `_plan()` call is
+    the proof that it didn't.
+    """
+    _plan(profile, Platform.META)  # must not raise AssertionError
+
+
+# --- isolation: Meta never sees the arc, Fanvue's angle, or Fanvue's notes --
+
+
+def test_meta_storyline_never_contains_the_arc_fanvue_angle_or_fanvue_notes(
+    profile: Profile,
+):
+    write_persona(profile, "persona text")
+    _initial_conditions(profile).write_text("Meta: keep it SFW", encoding="utf-8")
+    fanvue_notes = profile.platform_info[Platform.FANVUE].inputs_path / (
+        "initial_conditions.md"
+    )
+    fanvue_notes.write_text("FANVUE_MARKER: explicit tone notes", encoding="utf-8")
+    repository_for(profile).save_arc(
+        profile,
+        Arc(
+            start_week=TARGET_WEEK_KEY,
+            weeks=12,
+            title="ARC_MARKER season",
+            premise="ARC_MARKER premise",
+            goal="goal",
+            conflict="conflict",
+            starting_point="start",
+            ending_point="end",
+            summary="ARC_MARKER summary",
+        ),
+    )
+    write_chapter(
+        profile,
+        TARGET_WEEK_KEY,
+        situation="A neutral situation",
+        meta_angle="A safe-for-work angle",
+        fanvue_angle="FANVUE_MARKER: an explicit angle",
+    )
+
+    _plan(profile, Platform.META)
+    meta_storyline = FakeBaseLLM.instances[0].previous_storyline
+
+    assert "ARC_MARKER" not in meta_storyline
+    assert "FANVUE_MARKER" not in meta_storyline
+    assert "A safe-for-work angle" in meta_storyline
+
+    FakeBaseLLM.instances.clear()
+    _plan(profile, Platform.FANVUE)
+    fanvue_storyline = FakeBaseLLM.instances[0].previous_storyline
+
+    # Fanvue legitimately gets its own angle and its own notes...
+    assert "FANVUE_MARKER" in fanvue_storyline
+    # ...but never the arc, which no platform ever reads directly.
+    assert "ARC_MARKER" not in fanvue_storyline
 
 
 def test_plan_saves_the_generated_week_plan(profile: Profile):

@@ -10,6 +10,8 @@ from ai_content_pipeline.cli.commands.all import (
     configure_run_all_logging,
 )
 from ai_content_pipeline.cli.commands.jobs import app as jobs_app
+from ai_content_pipeline.cli.commands.arc import app as arc_app
+from ai_content_pipeline.cli.commands.chapter import app as chapter_app
 
 # Baseline DEBUG for everything (only run_all command overwrites this internally)
 logger.remove()
@@ -93,8 +95,10 @@ app.add_typer(
 app.add_typer(
     jobs_app,
     name="jobs",
-    help="Resumable DAG pipeline (plan -> generate -> schedule)",
+    help="Resumable DAG pipeline (story -> plan -> generate -> schedule)",
 )
+app.add_typer(arc_app, name="arc", help="Season-level story arc commands")
+app.add_typer(chapter_app, name="chapter", help="Chapter-level story commands")
 
 if __name__ == "__main__":
     app()

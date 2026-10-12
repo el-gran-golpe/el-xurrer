@@ -332,3 +332,136 @@ def test_forget_deletes_the_job_row(tmp_path):
     store.forget("generate_image:p:meta:2026-10-12/day_1/a_0.jpeg")
 
     assert store.status("generate_image:p:meta:2026-10-12/day_1/a_0.jpeg") is None
+
+
+# ---------------- story job type + nullable platform ----------------
+
+
+def test_story_job_can_be_created_with_no_platform():
+    store = _store()
+
+    status = store.create("story:haru:2026-10-05", JobType.STORY, "haru", None)
+
+    assert status is JobStatus.PENDING
+    jobs = store.all_jobs()
+    assert jobs[0]["platform"] is None
+    assert jobs[0]["type"] == "story"
+
+
+def test_story_event_can_be_recorded_with_no_platform():
+    store = _store()
+    run_id = store.start_run({})
+
+    store.record_event(
+        run_id,
+        "story:haru:2026-10-05",
+        JobType.STORY,
+        "haru",
+        None,
+        "2026-10-05",
+        JobEventKind.ARC_DONE,
+    )
+
+    events = store.events_for_run(run_id)
+    assert events[0]["platform"] is None
+    assert events[0]["kind"] == "arc_done"
+
+
+def test_schema_upgrades_a_db_whose_jobs_table_predates_the_story_type(tmp_path):
+    """
+    A `JOBS_DB_PATH` created before the `story` job type (and nullable
+    `platform`) existed has a `jobs`/`job_events` CHECK constraint that
+    rejects both. SQLite cannot `ALTER` a CHECK constraint, so `JobStore`
+    must rebuild those two tables (preserving their rows) rather than fail
+    to open the DB or silently keep the old, incompatible constraint.
+    """
+    db_path = tmp_path / "state.db"
+    old_conn = sqlite3.connect(str(db_path))
+    old_conn.executescript(
+        """
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL CHECK (type IN ('plan', 'generate_image', 'schedule')),
+            profile TEXT NOT NULL,
+            platform TEXT NOT NULL CHECK (platform IN ('meta', 'fanvue')),
+            status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done', 'failed')),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            params_hash TEXT
+        );
+        CREATE TABLE fan_in_counters (
+            group_key TEXT PRIMARY KEY,
+            remaining INTEGER NOT NULL
+        );
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            args TEXT,
+            outcome TEXT
+        );
+        CREATE TABLE job_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            job_id TEXT NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('plan', 'generate_image', 'schedule')),
+            profile TEXT NOT NULL,
+            platform TEXT NOT NULL CHECK (platform IN ('meta', 'fanvue')),
+            week TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            detail TEXT,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    old_conn.execute(
+        "INSERT INTO jobs (id, type, profile, platform, status) "
+        "VALUES ('plan:haru:meta:2026-09-01', 'plan', 'haru', 'meta', 'done')"
+    )
+    old_conn.execute(
+        "INSERT INTO runs (run_id, started_at, finished_at, args, outcome) "
+        "VALUES ('run-old', '2026-09-01T00:00:00+00:00', NULL, '{}', NULL)"
+    )
+    old_conn.execute(
+        "INSERT INTO job_events "
+        "(run_id, job_id, type, profile, platform, week, kind, detail, created_at) "
+        "VALUES ('run-old', 'plan:haru:meta:2026-09-01', 'plan', 'haru', 'meta', "
+        "'2026-09-01', 'plan_done', NULL, '2026-09-01T00:00:00+00:00')"
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    store = JobStore(db_path)
+
+    # Pre-existing rows in both rebuilt tables survived the upgrade.
+    assert store.status("plan:haru:meta:2026-09-01") is JobStatus.DONE
+    old_events = store.events_for_run("run-old")
+    assert len(old_events) == 1
+    assert old_events[0]["kind"] == "plan_done"
+
+    # And the new shape (story type, nullable platform) is now usable.
+    status = store.create("story:haru:2026-10-05", JobType.STORY, "haru", None)
+    assert status is JobStatus.PENDING
+    run_id = store.start_run({})
+    store.record_event(
+        run_id,
+        "story:haru:2026-10-05",
+        JobType.STORY,
+        "haru",
+        None,
+        "2026-10-05",
+        JobEventKind.ARC_DONE,
+    )
+    assert len(store.events_for_run(run_id)) == 1
+
+
+def test_schema_upgrade_is_a_noop_on_a_db_already_on_the_current_shape(tmp_path):
+    """Opening a DB a second time (the normal case across `jobs run`
+    invocations) must not re-trigger the rename/copy/drop migration dance."""
+    db_path = tmp_path / "state.db"
+    JobStore(db_path).close()
+
+    store = JobStore(db_path)  # second open: schema already current
+
+    status = store.create("story:haru:2026-10-05", JobType.STORY, "haru", None)
+    assert status is JobStatus.PENDING

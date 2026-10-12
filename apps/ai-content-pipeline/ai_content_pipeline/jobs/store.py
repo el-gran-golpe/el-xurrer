@@ -6,14 +6,17 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
+
 from ai_content_pipeline.domain.types import Platform
 
 _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
 class JobType(str, Enum):
-    """The 3 node kinds in the plan -> generate_image -> schedule DAG."""
+    """The 4 node kinds in the story -> plan -> generate_image -> schedule DAG."""
 
+    STORY = "story"
     PLAN = "plan"
     GENERATE_IMAGE = "generate_image"
     SCHEDULE = "schedule"
@@ -40,6 +43,9 @@ class JobEventKind(str, Enum):
     PLAN_DONE = "plan_done"
     PLAN_FAILED = "plan_failed"
     PLAN_ATTEMPT_INVALID = "plan_attempt_invalid"
+    # A `plan` already `done` whose week has started (Monday <= today) is
+    # never re-planned, even if its resume hash changed.
+    PLAN_FROZEN = "plan_frozen"
     WEEK_NOT_ENQUEUED = "week_not_enqueued"
     IMAGE_GENERATED = "image_generated"
     IMAGE_REUSED = "image_reused"
@@ -48,6 +54,11 @@ class JobEventKind(str, Enum):
     SCHEDULE_DONE = "schedule_done"
     SCHEDULE_SKIPPED = "schedule_skipped"
     SCHEDULE_FAILED = "schedule_failed"
+    ARC_DONE = "arc_done"
+    ARC_REUSED = "arc_reused"
+    CHAPTER_DONE = "chapter_done"
+    CHAPTER_REUSED = "chapter_reused"
+    STORY_FAILED = "story_failed"
 
 
 class JobStore:
@@ -61,8 +72,59 @@ class JobStore:
 
     def __init__(self, path: str | Path):
         self._conn = sqlite3.connect(str(path))
-        self._conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self._prepare_schema()
         self._conn.commit()
+
+    def _prepare_schema(self) -> None:
+        """
+        Creates the schema if missing, upgrading an existing DB in place
+        first if needed. SQLite cannot ALTER a CHECK constraint, so a `jobs`
+        (or `job_events`) table created before the 'story' job type and
+        nullable `platform` existed is rebuilt: renamed out of the way here,
+        recreated by `schema.sql` below (its name is free again), then its
+        rows are copied over and the renamed table is dropped. A fresh DB, or
+        one already on the current shape, skips straight to `executescript`.
+        """
+        migrate_jobs = self._needs_migration("jobs")
+        migrate_events = self._needs_migration("job_events")
+        if migrate_jobs:
+            logger.warning(
+                "Upgrading jobs DB schema: jobs.type now allows 'story' and "
+                "platform is nullable"
+            )
+            self._conn.execute("ALTER TABLE jobs RENAME TO jobs_old")
+        if migrate_events:
+            self._conn.execute("ALTER TABLE job_events RENAME TO job_events_old")
+
+        self._conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        if migrate_jobs:
+            self._conn.execute(
+                "INSERT INTO jobs (id, type, profile, platform, status, "
+                "attempts, error, params_hash) "
+                "SELECT id, type, profile, platform, status, attempts, error, "
+                "params_hash FROM jobs_old"
+            )
+            self._conn.execute("DROP TABLE jobs_old")
+        if migrate_events:
+            self._conn.execute(
+                "INSERT INTO job_events (id, run_id, job_id, type, profile, "
+                "platform, week, kind, detail, created_at) "
+                "SELECT id, run_id, job_id, type, profile, platform, week, "
+                "kind, detail, created_at FROM job_events_old"
+            )
+            self._conn.execute("DROP TABLE job_events_old")
+
+    def _needs_migration(self, table: str) -> bool:
+        """True when `table` exists but predates the 'story' job type (its
+        CHECK constraint does not mention it yet). False for a table that
+        does not exist at all — `schema.sql`'s own `CREATE TABLE IF NOT
+        EXISTS` creates it fresh, already in the current shape."""
+        row = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,),
+        ).fetchone()
+        return row is not None and "'story'" not in row[0]
 
     def close(self) -> None:
         self._conn.close()
@@ -90,7 +152,7 @@ class JobStore:
         job_id: str,
         job_type: JobType,
         profile: str,
-        platform: Platform,
+        platform: Platform | None,
         params_hash: str | None = None,
     ) -> JobStatus:
         """
@@ -99,15 +161,26 @@ class JobStore:
         with a different `params_hash` (its inputs changed since it last
         completed) or `failed`, reset to `pending` so it re-runs. Returns the
         resulting status.
+
+        `platform` is `None` for a `story` job (profile+week only, no single
+        platform).
         """
         row = self._conn.execute(
             "SELECT status, params_hash FROM jobs WHERE id = ?", (job_id,)
         ).fetchone()
+        platform_value = platform.value if platform is not None else None
         if row is None:
             self._conn.execute(
                 "INSERT INTO jobs (id, type, profile, platform, status, params_hash) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (job_id, job_type, profile, platform, JobStatus.PENDING, params_hash),
+                (
+                    job_id,
+                    job_type,
+                    profile,
+                    platform_value,
+                    JobStatus.PENDING,
+                    params_hash,
+                ),
             )
             self._conn.commit()
             return JobStatus.PENDING
@@ -203,7 +276,7 @@ class JobStore:
         job_id: str,
         job_type: JobType,
         profile: str,
-        platform: Platform,
+        platform: Platform | None,
         week: str,
         kind: JobEventKind,
         detail: dict[str, Any] | None = None,
@@ -213,6 +286,9 @@ class JobStore:
         overwrites a previous event — unlike `jobs` (latest status only),
         `job_events` is append-only so a node re-run in a later `jobs run`
         does not erase what happened the first time.
+
+        `platform` is `None` for a `story` event — it is not about one
+        specific platform.
         """
         self._conn.execute(
             "INSERT INTO job_events "
@@ -223,7 +299,7 @@ class JobStore:
                 job_id,
                 job_type.value,
                 profile,
-                platform.value,
+                platform.value if platform is not None else None,
                 week,
                 kind.value,
                 json.dumps(detail) if detail is not None else None,

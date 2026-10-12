@@ -5,17 +5,24 @@
 --
 -- The CHECK constraints below must stay in sync with their Python enums:
 --   type     <-> JobType (jobs/store.py)
---   platform <-> Platform (domain/types.py)
+--   platform <-> Platform (domain/types.py), or NULL for a 'story' job
+--                (profile+week only, no single platform)
 --   status   <-> JobStatus (jobs/store.py)
 --   kind     <-> JobEventKind (jobs/store.py)
 --   outcome  <-> the 'success'/'failed' strings jobs/commands/jobs.py passes
 --                to JobStore.finish_run
+--
+-- `JobStore` rebuilds `jobs`/`job_events` (via rename -> recreate -> copy ->
+-- drop) whenever it opens a DB whose `jobs` table predates the 'story' type,
+-- since SQLite cannot ALTER a CHECK constraint in place. See
+-- `JobStore._prepare_schema`.
 
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK (type IN ('plan', 'generate_image', 'schedule')),
+    type TEXT NOT NULL CHECK (type IN ('plan', 'generate_image', 'schedule', 'story')),
     profile TEXT NOT NULL,
-    platform TEXT NOT NULL CHECK (platform IN ('meta', 'fanvue')),
+    -- NULL for a 'story' job: it covers a whole profile+week, not one platform.
+    platform TEXT CHECK (platform IS NULL OR platform IN ('meta', 'fanvue')),
     status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done', 'failed')),
     attempts INTEGER NOT NULL DEFAULT 0,
     error TEXT,
@@ -50,15 +57,17 @@ CREATE TABLE IF NOT EXISTS job_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,
     job_id TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('plan', 'generate_image', 'schedule')),
+    type TEXT NOT NULL CHECK (type IN ('plan', 'generate_image', 'schedule', 'story')),
     profile TEXT NOT NULL,
-    platform TEXT NOT NULL CHECK (platform IN ('meta', 'fanvue')),
+    -- NULL for a 'story' event: it is not about one specific platform.
+    platform TEXT CHECK (platform IS NULL OR platform IN ('meta', 'fanvue')),
     week TEXT NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN (
         'plan_reused',
         'plan_done',
         'plan_failed',
         'plan_attempt_invalid',
+        'plan_frozen',
         'week_not_enqueued',
         'image_generated',
         'image_reused',
@@ -66,7 +75,12 @@ CREATE TABLE IF NOT EXISTS job_events (
         'image_failed',
         'schedule_done',
         'schedule_skipped',
-        'schedule_failed'
+        'schedule_failed',
+        'arc_done',
+        'arc_reused',
+        'chapter_done',
+        'chapter_reused',
+        'story_failed'
     )),
     detail TEXT,
     created_at TEXT NOT NULL

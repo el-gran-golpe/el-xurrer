@@ -1,6 +1,7 @@
 import re
 import json
 import shutil
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -8,6 +9,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from ai_content_pipeline.domain.plans import WeekPlan
+from ai_content_pipeline.domain.story import Arc, Chapter, StoryConfig
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.domain.types import (
     PlatformInfo,
@@ -81,11 +83,25 @@ class ProfileRepository(Protocol):
         self, profile: Profile, platform: Platform, plan: WeekPlan
     ) -> None: ...
 
-    def get_previous_week_plan(
-        self, profile: Profile, platform: Platform, before: str
-    ) -> WeekPlan | None: ...
-
     def get_persona(self, profile: Profile) -> str: ...
+
+    # --- Story: arc -> chapter (see domain/story.py) ---
+
+    def get_story_config(self, profile: Profile) -> StoryConfig: ...
+
+    def get_arc_covering(self, profile: Profile, week: str) -> Arc | None: ...
+
+    def get_previous_arc(self, profile: Profile, before: str) -> Arc | None: ...
+
+    def save_arc(self, profile: Profile, arc: Arc) -> None: ...
+
+    def get_chapter_covering(self, profile: Profile, week: str) -> Chapter | None: ...
+
+    def get_chapters_of_arc(
+        self, profile: Profile, arc_start_week: str
+    ) -> list[Chapter]: ...
+
+    def save_chapter(self, profile: Profile, chapter: Chapter) -> None: ...
 
 
 class FilesystemProfileRepository:
@@ -404,55 +420,6 @@ class FilesystemProfileRepository:
             destination.unlink()
         shutil.move(str(path), str(destination))
 
-    def get_previous_week_plan(
-        self, profile: Profile, platform: Platform, before: str
-    ) -> WeekPlan | None:
-        """
-        Among the current plan and every archived history plan for this
-        platform, the latest ISO-dated week strictly before `before`. With no
-        dated plan (a profile still on the legacy `"week_1"` key, or no
-        history yet), falls back to the latest non-dated legacy plan by file
-        mtime. `None` when there are no plans at all.
-
-        Platform-own only: Meta reads Meta's previous week, Fanvue reads
-        Fanvue's. Cross-platform continuity is the future "chapter" command's
-        job, not this one's.
-        """
-        candidates: list[tuple[Path, WeekPlan]] = []
-
-        planning_path = self._planning_path(profile, platform)
-        if planning_path.is_file():
-            candidates.append((planning_path, self._read_week_plan(planning_path)))
-
-        history_dir = self._history_dir(profile, platform)
-        if history_dir.is_dir():
-            for path in history_dir.glob("*_planning.json"):
-                try:
-                    candidates.append((path, self._read_week_plan(path)))
-                except (json.JSONDecodeError, ValidationError, ValueError) as e:
-                    logger.warning("Skipping unreadable history plan {}: {}", path, e)
-
-        if not candidates:
-            return None
-
-        dated = [
-            (path, plan)
-            for path, plan in candidates
-            if _DATED_WEEK_RE.match(plan.week) and plan.week < before
-        ]
-        if dated:
-            return max(dated, key=lambda item: item[1].week)[1]
-
-        legacy = [
-            (path, plan)
-            for path, plan in candidates
-            if not _DATED_WEEK_RE.match(plan.week)
-        ]
-        if legacy:
-            return max(legacy, key=lambda item: item[0].stat().st_mtime)[1]
-
-        return None
-
     # --- Shared by both platforms: who she is ---
     #
     # Hangs off the profile root, not off `PlatformInfo`, so Meta and Fanvue
@@ -465,3 +432,102 @@ class FilesystemProfileRepository:
     def get_persona(self, profile: Profile) -> str:
         path = self._persona_path(profile)
         return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+
+    # --- Story: arc -> chapter ---
+    #
+    # Also hangs off the profile root (resource_path/profile.name/story/),
+    # never off PlatformInfo: the arc is platform-blind by design, and the
+    # chapter is read by every platform, so neither belongs under one
+    # platform's inputs/outputs tree.
+
+    def _story_dir(self, profile: Profile) -> Path:
+        return self.resource_path / profile.name / "story"
+
+    def _story_config_path(self, profile: Profile) -> Path:
+        return self._story_dir(profile) / "config.json"
+
+    def _arcs_dir(self, profile: Profile) -> Path:
+        return self._story_dir(profile) / "arcs"
+
+    def _chapters_dir(self, profile: Profile) -> Path:
+        return self._story_dir(profile) / "chapters"
+
+    def get_story_config(self, profile: Profile) -> StoryConfig:
+        path = self._story_config_path(profile)
+        if not path.is_file():
+            return StoryConfig()
+        return StoryConfig.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+    def _all_arcs(self, profile: Profile) -> list[Arc]:
+        arcs_dir = self._arcs_dir(profile)
+        if not arcs_dir.is_dir():
+            return []
+        arcs: list[Arc] = []
+        for path in sorted(arcs_dir.glob("*.json")):
+            try:
+                arcs.append(Arc.model_validate(json.loads(path.read_text("utf-8"))))
+            except (json.JSONDecodeError, ValidationError, ValueError) as e:
+                logger.warning("Skipping unreadable arc {}: {}", path, e)
+        return arcs
+
+    def get_arc_covering(self, profile: Profile, week: str) -> Arc | None:
+        for arc in self._all_arcs(profile):
+            if arc.start_week <= week <= arc.end_week:
+                return arc
+        return None
+
+    def get_previous_arc(self, profile: Profile, before: str) -> Arc | None:
+        candidates = [a for a in self._all_arcs(profile) if a.start_week < before]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda a: a.start_week)
+
+    def save_arc(self, profile: Profile, arc: Arc) -> None:
+        arcs_dir = self._arcs_dir(profile)
+        arcs_dir.mkdir(parents=True, exist_ok=True)
+        path = arcs_dir / f"{arc.start_week}.json"
+        path.write_text(
+            json.dumps(arc.model_dump(), indent=4, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def _all_chapters(self, profile: Profile) -> list[Chapter]:
+        chapters_dir = self._chapters_dir(profile)
+        if not chapters_dir.is_dir():
+            return []
+        chapters: list[Chapter] = []
+        for path in sorted(chapters_dir.glob("*.json")):
+            try:
+                chapters.append(
+                    Chapter.model_validate(json.loads(path.read_text("utf-8")))
+                )
+            except (json.JSONDecodeError, ValidationError, ValueError) as e:
+                logger.warning("Skipping unreadable chapter {}: {}", path, e)
+        return chapters
+
+    def get_chapter_covering(self, profile: Profile, week: str) -> Chapter | None:
+        for chapter in self._all_chapters(profile):
+            chapter_end = (
+                date.fromisoformat(chapter.start_week)
+                + timedelta(days=chapter.weeks * 7 - 1)
+            ).isoformat()
+            if chapter.start_week <= week <= chapter_end:
+                return chapter
+        return None
+
+    def get_chapters_of_arc(
+        self, profile: Profile, arc_start_week: str
+    ) -> list[Chapter]:
+        chapters = [
+            c for c in self._all_chapters(profile) if c.arc_start_week == arc_start_week
+        ]
+        return sorted(chapters, key=lambda c: c.start_week)
+
+    def save_chapter(self, profile: Profile, chapter: Chapter) -> None:
+        chapters_dir = self._chapters_dir(profile)
+        chapters_dir.mkdir(parents=True, exist_ok=True)
+        path = chapters_dir / f"{chapter.start_week}.json"
+        path.write_text(
+            json.dumps(chapter.model_dump(), indent=4, ensure_ascii=False),
+            encoding="utf-8",
+        )

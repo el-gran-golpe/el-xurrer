@@ -3,8 +3,9 @@ import json
 import pytest
 
 from ai_content_pipeline.domain.plans import DayPlan, PostPlan, WeekPlan
+from ai_content_pipeline.domain.story import Arc, StoryConfig
 from ai_content_pipeline.domain.types import Platform, Profile
-from conftest import repository_for, write_persona
+from conftest import make_chapter, repository_for, write_persona
 
 PLAN = WeekPlan(
     week="week_1",
@@ -211,48 +212,114 @@ def test_get_week_plan_with_an_unknown_week_raises(profile: Profile):
         repo.get_week_plan(profile, Platform.META, "2099-01-01")
 
 
-# --- get_previous_week_plan -----------------------------------------------
+# --- story: config ---------------------------------------------------------
 
 
-def test_get_previous_week_plan_picks_the_latest_dated_week_before_the_target(
+def test_get_story_config_defaults_when_missing(profile: Profile):
+    repo = repository_for(profile)
+
+    config = repo.get_story_config(profile)
+
+    assert config == StoryConfig(arc_weeks=12, chapter_weeks=4)
+
+
+def test_get_story_config_reads_the_config_file(profile: Profile):
+    repo = repository_for(profile)
+    story_dir = profile.platform_info[Platform.META].inputs_path.parents[1] / "story"
+    story_dir.mkdir(parents=True)
+    (story_dir / "config.json").write_text(
+        json.dumps({"arc_weeks": 8, "chapter_weeks": 2}), encoding="utf-8"
+    )
+
+    config = repo.get_story_config(profile)
+
+    assert config == StoryConfig(arc_weeks=8, chapter_weeks=2)
+
+
+# --- story: arcs -------------------------------------------------------------
+
+
+def _arc(start_week: str, weeks: int = 12) -> Arc:
+    return Arc(
+        start_week=start_week,
+        weeks=weeks,
+        title="Season one",
+        premise="premise",
+        goal="goal",
+        conflict="conflict",
+        starting_point="start",
+        ending_point="end",
+        summary="summary",
+    )
+
+
+def test_save_arc_and_get_arc_covering_round_trip(profile: Profile):
+    repo = repository_for(profile)
+    arc = _arc("2026-10-05", weeks=4)
+
+    repo.save_arc(profile, arc)
+
+    assert repo.get_arc_covering(profile, "2026-10-12") == arc
+    assert repo.get_arc_covering(profile, "2026-10-05") == arc
+    assert repo.get_arc_covering(profile, "2026-10-26") == arc  # last week (+3)
+
+
+def test_get_arc_covering_returns_none_outside_the_arcs_range(profile: Profile):
+    repo = repository_for(profile)
+    repo.save_arc(profile, _arc("2026-10-05", weeks=4))
+
+    assert repo.get_arc_covering(profile, "2026-11-09") is None
+    assert repo.get_arc_covering(profile, "2026-09-28") is None
+
+
+def test_get_previous_arc_picks_the_latest_arc_strictly_before_the_target(
     profile: Profile,
 ):
     repo = repository_for(profile)
-    week_1 = WeekPlan.model_validate({"week": "2026-10-05", "days": PLAN.days})
-    week_2 = WeekPlan.model_validate({"week": "2026-10-12", "days": PLAN.days})
-    repo.save_week_plan(profile, Platform.META, week_1)
-    repo.save_week_plan(profile, Platform.META, week_2)  # archives week_1
+    repo.save_arc(profile, _arc("2026-01-05", weeks=4))
+    repo.save_arc(profile, _arc("2026-10-05", weeks=4))
 
-    previous = repo.get_previous_week_plan(profile, Platform.META, before="2026-10-19")
+    previous = repo.get_previous_arc(profile, before="2026-10-12")
 
     assert previous is not None
-    assert previous.week == "2026-10-12"
+    assert previous.start_week == "2026-10-05"
 
 
-def test_get_previous_week_plan_falls_back_to_a_legacy_plan(profile: Profile):
-    repo = repository_for(profile)
-    repo.save_week_plan(profile, Platform.META, PLAN)  # week="week_1", not dated
-
-    previous = repo.get_previous_week_plan(profile, Platform.META, before="2026-10-19")
-
-    assert previous is not None
-    assert previous.week == "week_1"
-
-
-def test_get_previous_week_plan_returns_none_without_any_plan(profile: Profile):
+def test_get_previous_arc_returns_none_without_any_arc(profile: Profile):
     repo = repository_for(profile)
 
-    assert (
-        repo.get_previous_week_plan(profile, Platform.META, before="2026-10-19") is None
-    )
+    assert repo.get_previous_arc(profile, before="2026-10-12") is None
 
 
-def test_get_previous_week_plan_is_platform_own_only(profile: Profile):
+# --- story: chapters ---------------------------------------------------------
+
+
+def test_save_chapter_and_get_chapter_covering_round_trip(profile: Profile):
     repo = repository_for(profile)
-    meta_plan = WeekPlan.model_validate({"week": "2026-10-05", "days": PLAN.days})
-    repo.save_week_plan(profile, Platform.META, meta_plan)
+    chapter = make_chapter("2026-10-05", weeks=2)
 
-    assert (
-        repo.get_previous_week_plan(profile, Platform.FANVUE, before="2026-10-19")
-        is None
-    )
+    repo.save_chapter(profile, chapter)
+
+    assert repo.get_chapter_covering(profile, "2026-10-05") == chapter
+    assert repo.get_chapter_covering(profile, "2026-10-12") == chapter
+
+
+def test_get_chapter_covering_returns_none_outside_its_range(profile: Profile):
+    repo = repository_for(profile)
+    repo.save_chapter(profile, make_chapter("2026-10-05", weeks=2))
+
+    assert repo.get_chapter_covering(profile, "2026-10-19") is None
+
+
+def test_get_chapters_of_arc_returns_only_that_arcs_chapters_sorted(profile: Profile):
+    repo = repository_for(profile)
+    other_arc_chapter = make_chapter("2026-01-05", weeks=4, arc_start_week="2026-01-05")
+    chapter_2 = make_chapter("2026-11-02", weeks=4, arc_start_week="2026-10-05")
+    chapter_1 = make_chapter("2026-10-05", weeks=4, arc_start_week="2026-10-05")
+    repo.save_chapter(profile, other_arc_chapter)
+    repo.save_chapter(profile, chapter_2)
+    repo.save_chapter(profile, chapter_1)
+
+    chapters = repo.get_chapters_of_arc(profile, "2026-10-05")
+
+    assert [c.start_week for c in chapters] == ["2026-10-05", "2026-11-02"]

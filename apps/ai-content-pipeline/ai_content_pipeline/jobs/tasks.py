@@ -24,6 +24,7 @@ from ai_content_pipeline.planning.planning_manager import (
     PlanningManager,
     build_previous_storyline,
 )
+from ai_content_pipeline.planning.story_manager import StoryManager
 from ai_content_pipeline.profiles.repository import ProfileRepository
 from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler
 
@@ -37,10 +38,21 @@ class ProfileJob:
     profile: Profile
     platform: Platform
     week: str
-    # `plan` payload only (unused, left at 0, for `schedule`): how many more
-    # weeks follow this one in a `--weeks N` chain. `run_plan` enqueues the
-    # next week's plan job (with this decremented) only after this week's
-    # plan is done and fanned out — see `run_plan`.
+
+
+@dataclass(frozen=True)
+class StoryJob:
+    """
+    Payload of a `story` node: one profile+week (no platform — the arc and
+    chapter are platform-blind/platform-aware-but-shared, never owned by one
+    platform). `remaining_weeks` is how many more weeks follow this one in
+    a `--weeks N` chain; `run_story` enqueues week+1's own `story` job
+    (decremented) only once this week's arc+chapter are secured and this
+    week's `plan` jobs are enqueued.
+    """
+
+    profile: Profile
+    week: str
     remaining_weeks: int = 0
 
 
@@ -66,6 +78,10 @@ def _outputs_dir(profile: Profile, platform: Platform) -> Path:
 
 def _publications_dir(profile: Profile, platform: Platform) -> Path:
     return _outputs_dir(profile, platform) / "publications"
+
+
+def story_job_id(profile: Profile, week: str) -> str:
+    return f"{JobType.STORY.value}:{profile.name}:{week}"
 
 
 def plan_job_id(profile: Profile, platform: Platform, week: str) -> str:
@@ -100,17 +116,19 @@ class ParsedJobId:
 def parse_job_id(job_id: str) -> ParsedJobId:
     """
     Recovers (type, profile, platform, week) from a job id built by
-    `plan_job_id`/`schedule_job_id`/`_image_job_id`. Used only by `jobs
-    status`'s overview, to group the long-lived `jobs` table by week even
-    for nodes created before `job_events` existed — the `jobs` table itself
-    has no week column.
+    `story_job_id`/`plan_job_id`/`schedule_job_id`/`_image_job_id`. Used only
+    by `jobs status`'s overview, to group the long-lived `jobs` table by week
+    even for nodes created before `job_events` existed — the `jobs` table
+    itself has no week column.
 
-    `plan`/`schedule` ids are `{type}:{profile}:{platform}:{week}`, so the
-    4th colon-split segment is the week verbatim. `generate_image` ids are
+    `story` ids are `{type}:{profile}:{week}` (no platform segment at all —
+    a story job covers a whole profile+week). `plan`/`schedule` ids are
+    `{type}:{profile}:{platform}:{week}`, so the 4th colon-split segment is
+    the week verbatim. `generate_image` ids are
     `{type}:{profile}:{platform}:{week}/day_N/{slug}_{index}.jpeg` — the
     week is the first path segment of that same 4th part. Profile names and
-    `Platform` values never contain a colon or a slash, so `split(":", 3)`
-    is unambiguous either way.
+    `Platform` values never contain a colon or a slash, so splitting is
+    unambiguous either way.
 
     Real DBs created before `schedule_job_id` grew a week dimension (ahead
     of `--weeks N`) still have `schedule:{profile}:{platform}` rows with no
@@ -118,6 +136,14 @@ def parse_job_id(job_id: str) -> ParsedJobId:
     parse to `week="unknown"` instead of raising, so `jobs status` can still
     show the rest of the DB.
     """
+    if job_id.startswith(f"{JobType.STORY.value}:"):
+        parts = job_id.split(":", 2)
+        profile = parts[1] if len(parts) > 1 else ""
+        week = parts[2] if len(parts) > 2 else "unknown"
+        return ParsedJobId(
+            type=JobType.STORY.value, profile=profile, platform="", week=week
+        )
+
     parts = job_id.split(":", 3)
     job_type = parts[0] if len(parts) > 0 else ""
     profile = parts[1] if len(parts) > 1 else ""
@@ -164,14 +190,10 @@ async def run_plan(
     fan-out still runs: that is what makes a resumed run re-enqueue only the
     images it never finished.
 
-    `--weeks N` is a DAG edge, not a seed-time batch: `payload.remaining_weeks`
-    carries how many more weeks follow this one, and this function enqueues
-    the next week's `plan` job itself, only after this week's plan is done
-    (freshly planned or already done) *and* fanned out. If planning this week
-    raises, nothing below it runs — no fan-out, no next-week enqueue — so a
-    failed week never lets a later week plan on top of it (which would read
-    the wrong "previous week" and get re-planned/regenerated for nothing once
-    the failed week is finally planned on a later run).
+    Week chaining (`--weeks N`) is no longer this function's job: the
+    "story" step (`run_story`) owns the chain of weeks per profile and only
+    enqueues this week's `plan` jobs (one per platform) once its arc+chapter
+    are secured. `run_plan` just plans the one week it was asked for.
 
     `run_id` (from `JobStore.start_run`, created once per `jobs run`
     invocation) tags every `job_events` row this call records, so the
@@ -181,8 +203,8 @@ async def run_plan(
     profile, platform, week = payload.profile, payload.platform, payload.week
 
     # Hash exactly what the prompt gets: the previous-storyline text (persona
-    # + platform notes + last week's recap) plus the validated prompts JSON
-    # plus the target week. That way changing the previous week's plan
+    # + platform notes + this week's chapter slice) plus the validated
+    # prompts JSON plus the target week. That way editing the chapter slice
     # correctly invalidates this one, and nothing else does.
     platform_profile = repository.get_platform_profile(profile, platform)
     previous_storyline = build_previous_storyline(
@@ -191,10 +213,43 @@ async def run_plan(
     inputs = platform_profile.model_dump_json(include={"lang", "prompts"})
     inputs += previous_storyline
     inputs += week
-    status = store.create(job.id, JobType.PLAN, profile.name, platform, _hash(inputs))
-    replanned = status is not JobStatus.DONE
 
-    try:
+    # Frozen weeks: a `plan` already `done` whose Monday has already arrived
+    # is never re-planned, even if its hash changed — the week has already
+    # started, so rewriting it would contradict what may already be
+    # published. Checked *before* `store.create()`, which would otherwise
+    # reset a stale-hash DONE job to PENDING and lose this distinction. An
+    # unchanged hash is not "frozen", just reused like any other done week.
+    frozen = (
+        store.status(job.id) is JobStatus.DONE
+        and date.fromisoformat(week) <= date.today()
+        and store.params_hash(job.id) != _hash(inputs)
+    )
+
+    if frozen:
+        logger.warning(
+            "Week {} for {} {} is frozen (already started); not re-planning "
+            "despite changed inputs",
+            week,
+            profile.name,
+            platform.value,
+        )
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.PLAN,
+            profile.name,
+            platform,
+            week,
+            JobEventKind.PLAN_FROZEN,
+        )
+        replanned = False
+    else:
+        status = store.create(
+            job.id, JobType.PLAN, profile.name, platform, _hash(inputs)
+        )
+        replanned = status is not JobStatus.DONE
+
         if not replanned:
             logger.info(
                 "Plan already done for {} {} week {}, reusing it",
@@ -271,47 +326,140 @@ async def run_plan(
                     detail={"error": invalid_error},
                 )
 
-        if replanned:
-            _remove_stale_images(
-                profile,
-                platform,
-                repository.get_week_plan(profile, platform, week),
-                store,
+    if replanned:
+        _remove_stale_images(
+            profile,
+            platform,
+            repository.get_week_plan(profile, platform, week),
+            store,
+            run_id,
+        )
+
+    await _fan_out_images(profile, platform, week, store, queue, repository, run_id)
+
+
+async def run_story(
+    job: Job,
+    store: JobStore,
+    queue: Queue,
+    *,
+    repository: ProfileRepository,
+    refresh_model_cache: bool = False,
+    run_id: str,
+) -> None:
+    """
+    The "story" step: for one profile+week, ensures the arc and chapter
+    covering that week exist (generating whichever is missing), enqueues
+    that week's `plan` job for every platform, and — if more weeks remain in
+    a `--weeks N` chain — enqueues week+1's own `story` job.
+
+    An arc/chapter file that already exists is always reused, never
+    regenerated: both are user-editable. If generating a missing one fails,
+    nothing below it runs for this week (no `plan` jobs, no next-week
+    `story` job) — same "a failed step blocks what depends on it" rule
+    `run_plan` used to apply to `--weeks N` itself.
+    """
+    payload: StoryJob = job.payload
+    profile, week = payload.profile, payload.week
+
+    store.create(job.id, JobType.STORY, profile.name, None)
+    manager = StoryManager(profile, repository, refresh_model_cache=refresh_model_cache)
+
+    try:
+        with _running(store, job.id):
+            arc, arc_generated, arc_outcome = manager.ensure_arc(week)
+            store.record_event(
                 run_id,
+                job.id,
+                JobType.STORY,
+                profile.name,
+                None,
+                week,
+                JobEventKind.ARC_DONE if arc_generated else JobEventKind.ARC_REUSED,
+                detail=(
+                    {
+                        "start_week": arc.start_week,
+                        "attempt": arc_outcome.attempt,
+                        "model": arc_outcome.model,
+                        "used_fallback": arc_outcome.used_fallback,
+                    }
+                    if arc_outcome is not None
+                    else {"start_week": arc.start_week}
+                ),
             )
 
-        await _fan_out_images(profile, platform, week, store, queue, repository, run_id)
-    except Exception:
+            chapter, chapter_generated, chapter_outcome = manager.ensure_chapter(
+                arc, week
+            )
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.STORY,
+                profile.name,
+                None,
+                week,
+                JobEventKind.CHAPTER_DONE
+                if chapter_generated
+                else JobEventKind.CHAPTER_REUSED,
+                detail=(
+                    {
+                        "start_week": chapter.start_week,
+                        "attempt": chapter_outcome.attempt,
+                        "model": chapter_outcome.model,
+                        "used_fallback": chapter_outcome.used_fallback,
+                    }
+                    if chapter_outcome is not None
+                    else {"start_week": chapter.start_week}
+                ),
+            )
+    except Exception as e:
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.STORY,
+            profile.name,
+            None,
+            week,
+            JobEventKind.STORY_FAILED,
+            detail={"error": f"{type(e).__name__}: {e}"},
+        )
         if payload.remaining_weeks > 0:
             next_week = (date.fromisoformat(week) + timedelta(days=7)).isoformat()
             logger.warning(
-                "Week {} for {} {} not enqueued: week {} plan failed",
+                "Week {} for {} not enqueued: week {} story generation failed",
                 next_week,
                 profile.name,
-                platform.value,
                 week,
             )
             store.record_event(
                 run_id,
                 job.id,
-                JobType.PLAN,
+                JobType.STORY,
                 profile.name,
-                platform,
+                None,
                 week,
                 JobEventKind.WEEK_NOT_ENQUEUED,
                 detail={"next_week": next_week},
             )
         raise
 
-    if payload.remaining_weeks > 0:
-        next_week = (date.fromisoformat(week) + timedelta(days=7)).isoformat()
+    for platform in profile.platform_info:
         await queue.enqueue(
             JobType.PLAN.value,
             Job(
-                id=plan_job_id(profile, platform, next_week),
-                payload=ProfileJob(
+                id=plan_job_id(profile, platform, week),
+                payload=ProfileJob(profile=profile, platform=platform, week=week),
+            ),
+        )
+
+    if payload.remaining_weeks > 0:
+        next_week = (date.fromisoformat(week) + timedelta(days=7)).isoformat()
+        await queue.enqueue(
+            JobType.STORY.value,
+            Job(
+                id=story_job_id(profile, next_week),
+                payload=StoryJob(
                     profile=profile,
-                    platform=platform,
                     week=next_week,
                     remaining_weeks=payload.remaining_weeks - 1,
                 ),

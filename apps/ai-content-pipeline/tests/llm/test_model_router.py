@@ -1,7 +1,12 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
+import pytest
+
+from ai_content_pipeline.llm.error_handlers.exceptions import (
+    NoCandidateModelsError,
+    RateLimitError,
+)
 from ai_content_pipeline.llm.routing.classification.model_cache import ModelCache
 from ai_content_pipeline.llm.routing.model_router import ModelRouter
 from ai_content_pipeline.llm.routing.providers.base import LLMProvider
@@ -276,3 +281,157 @@ def test_fallback_only_lifts_an_earlier_exclusion_of_the_fallback_model(tmp_path
     router.use_fallback_only()
 
     assert router.get_response(_prompt_item()) == "reply from deepseek"
+
+
+def test_excluding_the_fallback_model_is_a_no_op(tmp_path):
+    """
+    The paid fallback is the last resort: excluding it can only make a
+    retry loop worse (it may be the only candidate left, e.g. every free
+    model is censored for a sensitive prompt), so `exclude_model` ignores
+    pairs whose provider is the fallback group's provider.
+    """
+    router, _ = _router_with_free_and_deepseek(tmp_path)
+
+    router.exclude_model("deepseek", "deepseek-chat")
+
+    assert ("deepseek", "deepseek-chat") not in router._excluded
+
+
+def test_excluding_the_fallback_model_leaves_it_usable_as_the_only_candidate(tmp_path):
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    free_provider = _UnreachableProvider("openrouter")
+    deepseek_provider = _SucceedingProvider("deepseek", is_paid=True)
+    router = ModelRouter(
+        free_provider_keys={"openrouter": ["key1"]},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[free_provider],
+        deepseek_provider=deepseek_provider,
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+
+    router.exclude_model("deepseek", "deepseek-chat")
+
+    assert router.get_response(_prompt_item()) == "reply from deepseek"
+
+
+def test_get_response_raises_no_candidate_models_error_when_everything_is_exhausted(
+    tmp_path,
+):
+    """
+    When every candidate everywhere is filtered out (here: quota-exhausted
+    with no recovery, the same "zero candidates, no request ever made"
+    shape as excluding every model) but at least one provider group had a
+    configured API key, `get_response` must raise the dedicated
+    `NoCandidateModelsError` rather than the generic "not configured at
+    all" `RuntimeError` — `generate_with_retries` relies on this to keep
+    retrying instead of treating it as a hard failure.
+    """
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    free_provider = _AlwaysRateLimitedProvider("openrouter")
+    deepseek_provider = _AlwaysRateLimitedProvider("deepseek")
+    router = ModelRouter(
+        free_provider_keys={"openrouter": ["key1"]},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[free_provider],
+        deepseek_provider=deepseek_provider,
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+
+    # First call: both groups' only model gets rate-limited and marked
+    # exhausted (cooldown far beyond the fixed test clock).
+    with pytest.raises(RateLimitError):
+        router.get_response(_prompt_item())
+
+    # Second call: both models are still exhausted and filtered out before
+    # any request is made anywhere, so there is no underlying error to
+    # re-raise — this is the "configured but nothing eligible" case.
+    with pytest.raises(NoCandidateModelsError):
+        router.get_response(_prompt_item())
+
+
+def test_get_response_raises_plain_runtime_error_when_no_classifiers_exist_anywhere(
+    tmp_path,
+):
+    """
+    The "not configured at all" case stays a plain `RuntimeError`, distinct
+    from `NoCandidateModelsError` — `ModelRouter.__init__` always creates
+    one DeepSeek classifier even with an empty key, so this manipulates
+    `classifier_groups` directly afterward to exercise the branch.
+    """
+    cache = ModelCache(cache_dir=tmp_path, now=lambda: NOW)
+    router = ModelRouter(
+        free_provider_keys={"openrouter": []},
+        deepseek_api_key="deepseek-key",
+        model_cache=cache,
+        free_providers=[_UnreachableProvider("openrouter")],
+        deepseek_provider=_UnreachableProvider("deepseek"),
+    )
+    router.classifier_groups = [
+        (provider_id, []) for provider_id, _ in router.classifier_groups
+    ]
+    router.initialize_model_classifiers(models_to_scan=None)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        router.get_response(_prompt_item())
+
+    assert not isinstance(excinfo.value, NoCandidateModelsError)
+
+
+class _ScriptedDeepSeek(LLMProvider):
+    """The paid fallback, answering each call with the next scripted reply."""
+
+    def __init__(self, replies: list[str]) -> None:
+        self.provider_id = "deepseek"
+        self.is_paid = True
+        self.replies = list(replies)
+
+    def fetch_catalog(self, api_key: str) -> list[dict[str, Any]]:
+        return [{"id": "deepseek-chat", "limits": {}}]
+
+    def chat_completion(self, api_key, model_id, conversation, output_as_json) -> str:
+        return self.replies.pop(0)
+
+
+def _router_with_only_deepseek(tmp_path, deepseek: LLMProvider) -> ModelRouter:
+    router = ModelRouter(
+        free_provider_keys={},
+        deepseek_api_key="deepseek-key",
+        model_cache=ModelCache(cache_dir=tmp_path, now=lambda: NOW),
+        free_providers=[_UnreachableProvider("openrouter")],
+        deepseek_provider=deepseek,
+    )
+    router.initialize_model_classifiers(models_to_scan=None)
+    return router
+
+
+def test_invalid_json_from_the_fallback_does_not_lock_it_out_of_json_prompts(
+    tmp_path,
+):
+    """
+    Real run: one malformed JSON reply from deepseek-chat marked it "no JSON"
+    in the on-disk cache for 24h, and since it was the only candidate for
+    sensitive prompts, every Fanvue plan failed until the cache expired.
+    """
+    deepseek = _ScriptedDeepSeek(['{"broken": ', '{"ok": true}'])
+    router = _router_with_only_deepseek(tmp_path, deepseek)
+
+    with pytest.raises(Exception):
+        router.get_response(_prompt_item(output_as_json=True))
+
+    # A fresh router reading the same cache still offers the fallback.
+    router = _router_with_only_deepseek(tmp_path, deepseek)
+    assert router.get_response(_prompt_item(output_as_json=True)) == '{"ok": true}'
+
+
+def test_the_fallback_is_offered_for_json_even_if_the_cache_says_it_cannot(
+    tmp_path,
+):
+    deepseek = _ScriptedDeepSeek(['{"ok": true}'])
+    router = _router_with_only_deepseek(tmp_path, deepseek)
+    [classifier] = router.classifiers_for("deepseek")
+    [model] = classifier.get_ranked_models(_prompt_item())
+    classifier.mark_model_json_support(model, False)
+
+    assert router.get_response(_prompt_item(output_as_json=True)) == '{"ok": true}'

@@ -5,10 +5,12 @@ from loguru import logger
 
 from ai_content_pipeline.llm.api_keys import api_keys
 from ai_content_pipeline.llm.base_llm import BaseLLM
+from ai_content_pipeline.llm.retry import GenerationFailedError, generate_with_retries
 from ai_content_pipeline.llm.routing.model_router import ModelRouter
 from ai_content_pipeline.llm.utils.utils import planning_week_start
 from ai_content_pipeline.domain.types import Platform, PlatformProfile, Profile
-from ai_content_pipeline.domain.plans import WeekPlan, summarize_week
+from ai_content_pipeline.domain.plans import WeekPlan
+from ai_content_pipeline.planning.story_manager import StoryManager
 from ai_content_pipeline.profiles.repository import ProfileRepository
 
 # Up to this many attempts of generate -> parse -> override week key -> pin
@@ -17,15 +19,9 @@ from ai_content_pipeline.profiles.repository import ProfileRepository
 # rejects (pydantic's ValidationError is a ValueError), or one `pin_to_week`
 # rejects for not being exactly days 1-7 each with a post. Each attempt
 # re-runs the full prompt chain, since `BaseLLM`'s cache dict is per call.
-# After an invalid attempt, the model that produced the last prompt's reply
-# is excluded from `model_router` for the rest of this `plan()` call
-# (`ModelRouter.exclude_model`), so a retry cannot land on the same model
-# again — it naturally falls through to the next candidate, and eventually
-# to the DeepSeek fallback. The exclusion lives only on this router instance
-# (one per `plan()` call) and is never persisted to the model cache.
-# The last attempt always goes to the paid fallback (DeepSeek,
-# `ModelRouter.use_fallback_only`): it is the most reliable with the JSON
-# structure, and a week left unplanned means a week with no content.
+# The retry policy itself (model exclusion, last-attempt-on-fallback) lives
+# in `llm/retry.py:generate_with_retries`, shared with `StoryManager`'s arc
+# and chapter generation.
 MAX_PLAN_ATTEMPTS = 5
 
 
@@ -73,10 +69,20 @@ def build_previous_storyline(
 ) -> str:
     """
     What the prompt gets as `previous_storyline`: who she is (shared by both
-    platforms), this platform's own static notes, and a deterministic recap
-    of this platform's own previous week, if one exists. Platform-own only —
-    Meta reads Meta's previous week, Fanvue reads Fanvue's; cross-platform
-    continuity is the future "chapter" command's job.
+    platforms), this platform's own static notes, and this platform's slice
+    of the chapter covering `target_week` — the date, the neutral
+    `situation`, and ONLY this platform's own `angle`, for each of the 7
+    days. This is the isolation boundary: a Meta call never sees the arc
+    text, the Fanvue angle, or Fanvue's notes, because nothing here ever
+    reads them. Cross-platform continuity lives entirely in the chapter
+    (`planning/story_manager.py`), which both platforms' plans read from
+    independently.
+
+    Raises `ValueError` (not caught here) when no chapter covers
+    `target_week`: in the DAG, the "story" step guarantees one exists before
+    any `plan` job for that week is enqueued, so this should never happen
+    there; it is a clear signal when `plan`/`arc plan`/`chapter plan` are run
+    out of order by hand.
 
     Exposed as a function rather than a `PlanningManager` method so
     `jobs/tasks.py:run_plan` can build exactly this same text to compute the
@@ -87,13 +93,21 @@ def build_previous_storyline(
     if use_initial_conditions:
         sections.append(("Platform notes", platform_profile.initial_conditions))
 
-    previous_plan = repository.get_previous_week_plan(
-        profile, platform, before=target_week
-    )
-    if previous_plan is not None:
-        sections.append(
-            (f"Last week ({previous_plan.week})", summarize_week(previous_plan))
+    chapter = repository.get_chapter_covering(profile, target_week)
+    if chapter is None:
+        raise ValueError(
+            f"No chapter covers week {target_week} for {profile.name} "
+            f"{platform.value}; generate one first (`jobs run` or `chapter plan`)."
         )
+    # The situation is what happens; the angle is only a direction for how
+    # this platform lives it. Labelled so the model does not copy the angle
+    # as the post or let it override the situation.
+    week_lines = [
+        f"- {day.date}: Situation: {day.situation} | "
+        f"Angle (direction only): {day.angles[platform.value]}"
+        for day in chapter.week_slice(target_week)
+    ]
+    sections.append(("This week", "\n".join(week_lines)))
 
     return "\n\n".join(f"## {title}\n{body}" for title, body in sections if body)
 
@@ -139,6 +153,7 @@ class PlanningManager:
         week_key = self.target_week.isoformat()
         outcomes: list[PlanOutcome] = []
         for profile in self.template_profiles:
+            self._ensure_story(profile, week_key)
             platform_profile = self.repository.get_platform_profile(
                 profile, self.platform_name
             )
@@ -175,79 +190,80 @@ class PlanningManager:
             outcomes.append(outcome)
         return outcomes
 
+    def _ensure_story(self, profile: Profile, week_key: str) -> None:
+        """
+        `build_previous_storyline` requires a chapter covering `week_key`.
+        In `jobs run`, the "story" DAG node already guarantees one exists
+        before any `plan` job is enqueued for that week, so this is a cheap
+        no-op there: `StoryManager.ensure_arc`/`ensure_chapter` check the
+        repository first (`get_arc_covering`/`get_chapter_covering`) and
+        only build a `ModelRouter`/call the LLM when something is actually
+        missing. Standalone callers with no DAG in front of them (`meta
+        plan`, `fanvue plan`, `all run_all`/`pipeline.py`) have no such
+        guarantee, so `plan()` must ensure it itself here or those commands
+        would simply break now that `plan` depends on a chapter.
+
+        Never touches `JobStore`: `PlanningManager.plan()` runs inside
+        `asyncio.to_thread` in the DAG (see `jobs/tasks.py:run_plan`), and
+        `JobStore`'s sqlite3 connection is not thread-safe.
+        """
+        story_manager = StoryManager(
+            profile, self.repository, refresh_model_cache=self.refresh_model_cache
+        )
+        arc, _, _ = story_manager.ensure_arc(week_key)
+        story_manager.ensure_chapter(arc, week_key)
+
     def _generate_valid_plan(
         self, llm: BaseLLM, profile: Profile, week_key: str
     ) -> tuple[WeekPlan, PlanOutcome]:
         """
         Retries generate -> parse -> override week key -> pin up to
-        `MAX_PLAN_ATTEMPTS` times. Catches only `ValueError` (which also
-        covers `json.JSONDecodeError` and pydantic's `ValidationError`) so an
-        unrelated bug still propagates immediately. Nothing is saved until an
-        attempt succeeds; the caller only sees the final, valid plan (plus a
-        `PlanOutcome` describing how it got there) or a `PlanningFailedError`
-        carrying every attempt's error.
+        `MAX_PLAN_ATTEMPTS` times, via the shared `generate_with_retries`
+        helper (same policy `StoryManager` uses for arc/chapter generation).
+        Nothing is saved until an attempt succeeds; the caller only sees the
+        final, valid plan (plus a `PlanOutcome` describing how it got there)
+        or a `PlanningFailedError` carrying every attempt's error.
         """
-        last_error: ValueError | None = None
-        invalid_attempts: list[str] = []
-        used_fallback = False
-        for attempt in range(1, MAX_PLAN_ATTEMPTS + 1):
-            if attempt == MAX_PLAN_ATTEMPTS and attempt > 1:
-                llm.model_router.use_fallback_only()
-                used_fallback = True
+        pinned_corrections: list[str] = []
+
+        def parse(reply: dict) -> WeekPlan:
+            plan = WeekPlan.from_planning_dict(reply)
+            # The prompt JSONs under resources*/ still say "week_1"; the
+            # target week we asked for is authoritative, not whatever key
+            # the model replied with.
+            plan.week = week_key
+            corrections = plan.pin_to_week(self.target_week)
+            pinned_corrections[:] = corrections
+            for correction in corrections:
                 logger.warning(
-                    "Last plan attempt for {} {} week {}: using the paid fallback only",
+                    "Pinned {} {} upload_time to its day: {}",
                     profile.name,
                     self.platform_name.value,
-                    week_key,
+                    correction,
                 )
-            try:
-                plan = WeekPlan.from_planning_dict(llm.generate_dict_from_prompts())
-                # The prompt JSONs under resources*/ still say "week_1"; the
-                # target week we asked for is authoritative, not whatever key
-                # the model replied with.
-                plan.week = week_key
-                corrections = plan.pin_to_week(self.target_week)
-                for correction in corrections:
-                    logger.warning(
-                        "Pinned {} {} upload_time to its day: {}",
-                        profile.name,
-                        self.platform_name.value,
-                        correction,
-                    )
-                last_model = llm.model_router.last_model
-                model_label = f"{last_model[0]}/{last_model[1]}" if last_model else None
-                outcome = PlanOutcome(
-                    profile=profile.name,
-                    week=week_key,
-                    attempt=attempt,
-                    max_attempts=MAX_PLAN_ATTEMPTS,
-                    model=model_label,
-                    used_fallback=used_fallback,
-                    pinned_corrections=len(corrections),
-                    invalid_attempts=list(invalid_attempts),
-                )
-                return plan, outcome
-            except ValueError as e:
-                last_error = e
-                invalid_attempts.append(str(e))
-                last_model = llm.model_router.last_model
-                if last_model is not None:
-                    provider_id, identifier = last_model
-                    llm.model_router.exclude_model(provider_id, identifier)
-                    logger.warning(
-                        "Excluding model {} ({}) for the remaining attempts "
-                        "after an invalid plan",
-                        identifier,
-                        provider_id,
-                    )
-                logger.warning(
-                    "Plan attempt {}/{} for {} {} week {} was invalid: {}; retrying",
-                    attempt,
-                    MAX_PLAN_ATTEMPTS,
-                    profile.name,
-                    self.platform_name.value,
-                    week_key,
-                    e,
-                )
-        assert last_error is not None  # the loop always sets it before falling through
-        raise PlanningFailedError(str(last_error), invalid_attempts)
+            return plan
+
+        try:
+            retried = generate_with_retries(
+                llm,
+                parse,
+                max_attempts=MAX_PLAN_ATTEMPTS,
+                context=(
+                    f"plan for {profile.name} {self.platform_name.value} "
+                    f"week {week_key}"
+                ),
+            )
+        except GenerationFailedError as e:
+            raise PlanningFailedError(str(e), e.invalid_attempts) from e
+
+        outcome = PlanOutcome(
+            profile=profile.name,
+            week=week_key,
+            attempt=retried.attempt,
+            max_attempts=retried.max_attempts,
+            model=retried.model,
+            used_fallback=retried.used_fallback,
+            pinned_corrections=len(pinned_corrections),
+            invalid_attempts=retried.invalid_attempts,
+        )
+        return retried.value, outcome
