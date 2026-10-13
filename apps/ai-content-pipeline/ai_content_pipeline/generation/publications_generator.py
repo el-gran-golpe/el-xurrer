@@ -91,8 +91,6 @@ class ImageGeneratorService:
                 success: bool = self._generator.generate_image(
                     prompt=spec.description,
                     output_path=image_path,
-                    width=1080,
-                    height=1080,
                 )
                 if not success or not image_path.exists():
                     raise RuntimeError(f"Image generation failed for '{image_path}'")

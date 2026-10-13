@@ -22,6 +22,7 @@
 - `apps/ai-content-pipeline/ai_content_pipeline/cli/` contains Typer command modules and orchestration helpers.
 - `apps/ai-content-pipeline/ai_content_pipeline/domain/`, `profiles/`, `planning/`, `generation/`, and `publishing/` contain domain models and workflow services.
 - `apps/ai-content-pipeline/ai_content_pipeline/integrations/` contains adapters for Google Drive, Meta/Instagram, Fanvue publishing, and ComfyUI.
+- `apps/ai-content-pipeline/ai_content_pipeline/jobs/` contains the resumable plan -> generate_image -> schedule DAG (`JobStore`, `Queue`, `GenerationBackend`, job tasks) driven by the `jobs run` command.
 - `apps/ai-content-pipeline/ai_content_pipeline/llm/` contains LLM wrappers, routing, classification, prompt utilities, and API error handling.
 - `apps/fanvue-fastapi/` contains the Fanvue FastAPI app, tests, README, and app-specific agent instructions.
 - `shared/fanvue-api-client/` contains shared Fanvue OAuth, media upload, post creation, and token-store primitives used by both apps.
@@ -45,6 +46,15 @@
 - Explicit selectors limit the run: repeat `-p` for multiple indexes or pass comma-separated names with `-n`. Indexes take precedence when both selectors are provided. Invalid explicit selections, including an empty `-n ""`, must never fall back to all profiles. Keep this behavior centralized in `resolve_profiles()`.
 - PyCharm's general and all-profile CLI configurations omit profile selectors; configurations explicitly named for a particular profile keep their selector. Use `all run_all` for normal runs and `all debug` for debug runs. The "No overwrite" configuration needs both `--no-overwrite-outputs` and `--keep-local-outputs` to preserve existing planning files at startup.
 - `all run_all` clears each selected profile's Meta and Fanvue `outputs/` folders before planning/generation by default. Pass `--keep-local-outputs` only when intentionally reusing existing outputs.
+- Run the resumable DAG equivalent of `all run_all`: `uv run python apps/ai-content-pipeline/main.py jobs run`. Add `--skip-schedule` to exercise plan/generate/resume without publishing to Meta/Fanvue or sleeping until `upload_time`.
+
+## Jobs DAG
+- `jobs run` is the resumable alternative to `all run_all`: node state lives in SQLite at `JOBS_DB_PATH` (default `.cache/jobs/state.db`, outside `resources/`), so re-running the same command after a crash or Ctrl+C skips nodes already `done`.
+- Unlike `all run_all`, `jobs run` never clears `outputs/`. Generated images are part of the checkpoint; deleting them means regenerating them.
+- `all run_all`, `all.py`, and `pipeline.py` stay as the fallback path until the DAG is validated in real use. Do not delete or rewrite them as part of DAG work; keep both paths working.
+- The DAG sits behind three small interfaces so a future Redis/RQ queue or an HPC (SLURM) generation backend is an implementation swap, not a rewrite: `JobStore` (node state, `params_hash` invalidation, fan-in counter), `Queue` (per-type asyncio queues with their own worker pools), `GenerationBackend` (`generate(spec, output_path)`, contract: the file exists when it returns).
+- Concurrency per job type is decided by whoever registers the handler (`cli/commands/jobs.py:register_handlers`), not by `Queue`: `plan` is 1 because `ModelRouter`'s key cursor is not concurrency-safe, `generate_image` is 1 because it is one local GPU, `schedule` gets one worker per job because Meta scheduling sleeps until each `upload_time`.
+- `LocalComfyBackend.generate` bridges to the blocking `ComfyLocal` with `asyncio.to_thread`. That is deliberate but temporary: calling it directly would freeze the event loop and head-of-line block the `plan` and `schedule` queues. The real fix is making `integrations/comfyui/local.py` async (`httpx.AsyncClient` + an async websocket client), after which the `to_thread` goes away and nothing else in the DAG changes.
 
 ## Model Router Behavior
 - GitHub Models (the router's original free provider) was fully retired by GitHub on 2026-07-30. `ModelRouter` now routes through an `LLMProvider` abstraction (`apps/ai-content-pipeline/ai_content_pipeline/llm/routing/providers/`) instead of hardcoding any one provider.

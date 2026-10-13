@@ -9,6 +9,7 @@ from ai_content_pipeline.cli.commands.all import (
     app as all_app,
     configure_run_all_logging,
 )
+from ai_content_pipeline.cli.commands.jobs import app as jobs_app
 
 # Baseline DEBUG for everything (only run_all command overwrites this internally)
 logger.remove()
@@ -48,7 +49,10 @@ def main_callback(ctx: typer.Context):
         return
 
     # If running the full pipeline, switch to INFO before sync/load.
-    if len(sys.argv) >= 3 and sys.argv[1] == "all" and sys.argv[2] == "run_all":
+    if len(sys.argv) >= 3 and (sys.argv[1], sys.argv[2]) in {
+        ("all", "run_all"),
+        ("jobs", "run"),
+    }:
         configure_run_all_logging()
 
     _print_startup_preflight_banner()
@@ -78,6 +82,11 @@ app.add_typer(
     all_app,
     name="all",
     help="End-to-end Instagram Page-token posting and Fanvue pipelines",
+)
+app.add_typer(
+    jobs_app,
+    name="jobs",
+    help="Resumable DAG pipeline (plan -> generate -> schedule)",
 )
 
 if __name__ == "__main__":
