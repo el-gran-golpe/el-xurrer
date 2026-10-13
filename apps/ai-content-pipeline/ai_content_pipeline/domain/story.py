@@ -1,7 +1,6 @@
 """
-Arc -> chapter domain models. See `docs/weekly-planning-continuity-plan.md`
-section 5 for the design this implements: the arc is a free, platform-blind
-season-level intention; the chapter tiles it into day-by-day, platform-aware
+Arc -> chapter domain models (see `docs/story-dag.md` for the flow): the
+arc is a free, platform-blind season-level intention; the chapter tiles it into day-by-day, platform-aware
 beats; `plan` (domain/plans.py) reads only one week's slice of one chapter.
 
 Pure data + pure helpers here, no filesystem and no LLM — those live in

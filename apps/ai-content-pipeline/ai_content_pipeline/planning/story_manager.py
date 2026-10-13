@@ -1,6 +1,6 @@
 """
-Generates the arc and chapter levels of the story (see
-`docs/weekly-planning-continuity-plan.md` section 5 and `domain/story.py`).
+Generates the arc and chapter levels of the story (see `docs/story-dag.md`
+and `domain/story.py`).
 
 Mirrors `PlanningManager`'s shape deliberately: one `ModelRouter` per
 generation call, the same `generate_with_retries` policy (model exclusion,
