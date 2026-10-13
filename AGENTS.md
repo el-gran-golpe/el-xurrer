@@ -53,6 +53,7 @@
 - Generate the chapter covering a week, on its own: `uv run python apps/ai-content-pipeline/main.py chapter plan`. Same `--week`/`--force` options; ensures the covering arc exists first (never forced) before generating the chapter.
 
 ## Jobs DAG
+- `docs/story-dag.md` diagrams the story -> plan flow below (arc, chapter, angle refresh, plan fingerprint, frozen weeks, retries) as a Mermaid flowchart. Update it in the same change whenever those conditions change.
 - `jobs run` is the resumable alternative to `all run_all`: node state lives in SQLite at `JOBS_DB_PATH` (default `.cache/jobs/state.db`, outside `resources/`), so re-running the same command after a crash or Ctrl+C skips nodes already `done`.
 - Unlike `all run_all`, `jobs run` never clears `outputs/`. Generated images are part of the checkpoint; deleting them means regenerating them.
 - `all run_all`, `all.py`, and `pipeline.py` stay as the fallback path until the DAG is validated in real use. Do not delete or rewrite them as part of DAG work; keep both paths working.
