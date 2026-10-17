@@ -1,17 +1,15 @@
+# Whitelist: the image only needs the lockfile and the app/shared code.
+# Secrets (.env), resources/, caches, logs and outputs are mounted at run time.
+*
+!pyproject.toml
+!uv.lock
+!apps/
+!shared/
+
 **/__pycache__
-**/*.pyo
-**/*.pyd
-.Python
-.cache/
-.env
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-.venv/
-ENV/
-outputs/
-resources/
-.git/
-.gitignore
-.idea/
-*.log
+**/*.py[cod]
+**/tests/
+**/outputs/
+**/tokens.json
+**/*.env
+**/.env*

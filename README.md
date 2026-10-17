@@ -58,6 +58,27 @@ uv run python apps/ai-content-pipeline/main.py fanvue plan -n laura_vigne,maria_
 
 The Instagram publishing path uses a Facebook staging Page only to obtain public media URLs for Instagram. It is not a Facebook cross-posting flow.
 
+## Docker
+
+The AI content CLI can run in a container. `docker-compose.yml` injects the root
+`.env` as environment variables and mounts the runtime state from the host:
+`resources/`, `.cache/` (jobs DB and model router cache), `logs/`, and the Google
+Drive OAuth token directory `~/.config/myapp/`.
+
+```bash
+docker compose build
+docker compose run --rm pipeline jobs run          # default command
+docker compose run --rm pipeline jobs status
+docker compose run --rm pipeline all run_all -p 0
+```
+
+ComfyUI runs outside the container on a GPU machine, started with `--listen 0.0.0.0`.
+By default the container reaches it on the Docker host (`host.docker.internal`); set
+`DOCKER_COMFY_HOST` in `.env` (e.g. a ZeroTier IP) to use another machine. Set `RESOURCES_DIR` to mount a different
+resources tree. Steps that open a browser (`fanvue auth`, the first Google Drive
+authorization) must be done once on the host; the container reuses the tokens
+they write.
+
 ## Fanvue FastAPI
 
 ```bash

@@ -2,7 +2,7 @@ import asyncio
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, List, Type, Union, cast
+from typing import Any, Collection, Iterator, List, Type, Union, cast
 
 from ai_content_pipeline.integrations.fanvue.publisher import FanvueAPIPublisher
 from ai_content_pipeline.integrations.meta.graph_api import MetaPublisher
@@ -66,16 +66,27 @@ def _pending_publications(publications: list[Publication]) -> list[Publication]:
     ]
 
 
-def _iter_day_folders(root: Path) -> Iterator[Path]:
+def _iter_day_folders(
+    root: Path, weeks: Collection[str] | None = None
+) -> Iterator[Path]:
     """
     Yield day folders sorted by week then day, validating folder names.
+
+    Accepts both the legacy `week_N` folder name and the real ISO-date week
+    key (`YYYY-MM-DD`) this plan introduces, since `jobs run` never clears
+    `outputs/` and both can be sitting under `publications/` at once. With
+    `weeks`, only those week folders are walked — `None` (the default) walks
+    every week folder, which is what `all run_all` relies on after it clears
+    `outputs/` itself.
     """
-    week_pattern = re.compile(r"^week_\d+$")
+    week_pattern = re.compile(r"^(week_\d+|\d{4}-\d{2}-\d{2})$")
     day_pattern = re.compile(r"^day_\d+$")
 
     for week_folder in sorted(p for p in root.iterdir() if p.is_dir()):
         if not week_pattern.match(week_folder.name):
             raise ValueError(f"Invalid week folder name: {week_folder.name}")
+        if weeks is not None and week_folder.name not in weeks:
+            continue
         for day_folder in sorted(p for p in week_folder.iterdir() if p.is_dir()):
             if not day_pattern.match(day_folder.name):
                 raise ValueError(
@@ -91,11 +102,16 @@ class PostingScheduler:
         platform_name: Platform,
         publisher: Union[Type[MetaPublisher], Type[FanvueAPIPublisher]],
         resume: bool = False,
+        weeks: Collection[str] | None = None,
     ):
         self.platform_name = platform_name
         self.template_profiles = template_profiles
         self.publisher = publisher
         self.resume = resume
+        # Restrict to these week folders only (e.g. the one `jobs run` just
+        # planned). `None` reads every week folder under `publications/`,
+        # which is what the `all run_all`/`pipeline.py` fallback path needs.
+        self.weeks = weeks
 
     async def upload(self) -> None:
         results = await asyncio.gather(
@@ -115,7 +131,7 @@ class PostingScheduler:
             raise FileNotFoundError(f"No publications folder for {profile}")
 
         publications = []
-        for day_folder in _iter_day_folders(pub_root):
+        for day_folder in _iter_day_folders(pub_root, self.weeks):
             try:
                 caption_text: str = (
                     (day_folder / "captions.txt").read_text(encoding="utf-8").strip()

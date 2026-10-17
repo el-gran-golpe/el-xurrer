@@ -2,7 +2,7 @@ import sys
 import typer
 from loguru import logger
 
-from ai_content_pipeline.cli.commands.utils import profile_manager, get_gdrive_sync
+from ai_content_pipeline.cli.commands.utils import profile_repository, get_gdrive_sync
 from ai_content_pipeline.cli.commands.meta import app as meta_app
 from ai_content_pipeline.cli.commands.fanvue import app as fanvue_app
 from ai_content_pipeline.cli.commands.all import (
@@ -10,6 +10,8 @@ from ai_content_pipeline.cli.commands.all import (
     configure_run_all_logging,
 )
 from ai_content_pipeline.cli.commands.jobs import app as jobs_app
+from ai_content_pipeline.cli.commands.arc import app as arc_app
+from ai_content_pipeline.cli.commands.chapter import app as chapter_app
 
 # Baseline DEBUG for everything (only run_all command overwrites this internally)
 logger.remove()
@@ -48,6 +50,13 @@ def main_callback(ctx: typer.Context):
         typer.echo(ctx.get_help())
         return
 
+    # `jobs status` is a read-only report off the local jobs DB: it must
+    # never pull from Google Drive or load profiles (no network, no
+    # dependency on resources/ being in any particular state), so it skips
+    # this whole preflight instead of just no-opping it.
+    if len(sys.argv) >= 3 and (sys.argv[1], sys.argv[2]) == ("jobs", "status"):
+        return
+
     # If running the full pipeline, switch to INFO before sync/load.
     if len(sys.argv) >= 3 and (sys.argv[1], sys.argv[2]) in {
         ("all", "run_all"),
@@ -58,13 +67,13 @@ def main_callback(ctx: typer.Context):
     _print_startup_preflight_banner()
 
     try:
-        get_gdrive_sync().pull(profile_manager.resource_path)
+        get_gdrive_sync().pull(profile_repository.resource_path)
     except Exception as e:
         logger.error("Failed to sync resources from Google Drive: {}", e)
         raise typer.Exit(1)
 
     try:
-        profile_manager.load_profiles()
+        profile_repository.load_profiles()
     except Exception as e:
         logger.error("Failed to load profiles: {}", e)
         raise typer.Exit(1)
@@ -86,8 +95,10 @@ app.add_typer(
 app.add_typer(
     jobs_app,
     name="jobs",
-    help="Resumable DAG pipeline (plan -> generate -> schedule)",
+    help="Resumable DAG pipeline (story -> plan -> generate -> schedule)",
 )
+app.add_typer(arc_app, name="arc", help="Season-level story arc commands")
+app.add_typer(chapter_app, name="chapter", help="Chapter-level story commands")
 
 if __name__ == "__main__":
     app()

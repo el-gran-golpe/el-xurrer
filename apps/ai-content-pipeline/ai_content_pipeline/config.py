@@ -24,6 +24,22 @@ class Settings(BaseSettings):
     # account, summed to increase free-tier quota.
 
     # Google Drive OAuth
+    # Set DRIVE_SYNC_ENABLED=false to work entirely off the local resources/
+    # tree: both the startup pull and the end-of-run push become no-ops. Use it
+    # while testing a resources layout that is not on Drive yet, so a test run
+    # cannot overwrite the source of truth (or be overwritten by it).
+    drive_sync_enabled: bool = Field(
+        default=True,
+        validation_alias="DRIVE_SYNC_ENABLED",
+    )
+    # GoogleDriveSync.pull()/push() refuse to sync any resources directory
+    # other than the repo's default resources/ unless this is set, so an
+    # AI_CONTENT_RESOURCES_DIR pointed at a migration sandbox can never push
+    # to or pull from Drive by accident. Checked after drive_sync_enabled.
+    drive_sync_allow_custom_root: bool = Field(
+        default=False,
+        validation_alias="DRIVE_SYNC_ALLOW_CUSTOM_ROOT",
+    )
     client_id: str = Field(validation_alias="client_id")
     client_secret: str = Field(validation_alias="client_secret")
     folder_id: str = Field(validation_alias="folder_id")
@@ -42,6 +58,13 @@ class Settings(BaseSettings):
     jobs_db_path: Path = Field(
         default=Path(".cache/jobs/state.db"),
         validation_alias="JOBS_DB_PATH",
+    )
+    # Where `jobs run` writes its end-of-run summary as a Markdown file
+    # ({YYYY-MM-DD_HHMMSS}_jobs_run.md), relative to CWD like jobs_db_path.
+    # logs/ is already gitignored.
+    jobs_report_dir: Path = Field(
+        default=Path("logs/runs"),
+        validation_alias="JOBS_REPORT_DIR",
     )
     # How long a provider's model catalog and capabilities cache are considered fresh.
     model_cache_ttl_hours: int = Field(

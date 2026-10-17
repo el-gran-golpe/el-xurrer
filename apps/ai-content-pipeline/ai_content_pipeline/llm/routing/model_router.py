@@ -4,7 +4,10 @@ from typing import Optional, Generator
 
 from loguru import logger
 
-from ai_content_pipeline.llm.error_handlers.exceptions import RateLimitError
+from ai_content_pipeline.llm.error_handlers.exceptions import (
+    NoCandidateModelsError,
+    RateLimitError,
+)
 from ai_content_pipeline.llm.routing.classification.llm_model import LLMModel
 from ai_content_pipeline.llm.routing.classification.model_classifier import (
     ModelClassifier,
@@ -74,6 +77,57 @@ class ModelRouter:
             provider_id: 0 for provider_id, _ in self.classifier_groups
         }
 
+        # (provider_id, identifier) of the model that answered the most
+        # recent successful `get_response()` call. Overwritten on every
+        # success, so after a multi-prompt chain (`BaseLLM.generate_dict_from_prompts`)
+        # it reflects the model that produced the LAST prompt's reply.
+        self.last_model: tuple[str, str] | None = None
+
+        # In-memory-only exclusion set, scoped to this router instance (one
+        # per `PlanningManager.plan()` call). Never persisted to the model
+        # cache: a model that produced one bad reply is not broken for every
+        # prompt, just unusable for the rest of this call.
+        self._excluded: set[tuple[str, str]] = set()
+        # When set, `get_response` only tries the last group (the paid
+        # fallback). Same scope as `_excluded`: this router instance only.
+        self._fallback_only = False
+
+    def _is_fallback(self, provider_id: str) -> bool:
+        """Whether `provider_id` is the paid fallback (the last group)."""
+        return provider_id == self.classifier_groups[-1][0]
+
+    def exclude_model(self, provider_id: str, identifier: str) -> None:
+        """Stop offering this (provider, model) pair as a candidate for the
+        rest of this router instance's lifetime.
+
+        A no-op for the paid fallback provider (the last classifier group):
+        it is the last resort, so excluding its model can only ever make a
+        retry loop worse — if the fallback is also the only candidate left
+        (e.g. every free model is censored for a sensitive prompt), excluding
+        it would leave the next attempt with zero candidates anywhere.
+        """
+        fallback_id = self.classifier_groups[-1][0]
+        if provider_id == fallback_id:
+            logger.debug(
+                "Not excluding {} ({}): it is the paid fallback provider, "
+                "the last resort, so it is never excluded",
+                identifier,
+                provider_id,
+            )
+            return
+        self._excluded.add((provider_id, identifier))
+
+    def use_fallback_only(self) -> None:
+        """
+        Route every further request on this instance straight to the last
+        provider group (the paid fallback), skipping the free ones. Any
+        exclusion on the fallback provider itself is lifted, so a caller's
+        last-resort attempt always has a candidate to land on.
+        """
+        fallback_id = self.classifier_groups[-1][0]
+        self._excluded = {pair for pair in self._excluded if pair[0] != fallback_id}
+        self._fallback_only = True
+
     def classifiers_for(self, provider_id: str) -> list[ModelClassifier]:
         for group_provider_id, classifiers in self.classifier_groups:
             if group_provider_id == provider_id:
@@ -137,7 +191,15 @@ class ModelRouter:
         # Try each provider group in order (free providers first, paid DeepSeek
         # last); the last group's failure is what surfaces if everything fails.
         last_error: Optional[Exception] = None
-        for provider_id, classifiers in self.classifier_groups:
+        any_classifiers_considered = False
+        groups = (
+            self.classifier_groups[-1:]
+            if self._fallback_only
+            else self.classifier_groups
+        )
+        for provider_id, classifiers in groups:
+            if classifiers:
+                any_classifiers_considered = True
             reply, _, group_error = self._try_provider_group(
                 provider_id, classifiers, conversation, output_as_json, prompt_item
             )
@@ -148,6 +210,18 @@ class ModelRouter:
 
         if last_error is not None:
             raise last_error
+        if any_classifiers_considered:
+            # At least one provider group had a configured API key, so this
+            # is not "nothing is set up" — every candidate for this prompt
+            # was filtered out (excluded, censored, or quota-exhausted with
+            # no recovery) and none of them ever reached a request that
+            # could raise its own error. Distinct from the case below so a
+            # caller like `generate_with_retries` can treat it as "retry,
+            # maybe after lifting a constraint" rather than a hard failure.
+            raise NoCandidateModelsError(
+                "No candidate model is currently available for this prompt "
+                "(every model was excluded, censored, or quota-exhausted)"
+            )
         raise RuntimeError("No provider is configured with any usable API key")
 
     # ---------------- helpers ----------------
@@ -203,7 +277,16 @@ class ModelRouter:
         self, clf: ModelClassifier, prompt_item: PromptItem
     ) -> list[LLMModel]:
         """Get ranked, capability-filtered models for one key; highest ELO first."""
+        if self._is_fallback(clf.provider_id) and prompt_item.output_as_json:
+            # The paid fallback is never disqualified by a learned "no JSON"
+            # flag: one malformed reply would otherwise lock the last resort
+            # out for the cache TTL, and for sensitive prompts it is often the
+            # only candidate. A bad reply still just fails that attempt.
+            prompt_item = prompt_item.model_copy(update={"output_as_json": False})
         models = clf.get_ranked_models(prompt_item)
+        models = [
+            m for m in models if (clf.provider_id, m.identifier) not in self._excluded
+        ]
         models.sort(key=lambda m: m.elo, reverse=True)
         logger.debug(
             "Key classifier collected {} candidates: {}",
@@ -240,15 +323,17 @@ class ModelRouter:
                             # this candidate's json support and fail over.
                             logger.warning(
                                 "Model {} returned invalid JSON despite JSON mode — "
-                                "marking unsupported and failing over: {}",
+                                "failing over: {}",
                                 model.identifier,
                                 json_error,
                             )
-                            classifier.mark_model_json_support(model, False)
+                            if not self._is_fallback(classifier.provider_id):
+                                classifier.mark_model_json_support(model, False)
                             if first_error is None:
                                 first_error = json_error
                             break  # next candidate
                         classifier.mark_model_json_support(model, True)
+                    self.last_model = (classifier.provider_id, model.identifier)
                     return reply, soonest, first_error
 
                 except RateLimitError as e:

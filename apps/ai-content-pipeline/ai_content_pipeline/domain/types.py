@@ -75,25 +75,25 @@ class PromptItem(BaseModel):
         self, cache: dict[str, str], accept_unfilled: bool = False
     ) -> None:
         """
-        Replace the placeholders in the prompt with the values in the cache
-        :param prompt: The prompt to replace the placeholders
-        :param cache: The cache with the values to replace
-        :return: The prompt with the placeholders replaced
+        Replace `{cache_key}` placeholders in the prompt and the system
+        prompt, in place, with earlier replies from the same prompt chain.
+        :param cache: earlier replies, keyed by their prompt's `cache_key`
+        :param accept_unfilled: leave unknown placeholders as they are
+            instead of failing
         """
-        for prompt in [self.prompt, self.system_prompt]:
-            placeholders = re.findall(r"{(\w+)}", prompt)
-            for placeholder in placeholders:
-                if not accept_unfilled:
-                    assert placeholder in cache, (
-                        f"Placeholder '{placeholder}' not found in the cache"
-                    )
-                    prompt = prompt.replace(
-                        f"{{{placeholder}}}", str(cache[placeholder])
-                    )
-                elif placeholder in cache:
-                    prompt = prompt.replace(
-                        f"{{{placeholder}}}", str(cache[placeholder])
-                    )
+        self.prompt = self._fill(self.prompt, cache, accept_unfilled)
+        self.system_prompt = self._fill(self.system_prompt, cache, accept_unfilled)
+
+    @staticmethod
+    def _fill(text: str, cache: dict[str, str], accept_unfilled: bool) -> str:
+        for placeholder in re.findall(r"{(\w+)}", text):
+            if placeholder in cache:
+                text = text.replace(f"{{{placeholder}}}", str(cache[placeholder]))
+            elif not accept_unfilled:
+                raise AssertionError(
+                    f"Placeholder '{placeholder}' not found in the cache"
+                )
+        return text
 
 
 class FanvueOAuthCredentials(BaseModel):
@@ -184,3 +184,12 @@ class ProfileInput(BaseModel):
                 )
             seen.add(p.cache_key)
         return prompts
+
+
+class PlatformProfile(BaseModel):
+    """What one platform of a profile feeds into planning."""
+
+    platform: Platform
+    lang: str
+    prompts: list[PromptItem]
+    initial_conditions: str
