@@ -33,10 +33,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY apps/ ./apps/
 COPY shared/ ./shared/
 
-RUN groupadd --gid "$APP_GID" app \
+# The GID may already exist in the base image (e.g. 100 = users); reuse it.
+RUN (getent group "$APP_GID" >/dev/null || groupadd --gid "$APP_GID" app) \
     && useradd --uid "$APP_UID" --gid "$APP_GID" --create-home app \
     && mkdir -p /app/resources /app/.cache /app/logs /home/app/.config/myapp \
-    && chown -R app:app /app/resources /app/.cache /app/logs /home/app/.config
+    && chown -R "app:$APP_GID" /app/resources /app/.cache /app/logs /home/app/.config
 
 USER app
 
