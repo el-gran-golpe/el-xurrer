@@ -33,6 +33,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      # The .env file itself too, not only env_file: per-profile settings
+      # (e.g. {PROFILE}_FACEBOOK_PAGE_ACCESS_TOKEN) are read from pydantic's
+      # model_extra, which only holds extra keys from the dotenv file, never
+      # from environment variables. Fanvue FastAPI also reads /app/.env.
+      - ./.env:/app/.env:ro
       # Profile resources (Drive-synced inputs, story/, outputs/, Fanvue tokens.json).
       - ${RESOURCES_DIR:-./resources}:/app/resources
       # jobs DAG state (state.db) and the model router cache.
