@@ -1,0 +1,47 @@
+# Runs the AI content pipeline CLI in a container.
+#
+#   docker compose build
+#   docker compose run --rm pipeline jobs run            # default command
+#   docker compose run --rm pipeline jobs status
+#   docker compose run --rm pipeline all run_all -p 0
+#
+# ComfyUI is not part of this stack: it runs on a GPU machine (by default the
+# Docker host, reached as host.docker.internal; set DOCKER_COMFY_HOST to use
+# another one), started with `--listen 0.0.0.0` (the default in
+# scripts/start_pipeline_with_comfyui.sh).
+services:
+  pipeline:
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    image: el-xurrer-pipeline
+    command: ["jobs", "run"]
+    # Secrets and settings come from the repository-root .env, injected as
+    # environment variables (the file itself is never copied into the image).
+    env_file:
+      - .env
+    # Values here override .env. ComfyUI's host uses its own variable,
+    # DOCKER_COMFY_HOST, not COMFY_HOST: Compose also reads .env for ${...}
+    # interpolation, and a host-side COMFY_HOST=127.0.0.1 would point the
+    # container at itself. Defaults to ComfyUI on the Docker host; on a
+    # deployment machine set it in .env to the GPU machine's ZeroTier IP.
+    environment:
+      COMFY_HOST: ${DOCKER_COMFY_HOST:-host.docker.internal}
+      TZ: Europe/Madrid
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Profile resources (Drive-synced inputs, story/, outputs/, Fanvue tokens.json).
+      - ${RESOURCES_DIR:-./resources}:/app/resources
+      # jobs DAG state (state.db) and the model router cache.
+      - ./.cache:/app/.cache
+      # Run reports (logs/runs) and any other logs.
+      - ./logs:/app/logs
+      # Google Drive OAuth token (GoogleDriveSync reads ~/.config/myapp/token.json).
+      # The first authorization opens a browser, so do it once on the host.
+      - ${HOME}/.config/myapp:/home/app/.config/myapp
+    # Meta scheduling sleeps until each upload_time; keep the CLI attached
+    # to a TTY so loguru output is readable with `docker compose logs`.
+    tty: true
