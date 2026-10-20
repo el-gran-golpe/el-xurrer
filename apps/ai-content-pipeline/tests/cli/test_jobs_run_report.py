@@ -45,6 +45,7 @@ def _run_kwargs(**overrides):
         refresh_model_cache=False,
         skip_schedule=False,
         weeks=1,
+        start_week=None,
     )
     base.update(overrides)
     return base

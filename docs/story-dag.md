@@ -9,7 +9,7 @@ diagram in sync when those conditions change.
 
 ```mermaid
 flowchart TD
-  RUN(["jobs run --weeks N"]) --> W["W = target Monday<br/>today if Monday, else next Monday"]
+  RUN(["jobs run --weeks N"]) --> W["W = target Monday<br/>--start-week if given,<br/>else today if Monday, else next Monday"]
   W --> A1
 
   subgraph STORY["story · profile, W"]

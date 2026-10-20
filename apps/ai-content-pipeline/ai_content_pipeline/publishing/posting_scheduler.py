@@ -251,11 +251,22 @@ class PostingScheduler:
             # Convert datetime to ISO 8601 string with 'Z' suffix (Fanvue requirement)
             # Fanvue API requires format: YYYY-MM-DDTHH:MM:SSZ
             utc_time = pub.upload_time.astimezone(timezone.utc)
-            publish_at = utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+            publish_at: str | None = utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            logger.info(
-                f"Scheduling {pub.day_folder.name} via Fanvue API for {publish_at}"
-            )
+            # Fanvue documents publishAt as a future time, so a day whose
+            # upload time already passed (e.g. a week planned late with
+            # `jobs run --start-week`) is published now instead, the same way
+            # Meta's `_wait_for_time` publishes it without sleeping.
+            if utc_time <= datetime.now(timezone.utc):
+                logger.info(
+                    f"Upload time {publish_at} for {pub.day_folder.name} has "
+                    "already passed; publishing it now via Fanvue API"
+                )
+                publish_at = None
+            else:
+                logger.info(
+                    f"Scheduling {pub.day_folder.name} via Fanvue API for {publish_at}"
+                )
 
             for attempt in range(1, FANVUE_UPLOAD_MAX_ATTEMPTS + 1):
                 try:

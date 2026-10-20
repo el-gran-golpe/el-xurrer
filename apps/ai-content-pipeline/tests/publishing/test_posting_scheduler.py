@@ -136,3 +136,42 @@ async def test_upload_profile_only_reads_the_requested_weeks(monkeypatch, tmp_pa
     await scheduler._upload_profile(profile)
 
     assert [f.parent.name for f in seen_day_folders] == ["2026-10-12"]
+
+
+@pytest.mark.asyncio
+async def test_fanvue_publishes_a_past_due_day_now_and_schedules_a_future_one():
+    """
+    Fanvue documents publishAt as a future time: a day whose upload time has
+    already passed is sent without one (published immediately) instead.
+    """
+    sent: list[str | None] = []
+
+    class FakeFanvueClient:
+        def __init__(self, profile):
+            pass
+
+        async def post_publication_batch(self, image_paths, caption, publish_at):
+            sent.append(publish_at)
+
+    past = datetime.now(timezone.utc) - timedelta(hours=1)
+    future = datetime(2099, 1, 1, 18, 0, tzinfo=timezone.utc)
+    publications = [
+        SimpleNamespace(
+            day_folder=Path(f"day_{i}"),
+            upload_time=upload_time,
+            image_paths=[Path("pic.jpeg")],
+            caption_text="hi",
+        )
+        for i, upload_time in enumerate((past, future), start=1)
+    ]
+    scheduler = PostingScheduler(
+        template_profiles=[],
+        platform_name=Platform.FANVUE,
+        publisher=FakeFanvueClient,
+    )
+
+    await scheduler._upload_via_fanvue_api(
+        publications, FakeFanvueClient, _profile("haru")
+    )
+
+    assert sent == [None, "2099-01-01T18:00:00Z"]

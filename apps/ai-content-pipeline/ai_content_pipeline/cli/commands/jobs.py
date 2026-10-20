@@ -37,7 +37,10 @@ from ai_content_pipeline.jobs.tasks import (
     run_story,
     story_job_id,
 )
-from ai_content_pipeline.llm.utils.utils import planning_week_start
+from ai_content_pipeline.llm.utils.utils import (
+    planning_week_start,
+    validate_start_week,
+)
 from ai_content_pipeline.profiles.repository import ProfileRepository
 from ai_content_pipeline.paths import RESOURCES_DIR
 
@@ -135,7 +138,12 @@ def register_handlers(
     )
 
 
-async def seed_story(queue: Queue, profiles: list[Profile], weeks: int = 1) -> None:
+async def seed_story(
+    queue: Queue,
+    profiles: list[Profile],
+    weeks: int = 1,
+    start: date | None = None,
+) -> None:
     """
     Seeds one `story` root per profile: only the FIRST target week.
     `weeks=1` (the default, same as before `--weeks N`) is the whole chain;
@@ -149,7 +157,8 @@ async def seed_story(queue: Queue, profiles: list[Profile], weeks: int = 1) -> N
 
     The starting week is computed once here, not per profile or inside
     `StoryManager`, so every job in this run agrees on the same target week
-    even if the run straddles midnight.
+    even if the run straddles midnight. `start` overrides it (`jobs run
+    --start-week`, already checked by `validate_start_week`).
 
     Always seeded, even when a profile's week-1 story is already `done`:
     `run_story` reuses an existing arc/chapter instead of regenerating it,
@@ -157,7 +166,8 @@ async def seed_story(queue: Queue, profiles: list[Profile], weeks: int = 1) -> N
     run re-enqueues only unfinished images) and, for `--weeks N`, still
     walks the chain forward to whichever week is not yet done.
     """
-    start = planning_week_start(date.today())
+    if start is None:
+        start = planning_week_start(date.today())
     week = start.isoformat()
     for profile in profiles:
         await queue.enqueue(
@@ -196,6 +206,7 @@ async def _execute(
     refresh_model_cache: bool,
     skip_schedule: bool,
     weeks: int,
+    start_week: date | None = None,
 ) -> tuple[str, list[report.RunRow]]:
     """
     Runs the DAG to completion and returns `(run_id, rows)`: `rows` is this
@@ -214,6 +225,7 @@ async def _execute(
         {
             "profiles": [p.name for p in profiles],
             "weeks": weeks,
+            "start_week": start_week.isoformat() if start_week else None,
             "skip_schedule": skip_schedule,
             "use_initial_conditions": use_initial_conditions,
             "refresh_model_cache": refresh_model_cache,
@@ -234,7 +246,7 @@ async def _execute(
             run_id=run_id,
             skip_schedule=skip_schedule,
         )
-        await seed_story(queue, profiles, weeks)
+        await seed_story(queue, profiles, weeks, start_week)
         await queue.run()
         rows = report.build_run_rows(store.events_for_run(run_id))
         store.finish_run(run_id, "failed" if report.count_failures(rows) else "success")
@@ -267,6 +279,14 @@ def run(
         "run (today's target week, then the following weeks one after "
         "another), instead of only the current one.",
     ),
+    start_week: Optional[str] = typer.Option(
+        None,
+        "--start-week",
+        help="ISO date of the Monday to start planning from (default: today "
+        "if Monday, else next Monday). Use it to plan a week that has already "
+        "started; its past days are published as soon as they are scheduled. "
+        "Must not be before the current week.",
+    ),
 ):
     """
     Run plan -> generate -> schedule as a DAG for the selected profiles.
@@ -275,6 +295,13 @@ def run(
     whatever already completed. Unlike `all run_all` this never clears
     outputs/, because those files are the checkpoint.
     """
+    start: date | None = None
+    if start_week is not None:
+        try:
+            start = validate_start_week(date.fromisoformat(start_week), date.today())
+        except ValueError as e:
+            raise typer.BadParameter(str(e), param_hint="--start-week")
+
     profiles = resolve_profiles(profile_indexes, profile_names)
     if not profiles:
         logger.warning("No profiles to process")
@@ -288,7 +315,12 @@ def run(
 
     _run_id, rows = asyncio.run(
         _execute(
-            profiles, use_initial_conditions, refresh_model_cache, skip_schedule, weeks
+            profiles,
+            use_initial_conditions,
+            refresh_model_cache,
+            skip_schedule,
+            weeks,
+            start,
         )
     )
     get_gdrive_sync().push(RESOURCES_DIR)

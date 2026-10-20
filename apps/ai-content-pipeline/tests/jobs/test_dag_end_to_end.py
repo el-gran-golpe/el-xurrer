@@ -219,6 +219,20 @@ async def test_seed_story_seeds_one_story_job_per_profile(profile):
 
 
 @pytest.mark.asyncio
+async def test_seed_story_starts_from_an_explicit_start_week(profile):
+    """`jobs run --start-week` replaces the default target week."""
+    queue = Queue()
+    queue.register(JobType.STORY.value, lambda batch: None)
+    start = planning_week_start(date.today()) - timedelta(days=7)
+
+    await jobs_cli.seed_story(queue, [profile], weeks=2, start=start)
+
+    seeded = await queue._queues[JobType.STORY.value].get()
+    assert seeded.id == tasks.story_job_id(profile, start.isoformat())
+    assert seeded.payload.remaining_weeks == 1
+
+
+@pytest.mark.asyncio
 async def test_skip_schedule_generates_everything_but_never_publishes(
     profile, store, fakes
 ):

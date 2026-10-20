@@ -3,7 +3,11 @@ from datetime import date
 import pytest
 
 from ai_content_pipeline.domain.types import PromptItem
-from ai_content_pipeline.llm.utils.utils import planning_week_start, prepare_prompts
+from ai_content_pipeline.llm.utils.utils import (
+    planning_week_start,
+    prepare_prompts,
+    validate_start_week,
+)
 
 
 @pytest.mark.parametrize(
@@ -20,6 +24,27 @@ from ai_content_pipeline.llm.utils.utils import planning_week_start, prepare_pro
 )
 def test_planning_week_start_returns_the_target_monday(today, expected):
     assert planning_week_start(today) == expected
+
+
+@pytest.mark.parametrize(
+    "start",
+    [
+        date(2026, 10, 19),  # the current week, already started
+        date(2026, 10, 26),  # next week
+    ],
+)
+def test_validate_start_week_accepts_the_current_or_a_later_monday(start):
+    assert validate_start_week(start, today=date(2026, 10, 20)) == start
+
+
+def test_validate_start_week_rejects_a_day_that_is_not_a_monday():
+    with pytest.raises(ValueError, match="not a Monday"):
+        validate_start_week(date(2026, 10, 21), today=date(2026, 10, 20))
+
+
+def test_validate_start_week_rejects_a_week_that_already_ended():
+    with pytest.raises(ValueError, match="before the current week"):
+        validate_start_week(date(2026, 10, 12), today=date(2026, 10, 20))
 
 
 def _prompt_item(

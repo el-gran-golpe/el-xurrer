@@ -7,6 +7,7 @@ could actually publish something.
 from types import SimpleNamespace
 
 import pytest
+import typer
 
 from ai_content_pipeline.cli.commands import jobs as jobs_cli
 
@@ -29,7 +30,12 @@ def wired(monkeypatch: pytest.MonkeyPatch, tmp_path):
         observed.append(("validate", profile.name))
 
     async def fake_execute(
-        profiles, use_initial_conditions, refresh_model_cache, skip_schedule, weeks
+        profiles,
+        use_initial_conditions,
+        refresh_model_cache,
+        skip_schedule,
+        weeks,
+        start_week,
     ):
         observed.append(("execute", [p.name for p in profiles], skip_schedule, weeks))
         return "run1", []
@@ -55,10 +61,26 @@ def test_skip_schedule_never_validates_meta_auth(wired):
         refresh_model_cache=False,
         skip_schedule=True,
         weeks=1,
+        start_week=None,
     )
 
     assert ("validate", "laura_vigne") not in wired
     assert ("execute", ["laura_vigne"], True, 1) in wired
+
+
+def test_an_invalid_start_week_is_rejected_before_anything_runs(wired):
+    with pytest.raises(typer.BadParameter, match="not a Monday"):
+        jobs_cli.run(
+            profile_indexes=[],
+            profile_names=None,
+            use_initial_conditions=True,
+            refresh_model_cache=False,
+            skip_schedule=False,
+            weeks=1,
+            start_week="2026-10-21",
+        )
+
+    assert wired == []
 
 
 def test_without_skip_schedule_still_validates_meta_auth(wired):
@@ -71,6 +93,7 @@ def test_without_skip_schedule_still_validates_meta_auth(wired):
         refresh_model_cache=False,
         skip_schedule=False,
         weeks=1,
+        start_week=None,
     )
 
     assert ("validate", "laura_vigne") in wired

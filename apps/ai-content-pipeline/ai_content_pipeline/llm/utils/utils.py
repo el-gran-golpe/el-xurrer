@@ -18,6 +18,27 @@ def planning_week_start(today: date) -> date:
     )
 
 
+def validate_start_week(start: date, today: date) -> date:
+    """
+    Check an explicit `jobs run --start-week`: it must be a Monday, and not
+    before the Monday of the week containing `today`.
+
+    The default target (`planning_week_start`) skips a week that has
+    already started, so a week nobody planned in time would otherwise be
+    jumped over; this lets a run start on that week instead. Anything
+    earlier is rejected so a typo cannot re-plan a week that already ended.
+    """
+    if start.weekday() != 0:
+        raise ValueError(f"{start.isoformat()} is not a Monday")
+    current_monday = today - timedelta(days=today.weekday())
+    if start < current_monday:
+        raise ValueError(
+            f"{start.isoformat()} is before the current week "
+            f"({current_monday.isoformat()})"
+        )
+    return start
+
+
 def prepare_prompts(
     prompts: list[PromptItem],
     previous_storyline: str,
