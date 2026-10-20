@@ -139,7 +139,7 @@
 
 ## Safety And Side Effects
 - Ask before running commands that touch external services or local generated assets, including Google Drive sync, ComfyUI generation, Meta/Instagram calls, Fanvue API calls, OAuth flows, token validation, uploads, scheduling, or publishing.
-- AI content CLI commands such as `uv run python apps/ai-content-pipeline/main.py meta ...` and `uv run python apps/ai-content-pipeline/main.py all ...` load profiles and may pull from Google Drive before executing the requested command.
+- AI content CLI commands such as `uv run python apps/ai-content-pipeline/main.py meta ...` and `uv run python apps/ai-content-pipeline/main.py all ...` load profiles and may pull from Google Drive before executing the requested command. This includes `--help` on a subcommand (e.g. `jobs run --help`): Click runs `cli/main.py:main_callback` before it parses the subcommand's own options, so the Drive pull happens before the help text is printed. Only `jobs status` skips the preflight. To read a command's options without side effects, read its Typer definition instead, or run it with `DRIVE_SYNC_ENABLED=false`.
 - Never read, print, commit, or infer secrets from `.env`, token files, OAuth credentials, Instagram access tokens, Fanvue credentials, Google Drive credentials, or generated media/resource outputs.
 - Do not modify influencer personas, prompts, profile resources, generated assets, content safety level, or publishing schedules unless the task explicitly asks for it.
 - Keep external API interactions mocked in tests unless the user explicitly approves live calls.
