@@ -1,51 +1,57 @@
-import json
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import date, timedelta
 
 from ai_content_pipeline.domain.types import PromptItem
 
 
-def get_closest_monday():
+def planning_week_start(today: date) -> date:
     """
-    Return the closest Monday relative to today.
+    Return the Monday `plan` should target: `today` if `today` is a Monday,
+    otherwise the next Monday.
 
-    - If today is Monday: return today.
-    - If today is Tuesday–Thursday: return the previous Monday.
-    - If today is Friday–Sunday: return the next Monday.
+    Deliberately deterministic (a function of the clock only, not of what is
+    already planned): "the Monday after the latest planned week" would plan
+    a new week on every re-run of `jobs run` and break resume.
     """
-    today = datetime.now()
-    weekday = today.weekday()  # Monday = 0, Sunday = 6
-
-    if weekday == 0:  # If today is Monday
-        return today
-    elif weekday < 4:  # Tuesday (1), Wednesday (2), Thursday (3)
-        # Return Monday of current week (go back to the most recent Monday)
-        return today - timedelta(days=weekday)
-    else:  # Friday (4), Saturday (5), Sunday (6)
-        # Return next Monday (go forward to the upcoming Monday)
-        return today + timedelta(days=(7 - weekday))
+    days_until_monday = (7 - today.weekday()) % 7  # Monday == 0
+    return (
+        today if days_until_monday == 0 else today + timedelta(days=days_until_monday)
+    )
 
 
-def load_and_prepare_prompts(
-    prompt_json_template_path: Path,
+def validate_start_week(start: date, today: date) -> date:
+    """
+    Check an explicit `jobs run --start-week`: it must be a Monday, and not
+    before the Monday of the week containing `today`.
+
+    The default target (`planning_week_start`) skips a week that has
+    already started, so a week nobody planned in time would otherwise be
+    jumped over; this lets a run start on that week instead. Anything
+    earlier is rejected so a typo cannot re-plan a week that already ended.
+    """
+    if start.weekday() != 0:
+        raise ValueError(f"{start.isoformat()} is not a Monday")
+    current_monday = today - timedelta(days=today.weekday())
+    if start < current_monday:
+        raise ValueError(
+            f"{start.isoformat()} is before the current week "
+            f"({current_monday.isoformat()})"
+        )
+    return start
+
+
+def prepare_prompts(
+    prompts: list[PromptItem],
     previous_storyline: str,
+    week_start: date,
 ) -> list[PromptItem]:
     """
-    Load the prompt JSON, apply dynamic fields, and return list[PromptItem].
+    Apply dynamic fields to already-validated prompts and return copies.
     """
-    # Load raw JSON
-    with prompt_json_template_path.open("r", encoding="utf-8") as file:
-        payload = json.load(file)
-
-    prompts_data = payload.get("prompts", [])
-    # 1. Validate raw items while placeholders still present
-    raw_items = [PromptItem(**p) for p in prompts_data]
-
-    # 2. Format copies (do not mutate originals)
-    day_str = f"Monday {get_closest_monday().strftime('%Y-%m-%d')}"
+    # Format copies (do not mutate originals)
+    day_str = f"Monday {week_start:%Y-%m-%d}"
     formatted_items: list[PromptItem] = []
 
-    for idx, item in enumerate(raw_items):
+    for idx, item in enumerate(prompts):
         sys_prompt = item.system_prompt
         if "{day}" in sys_prompt:
             sys_prompt = sys_prompt.format(day=day_str)

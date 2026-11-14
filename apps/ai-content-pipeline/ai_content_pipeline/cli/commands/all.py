@@ -6,7 +6,7 @@ import shutil
 from typing import Optional
 
 from loguru import logger
-from ai_content_pipeline.profiles.profile import Profile
+from ai_content_pipeline.domain.types import Profile
 from ai_content_pipeline.domain.types import Platform
 
 from ai_content_pipeline.cli.commands.utils import (

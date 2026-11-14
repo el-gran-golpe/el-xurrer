@@ -2,24 +2,30 @@ import asyncio
 import hashlib
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Iterator, Type, Union
+from typing import Iterator, Type, Union
 
 from loguru import logger
 
+from ai_content_pipeline.domain.plans import WeekPlan
 from ai_content_pipeline.domain.types import Platform, Profile
 from ai_content_pipeline.generation.publications_generator import (
     DirectoryManager,
     ImageSpec,
-    _load_planning,
     _parse_day,
 )
 from ai_content_pipeline.integrations.fanvue.publisher import FanvueAPIPublisher
 from ai_content_pipeline.integrations.meta.graph_api import MetaPublisher
 from ai_content_pipeline.jobs.generation_backend import GenerationBackend
 from ai_content_pipeline.jobs.queue import Job, Queue
-from ai_content_pipeline.jobs.store import JobStatus, JobStore, JobType
-from ai_content_pipeline.planning.planning_manager import PlanningManager
+from ai_content_pipeline.jobs.store import JobEventKind, JobStatus, JobStore, JobType
+from ai_content_pipeline.planning.planning_manager import (
+    PlanningManager,
+    build_previous_storyline,
+)
+from ai_content_pipeline.planning.story_manager import StoryManager
+from ai_content_pipeline.profiles.repository import ProfileRepository
 from ai_content_pipeline.publishing.posting_scheduler import PostingScheduler
 
 Publisher = Union[Type[MetaPublisher], Type[FanvueAPIPublisher]]
@@ -27,10 +33,27 @@ Publisher = Union[Type[MetaPublisher], Type[FanvueAPIPublisher]]
 
 @dataclass(frozen=True)
 class ProfileJob:
-    """Payload of a `plan` or a `schedule` node: one profile+platform."""
+    """Payload of a `plan` or a `schedule` node: one profile+platform+week."""
 
     profile: Profile
     platform: Platform
+    week: str
+
+
+@dataclass(frozen=True)
+class StoryJob:
+    """
+    Payload of a `story` node: one profile+week (no platform — the arc and
+    chapter are platform-blind/platform-aware-but-shared, never owned by one
+    platform). `remaining_weeks` is how many more weeks follow this one in
+    a `--weeks N` chain; `run_story` enqueues week+1's own `story` job
+    (decremented) only once this week's arc+chapter are secured and this
+    week's `plan` jobs are enqueued.
+    """
+
+    profile: Profile
+    week: str
+    remaining_weeks: int = 0
 
 
 @dataclass(frozen=True)
@@ -39,6 +62,7 @@ class ImageJob:
 
     profile: Profile
     platform: Platform
+    week: str
     spec: ImageSpec
     output_path: Path
     planning_hash: str
@@ -52,22 +76,26 @@ def _outputs_dir(profile: Profile, platform: Platform) -> Path:
     return Path(profile.platform_info[platform].outputs_path)
 
 
-def _planning_path(profile: Profile, platform: Platform) -> Path:
-    # Same filename convention as PublicationsGenerator.generate.
-    initials = "".join(part[0] for part in profile.name.split("_"))
-    return _outputs_dir(profile, platform) / f"{initials}_planning.json"
-
-
 def _publications_dir(profile: Profile, platform: Platform) -> Path:
     return _outputs_dir(profile, platform) / "publications"
 
 
-def plan_job_id(profile: Profile, platform: Platform) -> str:
-    return f"{JobType.PLAN.value}:{profile.name}:{platform.value}"
+def story_job_id(profile: Profile, week: str) -> str:
+    return f"{JobType.STORY.value}:{profile.name}:{week}"
 
 
-def schedule_job_id(profile: Profile, platform: Platform) -> str:
-    return f"{JobType.SCHEDULE.value}:{profile.name}:{platform.value}"
+def plan_job_id(profile: Profile, platform: Platform, week: str) -> str:
+    return f"{JobType.PLAN.value}:{profile.name}:{platform.value}:{week}"
+
+
+def schedule_job_id(profile: Profile, platform: Platform, week: str) -> str:
+    # Has a week dimension, unlike before `--weeks N`: with several weeks
+    # planned in one `jobs run`, each week's images must fan in to their own
+    # `schedule` job. One id per profile+platform (no week) would make the
+    # second week's `_enqueue_schedule` reset the first week's params hash
+    # (and fan-in group) through the same job id, instead of each week
+    # getting its own resumable node.
+    return f"{JobType.SCHEDULE.value}:{profile.name}:{platform.value}:{week}"
 
 
 def _image_job_id(profile: Profile, platform: Platform, output_path: Path) -> str:
@@ -75,6 +103,53 @@ def _image_job_id(profile: Profile, platform: Platform, output_path: Path) -> st
     # survives the repo living at a different absolute path.
     rel = output_path.relative_to(_publications_dir(profile, platform))
     return f"{JobType.GENERATE_IMAGE.value}:{profile.name}:{platform.value}:{rel.as_posix()}"
+
+
+@dataclass(frozen=True)
+class ParsedJobId:
+    type: str
+    profile: str
+    platform: str
+    week: str
+
+
+def parse_job_id(job_id: str) -> ParsedJobId:
+    """
+    Recovers (type, profile, platform, week) from a job id built by
+    `story_job_id`/`plan_job_id`/`schedule_job_id`/`_image_job_id`. Used only
+    by `jobs status`'s overview, to group the long-lived `jobs` table by week
+    even for nodes created before `job_events` existed — the `jobs` table
+    itself has no week column.
+
+    `story` ids are `{type}:{profile}:{week}` (no platform segment at all —
+    a story job covers a whole profile+week). `plan`/`schedule` ids are
+    `{type}:{profile}:{platform}:{week}`, so the 4th colon-split segment is
+    the week verbatim. `generate_image` ids are
+    `{type}:{profile}:{platform}:{week}/day_N/{slug}_{index}.jpeg` — the
+    week is the first path segment of that same 4th part. Profile names and
+    `Platform` values never contain a colon or a slash, so splitting is
+    unambiguous either way.
+
+    Real DBs created before `schedule_job_id` grew a week dimension (ahead
+    of `--weeks N`) still have `schedule:{profile}:{platform}` rows with no
+    4th segment at all — observed against `.cache/jobs/migrated.db`. Those
+    parse to `week="unknown"` instead of raising, so `jobs status` can still
+    show the rest of the DB.
+    """
+    if job_id.startswith(f"{JobType.STORY.value}:"):
+        parts = job_id.split(":", 2)
+        profile = parts[1] if len(parts) > 1 else ""
+        week = parts[2] if len(parts) > 2 else "unknown"
+        return ParsedJobId(
+            type=JobType.STORY.value, profile=profile, platform="", week=week
+        )
+
+    parts = job_id.split(":", 3)
+    job_type = parts[0] if len(parts) > 0 else ""
+    profile = parts[1] if len(parts) > 1 else ""
+    platform = parts[2] if len(parts) > 2 else ""
+    week = parts[3].split("/", 1)[0] if len(parts) > 3 else "unknown"
+    return ParsedJobId(type=job_type, profile=profile, platform=platform, week=week)
 
 
 def _group_key(profile: Profile, platform: Platform, planning_hash: str) -> str:
@@ -105,6 +180,8 @@ async def run_plan(
     *,
     use_initial_conditions: bool,
     refresh_model_cache: bool = False,
+    repository: ProfileRepository,
+    run_id: str,
 ) -> None:
     """
     Plans one profile+platform, then fans out one `generate_image` per image.
@@ -112,85 +189,424 @@ async def run_plan(
     A `plan` already `done` with unchanged inputs is not re-planned, but the
     fan-out still runs: that is what makes a resumed run re-enqueue only the
     images it never finished.
+
+    Week chaining (`--weeks N`) is no longer this function's job: the
+    "story" step (`run_story`) owns the chain of weeks per profile and only
+    enqueues this week's `plan` jobs (one per platform) once its arc+chapter
+    are secured. `run_plan` just plans the one week it was asked for.
+
+    `run_id` (from `JobStore.start_run`, created once per `jobs run`
+    invocation) tags every `job_events` row this call records, so the
+    end-of-run summary and `jobs status` can group events by run.
     """
     payload: ProfileJob = job.payload
-    profile, platform = payload.profile, payload.platform
-    inputs = Path(profile.platform_info[platform].inputs_path)
+    profile, platform, week = payload.profile, payload.platform, payload.week
 
-    prompts = (inputs / f"{profile.name}.json").read_text(encoding="utf-8")
-    conditions = (
-        (inputs / "initial_conditions.md").read_text(encoding="utf-8")
-        if use_initial_conditions
-        else ""
+    # Hash exactly what the prompt gets: the previous-storyline text (persona
+    # + platform notes + this week's chapter slice) plus the validated
+    # prompts JSON plus the target week. That way editing the chapter slice
+    # correctly invalidates this one, and nothing else does.
+    platform_profile = repository.get_platform_profile(profile, platform)
+    previous_storyline = build_previous_storyline(
+        repository, profile, platform, platform_profile, use_initial_conditions, week
     )
-    status = store.create(
-        job.id, JobType.PLAN, profile.name, platform, _hash(prompts + conditions)
+    inputs = platform_profile.model_dump_json(include={"lang", "prompts"})
+    inputs += previous_storyline
+    inputs += week
+
+    # Frozen weeks: a `plan` already `done` whose Monday has already arrived
+    # is never re-planned, even if its hash changed — the week has already
+    # started, so rewriting it would contradict what may already be
+    # published. Checked *before* `store.create()`, which would otherwise
+    # reset a stale-hash DONE job to PENDING and lose this distinction. An
+    # unchanged hash is not "frozen", just reused like any other done week.
+    frozen = (
+        store.status(job.id) is JobStatus.DONE
+        and date.fromisoformat(week) <= date.today()
+        and store.params_hash(job.id) != _hash(inputs)
     )
 
-    if status is JobStatus.DONE:
-        logger.info(
-            "Plan already done for {} {}, reusing {}",
+    if frozen:
+        logger.warning(
+            "Week {} for {} {} is frozen (already started); not re-planning "
+            "despite changed inputs",
+            week,
             profile.name,
             platform.value,
-            _planning_path(profile, platform).name,
         )
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.PLAN,
+            profile.name,
+            platform,
+            week,
+            JobEventKind.PLAN_FROZEN,
+        )
+        replanned = False
     else:
-        with _running(store, job.id):
-            await asyncio.to_thread(
-                PlanningManager(
-                    template_profiles=[profile],
-                    platform_name=platform,
-                    use_initial_conditions=use_initial_conditions,
-                    refresh_model_cache=refresh_model_cache,
-                ).plan
-            )
-        logger.success("{} planning done for {}.", platform.name, profile.name)
+        status = store.create(
+            job.id, JobType.PLAN, profile.name, platform, _hash(inputs)
+        )
+        replanned = status is not JobStatus.DONE
 
-    await _fan_out_images(profile, platform, store, queue)
+        if not replanned:
+            logger.info(
+                "Plan already done for {} {} week {}, reusing it",
+                profile.name,
+                platform.value,
+                week,
+            )
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.PLAN,
+                profile.name,
+                platform,
+                week,
+                JobEventKind.PLAN_REUSED,
+            )
+        else:
+            try:
+                with _running(store, job.id):
+                    outcomes = await asyncio.to_thread(
+                        PlanningManager(
+                            template_profiles=[profile],
+                            platform_name=platform,
+                            use_initial_conditions=use_initial_conditions,
+                            refresh_model_cache=refresh_model_cache,
+                            repository=repository,
+                            target_week=date.fromisoformat(week),
+                        ).plan
+                    )
+            except Exception as e:
+                store.record_event(
+                    run_id,
+                    job.id,
+                    JobType.PLAN,
+                    profile.name,
+                    platform,
+                    week,
+                    JobEventKind.PLAN_FAILED,
+                    detail={
+                        "error": f"{type(e).__name__}: {e}",
+                        "invalid_attempts": getattr(e, "invalid_attempts", []),
+                    },
+                )
+                raise
+            logger.success(
+                "{} planning done for {} week {}.", platform.name, profile.name, week
+            )
+            outcome = outcomes[0]
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.PLAN,
+                profile.name,
+                platform,
+                week,
+                JobEventKind.PLAN_DONE,
+                detail={
+                    "attempt": outcome.attempt,
+                    "max_attempts": outcome.max_attempts,
+                    "model": outcome.model,
+                    "used_fallback": outcome.used_fallback,
+                    "pinned_corrections": outcome.pinned_corrections,
+                },
+            )
+            for invalid_error in outcome.invalid_attempts:
+                store.record_event(
+                    run_id,
+                    job.id,
+                    JobType.PLAN,
+                    profile.name,
+                    platform,
+                    week,
+                    JobEventKind.PLAN_ATTEMPT_INVALID,
+                    detail={"error": invalid_error},
+                )
+
+    if replanned:
+        _remove_stale_images(
+            profile,
+            platform,
+            repository.get_week_plan(profile, platform, week),
+            store,
+            run_id,
+        )
+
+    await _fan_out_images(profile, platform, week, store, queue, repository, run_id)
+
+
+async def run_story(
+    job: Job,
+    store: JobStore,
+    queue: Queue,
+    *,
+    repository: ProfileRepository,
+    refresh_model_cache: bool = False,
+    run_id: str,
+) -> None:
+    """
+    The "story" step: for one profile+week, ensures the arc and chapter
+    covering that week exist (generating whichever is missing), enqueues
+    that week's `plan` job for every platform, and — if more weeks remain in
+    a `--weeks N` chain — enqueues week+1's own `story` job.
+
+    An arc/chapter file that already exists is always reused, never
+    regenerated: both are user-editable. If generating a missing one fails,
+    nothing below it runs for this week (no `plan` jobs, no next-week
+    `story` job) — same "a failed step blocks what depends on it" rule
+    `run_plan` used to apply to `--weeks N` itself.
+    """
+    payload: StoryJob = job.payload
+    profile, week = payload.profile, payload.week
+
+    store.create(job.id, JobType.STORY, profile.name, None)
+    manager = StoryManager(profile, repository, refresh_model_cache=refresh_model_cache)
+
+    try:
+        with _running(store, job.id):
+            arc, arc_generated, arc_outcome = manager.ensure_arc(week)
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.STORY,
+                profile.name,
+                None,
+                week,
+                JobEventKind.ARC_DONE if arc_generated else JobEventKind.ARC_REUSED,
+                detail=(
+                    {
+                        "start_week": arc.start_week,
+                        "attempt": arc_outcome.attempt,
+                        "model": arc_outcome.model,
+                        "used_fallback": arc_outcome.used_fallback,
+                    }
+                    if arc_outcome is not None
+                    else {"start_week": arc.start_week}
+                ),
+            )
+
+            chapter, chapter_generated, chapter_outcome = manager.ensure_chapter(
+                arc, week
+            )
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.STORY,
+                profile.name,
+                None,
+                week,
+                JobEventKind.CHAPTER_DONE
+                if chapter_generated
+                else JobEventKind.CHAPTER_REUSED,
+                detail=(
+                    {
+                        "start_week": chapter.start_week,
+                        "attempt": chapter_outcome.attempt,
+                        "model": chapter_outcome.model,
+                        "used_fallback": chapter_outcome.used_fallback,
+                    }
+                    if chapter_outcome is not None
+                    else {"start_week": chapter.start_week}
+                ),
+            )
+    except Exception as e:
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.STORY,
+            profile.name,
+            None,
+            week,
+            JobEventKind.STORY_FAILED,
+            detail={"error": f"{type(e).__name__}: {e}"},
+        )
+        if payload.remaining_weeks > 0:
+            next_week = (date.fromisoformat(week) + timedelta(days=7)).isoformat()
+            logger.warning(
+                "Week {} for {} not enqueued: week {} story generation failed",
+                next_week,
+                profile.name,
+                week,
+            )
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.STORY,
+                profile.name,
+                None,
+                week,
+                JobEventKind.WEEK_NOT_ENQUEUED,
+                detail={"next_week": next_week},
+            )
+        raise
+
+    for platform in profile.platform_info:
+        await queue.enqueue(
+            JobType.PLAN.value,
+            Job(
+                id=plan_job_id(profile, platform, week),
+                payload=ProfileJob(profile=profile, platform=platform, week=week),
+            ),
+        )
+
+    if payload.remaining_weeks > 0:
+        next_week = (date.fromisoformat(week) + timedelta(days=7)).isoformat()
+        await queue.enqueue(
+            JobType.STORY.value,
+            Job(
+                id=story_job_id(profile, next_week),
+                payload=StoryJob(
+                    profile=profile,
+                    week=next_week,
+                    remaining_weeks=payload.remaining_weeks - 1,
+                ),
+            ),
+        )
+
+
+def _planned_images(
+    profile: Profile, platform: Platform, plan: WeekPlan
+) -> list[tuple[Path, ImageSpec]]:
+    """Every image this plan calls for, as (output_path, spec) pairs."""
+    week_folder = _publications_dir(profile, platform) / plan.week
+    images: list[tuple[Path, ImageSpec]] = []
+    for day in plan.days:
+        day_folder = week_folder / f"day_{day.day}"
+        for publication in _parse_day(day):
+            for spec in publication.images:
+                images.append(
+                    (day_folder / f"{publication.slug}_{spec.index}.jpeg", spec)
+                )
+    return images
+
+
+def _remove_stale_images(
+    profile: Profile,
+    platform: Platform,
+    plan: WeekPlan,
+    store: JobStore,
+    run_id: str,
+) -> None:
+    """
+    Called right after a week was actually (re)planned (not the "already
+    done" path), before fan-out. New titles produce new file names
+    (`{slug}_{index}.jpeg`), so a re-plan can leave old images sitting in
+    `publications/{week}/day_*/` that `PostingScheduler` would otherwise glob
+    and publish alongside the new ones. Only this week's own day folders are
+    touched; `captions.txt`/`upload_times.txt` are untouched (`DirectoryManager`
+    rewrites those) and so are other weeks' folders.
+    """
+    week_folder = _publications_dir(profile, platform) / plan.week
+    if not week_folder.is_dir():
+        return
+    expected = {path for path, _ in _planned_images(profile, platform, plan)}
+    for day_folder in sorted(p for p in week_folder.glob("day_*") if p.is_dir()):
+        images = (
+            list(day_folder.glob("*.jpeg"))
+            + list(day_folder.glob("*.jpg"))
+            + list(day_folder.glob("*.png"))
+        )
+        for image_path in sorted(images):
+            if image_path not in expected:
+                logger.info(
+                    "Removing stale image {} (week {} was re-planned)",
+                    image_path,
+                    plan.week,
+                )
+                image_path.unlink()
+                # The image no longer belongs to the plan, so neither does
+                # its job: without this, `jobs status` would keep counting it.
+                stale_job_id = _image_job_id(profile, platform, image_path)
+                store.forget(stale_job_id)
+                store.record_event(
+                    run_id,
+                    stale_job_id,
+                    JobType.GENERATE_IMAGE,
+                    profile.name,
+                    platform,
+                    plan.week,
+                    JobEventKind.IMAGE_STALE_REMOVED,
+                    detail={"path": str(image_path), "reason": "week was re-planned"},
+                )
 
 
 async def _fan_out_images(
-    profile: Profile, platform: Platform, store: JobStore, queue: Queue
+    profile: Profile,
+    platform: Platform,
+    week: str,
+    store: JobStore,
+    queue: Queue,
+    repository: ProfileRepository,
+    run_id: str,
 ) -> None:
-    planning_path = _planning_path(profile, platform)
-    planning: dict[str, list[dict[str, Any]]] = _load_planning(planning_path)
-    planning_hash = _hash(planning_path.read_text(encoding="utf-8"))
+    plan = repository.get_week_plan(profile, platform, week)
+    planning_hash = _hash(plan.model_dump_json())
     publications_dir = _publications_dir(profile, platform)
 
     # captions.txt / upload_times.txt belong to the plan node, not to any
     # image: schedule reads them, so they must exist before any child runs.
-    DirectoryManager(publications_dir).create_structure(planning)
+    DirectoryManager(publications_dir).create_structure(plan)
 
-    children: list[ImageJob] = []
-    for week, days in planning.items():
-        for day_data in days:
-            day_folder = publications_dir / week / f"day_{day_data['day']}"
-            for publication in _parse_day(day_data):
-                for spec in publication.images:
-                    children.append(
-                        ImageJob(
-                            profile=profile,
-                            platform=platform,
-                            spec=spec,
-                            output_path=day_folder
-                            / f"{publication.slug}_{spec.index}.jpeg",
-                            planning_hash=planning_hash,
-                        )
-                    )
+    children: list[ImageJob] = [
+        ImageJob(
+            profile=profile,
+            platform=platform,
+            week=week,
+            spec=spec,
+            output_path=output_path,
+            planning_hash=planning_hash,
+        )
+        for output_path, spec in _planned_images(profile, platform, plan)
+    ]
 
     store.init_counter(_group_key(profile, platform, planning_hash), len(children))
 
     pending: list[tuple[str, ImageJob]] = []
     for child in children:
         job_id = _image_job_id(profile, platform, child.output_path)
+        new_hash = _hash(child.spec.description)
+        # Read the stored hash *before* `store.create` overwrites it, so a
+        # description change hiding behind an unchanged file name (same
+        # slug+index, different image_description — `_remove_stale_images`
+        # only catches a changed *name*) can be detected here: delete the
+        # stale file so `run_generate_image`'s `output_path.exists()` check
+        # does not short-circuit into skipping a regeneration it should do.
+        previous_hash = store.params_hash(job_id)
         status = store.create(
             job_id,
             JobType.GENERATE_IMAGE,
             profile.name,
             platform,
-            _hash(child.spec.description),
+            new_hash,
         )
         if status is not JobStatus.DONE:
+            if (
+                previous_hash is not None
+                and previous_hash != new_hash
+                and child.output_path.exists()
+            ):
+                logger.info(
+                    "Removing stale image {} (description changed for the "
+                    "same file name)",
+                    child.output_path,
+                )
+                child.output_path.unlink()
+                store.record_event(
+                    run_id,
+                    job_id,
+                    JobType.GENERATE_IMAGE,
+                    profile.name,
+                    platform,
+                    week,
+                    JobEventKind.IMAGE_STALE_REMOVED,
+                    detail={
+                        "path": str(child.output_path),
+                        "reason": "description changed for the same file name",
+                    },
+                )
             pending.append((job_id, child))
 
     logger.info(
@@ -204,14 +620,18 @@ async def _fan_out_images(
     if not pending:
         # Nothing left to wait for, so the fan-in counter will never reach 0
         # on its own — enqueue schedule directly.
-        await _enqueue_schedule(profile, platform, planning_hash, store, queue)
+        await _enqueue_schedule(profile, platform, week, planning_hash, store, queue)
         return
     for job_id, child in pending:
         await queue.enqueue(JobType.GENERATE_IMAGE.value, Job(id=job_id, payload=child))
 
 
 async def run_generate_image(
-    job: Job, store: JobStore, queue: Queue, backend: GenerationBackend
+    job: Job,
+    store: JobStore,
+    queue: Queue,
+    backend: GenerationBackend,
+    run_id: str,
 ) -> None:
     """
     Generates one image, then enqueues `schedule` if it was the last one
@@ -227,44 +647,120 @@ async def run_generate_image(
         # trusting the store alone when the file is already on disk.
         logger.info("Skipping existing image: {}", payload.output_path)
         store.mark_done(job.id)
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.GENERATE_IMAGE,
+            profile.name,
+            platform,
+            payload.week,
+            JobEventKind.IMAGE_REUSED,
+        )
     else:
-        with _running(store, job.id):
-            await backend.generate(payload.spec, payload.output_path)
+        try:
+            with _running(store, job.id):
+                await backend.generate(payload.spec, payload.output_path)
+        except Exception as e:
+            store.record_event(
+                run_id,
+                job.id,
+                JobType.GENERATE_IMAGE,
+                profile.name,
+                platform,
+                payload.week,
+                JobEventKind.IMAGE_FAILED,
+                detail={"error": f"{type(e).__name__}: {e}"},
+            )
+            raise
         logger.success("Image saved at: {}", payload.output_path)
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.GENERATE_IMAGE,
+            profile.name,
+            platform,
+            payload.week,
+            JobEventKind.IMAGE_GENERATED,
+        )
 
     remaining = store.decrement_counter(
         _group_key(profile, platform, payload.planning_hash)
     )
     if remaining <= 0:
-        await _enqueue_schedule(profile, platform, payload.planning_hash, store, queue)
+        await _enqueue_schedule(
+            profile, platform, payload.week, payload.planning_hash, store, queue
+        )
 
 
 async def _enqueue_schedule(
     profile: Profile,
     platform: Platform,
+    week: str,
     planning_hash: str,
     store: JobStore,
     queue: Queue,
 ) -> None:
-    job_id = schedule_job_id(profile, platform)
+    # One `schedule` per profile+platform+week (see schedule_job_id). Its
+    # params hash is the planning hash, so a re-planned week resets it to
+    # pending, and the payload's week limits what it publishes.
+    job_id = schedule_job_id(profile, platform, week)
     status = store.create(
         job_id, JobType.SCHEDULE, profile.name, platform, planning_hash
     )
     if status is JobStatus.DONE:
-        logger.info("Schedule already done for {} {}", profile.name, platform.value)
+        logger.info(
+            "Schedule already done for {} {} week {}",
+            profile.name,
+            platform.value,
+            week,
+        )
         return
     await queue.enqueue(
         JobType.SCHEDULE.value,
-        Job(id=job_id, payload=ProfileJob(profile=profile, platform=platform)),
+        Job(
+            id=job_id,
+            payload=ProfileJob(profile=profile, platform=platform, week=week),
+        ),
     )
 
 
-async def run_schedule(job: Job, store: JobStore, publisher: Publisher) -> None:
-    """Uploads/schedules one profile+platform, same call as pipeline.schedule."""
+async def run_schedule(
+    job: Job, store: JobStore, publisher: Publisher, run_id: str
+) -> None:
+    """
+    Uploads/schedules one profile+platform, same call as pipeline.schedule,
+    but restricted to the week this job was planned for — `jobs run` never
+    clears `outputs/`, so older week folders (including a legacy `week_1`)
+    can still be sitting under `publications/` with past-due upload times
+    that `PostingScheduler` would otherwise publish again immediately.
+    """
     payload: ProfileJob = job.payload
-    with _running(store, job.id):
-        await PostingScheduler(
-            template_profiles=[payload.profile],
-            platform_name=payload.platform,
-            publisher=publisher,
-        ).upload()
+    try:
+        with _running(store, job.id):
+            await PostingScheduler(
+                template_profiles=[payload.profile],
+                platform_name=payload.platform,
+                publisher=publisher,
+                weeks={payload.week},
+            ).upload()
+    except Exception as e:
+        store.record_event(
+            run_id,
+            job.id,
+            JobType.SCHEDULE,
+            payload.profile.name,
+            payload.platform,
+            payload.week,
+            JobEventKind.SCHEDULE_FAILED,
+            detail={"error": f"{type(e).__name__}: {e}"},
+        )
+        raise
+    store.record_event(
+        run_id,
+        job.id,
+        JobType.SCHEDULE,
+        payload.profile.name,
+        payload.platform,
+        payload.week,
+        JobEventKind.SCHEDULE_DONE,
+    )

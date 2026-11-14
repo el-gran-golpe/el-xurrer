@@ -24,6 +24,8 @@ __pycache__/
 
 # === Project-specific ===
 /resources
+# Migration sandboxes (resources.migrated/, future resources.bak-*/): never committed.
+/resources.*
 
 # === Misc / tooling ===
 .cache/

@@ -19,6 +19,26 @@ def _function_def(path: str, name: str) -> FunctionNode:
     raise AssertionError(f"Function {name} not found in {path}")
 
 
+def _method_def(path: str, class_name: str, method_name: str) -> FunctionNode:
+    """Like `_function_def`, but scoped to one class — the module may define
+    more than one function/method with the same name (e.g. more than one
+    `__init__`), and a plain top-level `ast.walk` would return whichever one
+    it happens to encounter first."""
+    module = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+    for node in ast.walk(module):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for member in node.body:
+                if (
+                    isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and member.name == method_name
+                ):
+                    return member
+            raise AssertionError(
+                f"Method {method_name} not found in class {class_name}"
+            )
+    raise AssertionError(f"Class {class_name} not found in {path}")
+
+
 def _arg_names(function: FunctionNode) -> set[str]:
     return {arg.arg for arg in function.args.args}
 
@@ -53,8 +73,9 @@ def test_refresh_model_cache_flag_reaches_planning_pipeline():
     pipeline_plan = _function_def(
         "apps/ai-content-pipeline/ai_content_pipeline/cli/commands/pipeline.py", "plan"
     )
-    planning_manager_init = _function_def(
+    planning_manager_init = _method_def(
         "apps/ai-content-pipeline/ai_content_pipeline/planning/planning_manager.py",
+        "PlanningManager",
         "__init__",
     )
     execute_all = _function_def(

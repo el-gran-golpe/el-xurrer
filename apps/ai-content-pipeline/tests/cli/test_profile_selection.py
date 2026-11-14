@@ -32,9 +32,9 @@ def profiles(monkeypatch):
         SimpleNamespace(name="second_profile"),
         SimpleNamespace(name="third_profile"),
     ]
-    monkeypatch.setattr(utils.profile_manager, "_profiles", loaded)
+    monkeypatch.setattr(utils.profile_repository, "_profiles", loaded)
     monkeypatch.setattr(
-        utils.profile_manager,
+        utils.profile_repository,
         "_profiles_by_name",
         {profile.name: profile for profile in loaded},
     )
@@ -79,7 +79,7 @@ def test_invalid_selection_never_falls_back_to_all(profiles, indexes, names, err
 
 
 def test_resolve_profiles_returns_empty_when_none_are_loaded(monkeypatch):
-    monkeypatch.setattr(utils.profile_manager, "_profiles", [])
+    monkeypatch.setattr(utils.profile_repository, "_profiles", [])
 
     assert utils.resolve_profiles([], None) == []
 
@@ -97,7 +97,7 @@ def command_spies(monkeypatch):
         cleanup_outputs=Mock(),
     )
     monkeypatch.setattr(cli_main, "get_gdrive_sync", Mock(return_value=Mock()))
-    monkeypatch.setattr(utils.profile_manager, "load_profiles", Mock())
+    monkeypatch.setattr(utils.profile_repository, "load_profiles", Mock())
     monkeypatch.setattr(pipeline, "plan", spies.plan)
     monkeypatch.setattr(pipeline, "generate", spies.generate)
     monkeypatch.setattr(pipeline, "schedule", spies.schedule)

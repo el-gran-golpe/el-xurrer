@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 from tqdm import tqdm
 from loguru import logger
@@ -6,27 +7,30 @@ from ai_content_pipeline.llm.api_keys import api_keys
 from ai_content_pipeline.llm.utils.response import decode_json_from_message
 from ai_content_pipeline.domain.types import Platform
 from ai_content_pipeline.llm.routing.model_router import ModelRouter
-from ai_content_pipeline.llm.utils.utils import load_and_prepare_prompts
-from ai_content_pipeline.domain.types import PromptItem
+from ai_content_pipeline.llm.utils.utils import prepare_prompts
+from ai_content_pipeline.domain.types import ProfileInput, PromptItem
 
 
 class BaseLLM:
     def __init__(
         self,
-        prompt_json_template_path: Path,
+        prompts: list[PromptItem],
         previous_storyline: str,
         platform_name: Platform,
         model_router: ModelRouter,
+        week_start: date,
     ):
-        self.prompt_json_template_path = prompt_json_template_path
+        self.prompts = prompts
         self.previous_storyline = previous_storyline
         self.platform_name = platform_name
         self.model_router = model_router
+        self.week_start = week_start
 
     def generate_dict_from_prompts(self) -> dict:
-        prompt_items: list[PromptItem] = load_and_prepare_prompts(
-            prompt_json_template_path=self.prompt_json_template_path,
+        prompt_items: list[PromptItem] = prepare_prompts(
+            prompts=self.prompts,
             previous_storyline=self.previous_storyline,
+            week_start=self.week_start,
         )
         cache: dict[str, str] = {}
         last_reply: str = ""
@@ -83,10 +87,13 @@ if __name__ == "__main__":
     router.initialize_model_classifiers(models_to_scan=None)
 
     llm = BaseLLM(
-        prompt_json_template_path=prompt_path,
+        prompts=ProfileInput.model_validate_json(
+            prompt_path.read_text(encoding="utf-8")
+        ).prompts,
         previous_storyline=storyline,
         platform_name=platform,
         model_router=router,
+        week_start=date.today(),
     )
     result = llm.generate_dict_from_prompts()
     print("Generated result:", result)

@@ -4,9 +4,9 @@ This runbook documents the reusable flow for creating a profile-specific Meta
 setup and obtaining the non-expiring Facebook Page access token used by this repo
 to publish Instagram content.
 
-It covers Cloudflare domain setup, Facebook Page and Instagram linking, Meta
-Business Suite, Meta for Developers, Graph API Explorer permissions, Graph API
-version notes, and the local token exchange helper.
+It covers account email and recovery setup, Facebook Page and Instagram linking,
+Meta Business Suite, Meta for Developers, Graph API Explorer permissions, Graph
+API version notes, and the local token exchange helper.
 
 ## Goal
 
@@ -31,7 +31,7 @@ Environment prefix: EXAMPLE_CREATOR
 Facebook Page name: Example Creator
 Facebook Page ID: <facebook-page-id>
 Meta app ID: <meta-app-id>
-Cloudflare base domain: kinemify.com
+Controlling email: <mailbox-you-directly-control>
 ```
 
 Do not commit, paste, or document the Meta app secret, short-lived user token,
@@ -79,20 +79,48 @@ Operational guidance:
 - Keep the helper's inline `GRAPH_API_BASE_URL` aligned with the publisher's Graph API version.
 - Review Meta's changelog and test the full Page-validation, media-staging, and Instagram-publishing flow before a future version upgrade.
 
-## Step 1: Cloudflare Domain And Alias
+## Step 1: Account Email And Recovery Hardening
 
-Use the Cloudflare account that controls `kinemify.com`:
+This step is the single most important one in the runbook. Everything else can be
+redone; a lost account email cannot.
 
-```text
-Domain: kinemify.com
-```
-
-Create or verify the public alias/subdomain for the influencer page hosted under
-`kinemify.com`. For example:
+Use a mailbox you control directly, such as a dedicated Gmail account for the
+project. Do not put the profile's Facebook login behind a mail-forwarding hop you
+do not own outright.
 
 ```text
-Example public alias: example-creator.kinemify.com
+Controlling email: <mailbox-you-directly-control>
 ```
+
+Before creating any Meta asset, harden the Facebook personal account that will
+control the Page:
+
+```text
+Login email:      a mailbox you can still open in a year
+Phone number:     added and verified
+Two-factor:       authenticator app, not SMS-only
+Recovery codes:   saved in the password manager
+Page admins:      a second Facebook account you control, with full control
+```
+
+Why this step exists: a profile was permanently lost when the domain behind its
+forwarded account email lapsed. The Meta assets still existed, but every account
+recovery email went to a mailbox that no longer resolved, so the Facebook Page and
+Instagram account could not be recovered at any price. Expired domains are
+recoverable only during a roughly 30-day redemption window, at a restore fee, and
+only through the original registrar.
+
+Optional, and not required by any later step: a public website or subdomain for
+the influencer. If you use a custom domain for persona credibility, keep it on
+auto-renew with a payment method that will not lapse, register it under the
+controlling email, and still set the account email and recovery options above
+directly on the Meta accounts. A domain must never be the only path to account
+recovery.
+
+Note that `FACEBOOK_STAGING_PAGE_ID` and `FACEBOOK_STAGING_PAGE_ACCESS_TOKEN` are
+shared by every profile. Losing access to the account that controls the staging
+Page breaks Instagram publishing for all profiles at once, so harden that account
+with the same checklist.
 
 ## Step 2: Create The Facebook Page
 
@@ -326,6 +354,7 @@ final Page token.
 
 Common mistakes:
 
+- Reusing an app that was already authorized for an earlier profile. The previous Page-asset grant is remembered and the new Page is not added to it, so `/me/accounts` silently returns only the old Page. Add the new Page under `facebook.com/settings` -> Business Integrations before generating the token; see the troubleshooting section on the missing Page access token.
 - Choosing `Get Page Access Token` first. Use `Get User Access Token`; the helper fetches the Page token safely from `/me/accounts`.
 - Logging into Graph API Explorer with a Facebook user that can see the app but does not control the configured Page.
 - Logging in with a Facebook user that controls the Page but cannot see the app.
@@ -541,6 +570,56 @@ Fix:
 Try direct Page lookup with `<facebook-page-id>?fields=id,name,access_token,instagram_business_account`. If it returns the Page access token and Instagram business account, rerun the helper; it has the same fallback. If direct lookup also fails, regenerate the short-lived User token with the correct user, app, permissions, and selected Page asset.
 ```
 
+If the Page is missing because it was created after the app was first authorized,
+see the next section instead. That is the common case for a new profile.
+
+### Helper fails with "Meta response did not include Page access token"
+
+This is the expected failure when adding a new profile to an app that was already
+authorized for an earlier profile. The helper log looks like this:
+
+```text
+Looking for Facebook Page ID <new-page-id> in 1 visible page(s).
+Page <new-page-id> was not returned by /me/accounts; trying direct Page lookup.
+Error: Meta response did not include Page access token.
+```
+
+Read it carefully, because it is more informative than it looks:
+
+```text
+/me/accounts returned only the previously granted Page, not the new one.
+Direct Page lookup succeeded, and the helper's ID match check passed,
+so the configured Page ID is correct and the Page exists.
+The payload had no access_token, because Meta only returns that field
+to a token with admin rights on the Page.
+```
+
+Cause: a Facebook user access token carries a per-Page asset grant. A Page created
+after the app was authorized is not added to that grant automatically, so the new
+Page stays invisible to the token even though the same user administers it.
+
+Fix, without revoking anything:
+
+```text
+1. Open facebook.com/settings -> Business Integrations.
+2. Open the Meta app's entry and edit which Pages it may access.
+3. Tick the new profile's Page and save.
+4. Generate a fresh short-lived User token in Graph API Explorer.
+5. Confirm me/accounts?fields=name,id,instagram_business_account now lists both Pages.
+6. Rerun the helper.
+```
+
+Do not remove the app authorization to force the asset picker to reappear. That
+works, but it drops the existing grants and makes you reauthorize every previously
+working Page. Editing the existing authorization is the safe path.
+
+If the new Page does not appear as a tickable option in Business Integrations, the
+token-generating user does not administer it. Add that user with full control in
+Business Suite under Settings -> Pages -> the Page -> People, then start over.
+
+The helper is safe to rerun: it fails before `update_env_file()`, so a failed run
+never touches `.env`.
+
 ### `/me/accounts` shows the Page but no Instagram business account
 
 Likely causes:
@@ -575,6 +654,37 @@ Fix:
 Generate a fresh short-lived User token, confirm the app ID/secret pair, and rerun the helper.
 ```
 
+### The profile's account email is unreachable
+
+Symptom:
+
+```text
+The Meta assets still exist, but account recovery emails go to a mailbox or
+forwarding domain that no longer resolves, so the account cannot be recovered.
+```
+
+First, check whether the mailbox itself is recoverable. If a lapsed domain is the
+cause, look up its registry status before assuming it is gone:
+
+```bash
+curl -s "https://rdap.verisign.com/com/v1/domain/<domain>.com" | python3 -m json.tool
+```
+
+A `redemption period` status means it can still be restored, through the original
+registrar only, for a restore fee, and only for about 30 days from the date the
+status was set. After that it goes to `pendingDelete` and is released.
+
+If the mailbox cannot be recovered, the Facebook Page and Instagram account are
+permanently lost. There is no Meta support path that recovers an account without
+email access. Rebuild the profile from Step 1, and note two consequences:
+
+```text
+The old Instagram @username stays taken and cannot be freed. Pick a variant.
+The old Facebook Page stays published and orphaned. It cannot be deleted.
+```
+
+Then replace the profile's dead `.env` keys with the new values from the helper.
+
 ### Helper writes `.env`, but publishing still fails
 
 Check:
@@ -593,7 +703,7 @@ explicit approval, because they touch external Meta services.
 
 ## Repeat Checklist For A New Influencer
 
-1. Confirm the Cloudflare/domain presence under `kinemify.com` or the correct public website domain.
+1. Set the controlling email to a mailbox you own directly, and harden recovery on the controlling Facebook account per Step 1.
 2. Create the Facebook Page.
 3. Create the Instagram account in Meta Business Suite or through Instagram.
 4. If created through Instagram, convert it to Creator or Business.
@@ -603,12 +713,13 @@ explicit approval, because they touch external Meta services.
 8. Add the Facebook Login based Instagram API product surface.
 9. Open Graph API Explorer with the correct app and Graph API version.
 10. Add `pages_show_list`, `pages_read_engagement`, `instagram_basic`, and `instagram_content_publish`.
-11. Generate a short-lived User token.
-12. Confirm `me/accounts?fields=name,id,instagram_business_account` returns the Page and IG business account, or confirm direct `/{page_id}?fields=id,name,access_token,instagram_business_account` returns the Page token and IG business account.
-13. Fill in `GRAPH_API_BASE_URL`, `DEFAULT_PROFILE_ALIAS`, `DEFAULT_PAGE_ID`, and `META_APP_ID` inside the script's `if __name__ == "__main__"` block, then run it directly.
-14. Confirm helper output reports `expires_at: 0 (non-expiring)`.
-15. Confirm `.env` has `{PROFILE}_FACEBOOK_PAGE_ID`, `{PROFILE}_INSTAGRAM_ACCOUNT_ID`, and `{PROFILE}_FACEBOOK_PAGE_ACCESS_TOKEN`.
-16. Keep app secret and tokens in `.env` or a password manager only.
+11. If reusing an app already authorized for another profile, tick the new Page under `facebook.com/settings` -> Business Integrations first.
+12. Generate a short-lived User token.
+13. Confirm `me/accounts?fields=name,id,instagram_business_account` returns the Page and IG business account, or confirm direct `/{page_id}?fields=id,name,access_token,instagram_business_account` returns the Page token and IG business account.
+14. Fill in `GRAPH_API_BASE_URL`, `DEFAULT_PROFILE_ALIAS`, `DEFAULT_PAGE_ID`, and `META_APP_ID` inside the script's `if __name__ == "__main__"` block, then run it directly.
+15. Confirm helper output reports `expires_at: 0 (non-expiring)`.
+16. Confirm `.env` has `{PROFILE}_FACEBOOK_PAGE_ID`, `{PROFILE}_INSTAGRAM_ACCOUNT_ID`, and `{PROFILE}_FACEBOOK_PAGE_ACCESS_TOKEN`.
+17. Keep app secret and tokens in `.env` or a password manager only.
 
 ## Commands
 
