@@ -50,3 +50,39 @@ services:
     # Meta scheduling sleeps until each upload_time; keep the CLI attached
     # to a TTY so loguru output is readable with `docker compose logs`.
     tty: true
+
+  # Shared state for spreading the pipeline over several machines: Postgres
+  # for job state and Garage as S3-compatible storage for generated files.
+  # The pipeline does not use them yet. Start them explicitly with
+  #   docker compose up -d postgres garage
+  # Their data lives in ./data, which must exist and be owned by
+  # APP_UID:APP_GID before the first start (Docker would create it as root).
+  postgres:
+    image: postgres:18.1-alpine
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    environment:
+      POSTGRES_USER: el_xurrer
+      POSTGRES_DB: el_xurrer
+      # The image refuses to initialize without a password, so an unset
+      # value fails loudly instead of creating an open database.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Europe/Madrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+    restart: unless-stopped
+
+  garage:
+    image: dxflrs/garage:v2.4.1
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+    ports:
+      # S3 API only; the RPC and admin ports stay inside the stack.
+      - "3900:3900"
+    volumes:
+      - ./docker/garage.toml:/etc/garage.toml:ro
+      - ./data/garage/meta:/var/lib/garage/meta
+      - ./data/garage/data:/var/lib/garage/data
+    restart: unless-stopped
