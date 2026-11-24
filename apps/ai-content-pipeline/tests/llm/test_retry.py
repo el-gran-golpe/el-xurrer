@@ -1,8 +1,8 @@
 """
 Tests for `llm/retry.py:generate_with_retries`, focused on the bug where a
 retry could be left with zero candidates and abort the loop entirely
-instead of reaching the forced-fallback last attempt (see root `AGENTS.md`
-Model Router Behavior and the arc/chapter Jobs DAG bullets for context: every
+instead of reaching the forced-fallback last attempt (see `docs/agents/model-router.md`
+and the arc/chapter bullets of `docs/agents/jobs-dag.md` for context: every
 current free OpenRouter model counts as censored for `is_sensitive_content`
 prompts like the arc, chapter, and Fanvue plan, so DeepSeek is the only
 candidate — excluding it after one invalid reply used to strand the retry).
