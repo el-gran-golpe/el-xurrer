@@ -21,7 +21,7 @@
 - Every CLI command with profile selectors defaults to all loaded profiles when neither `-p/--profile-indexes` nor `-n/--profile-names` is passed. This includes `all run_all`, `all debug`, Meta/Fanvue `plan`, `generate`, and `schedule`, and `fanvue auth`.
 - Explicit selectors limit the run: repeat `-p` for multiple indexes or pass comma-separated names with `-n`. Indexes take precedence when both selectors are provided. Invalid explicit selections, including an empty `-n ""`, must never fall back to all profiles. Keep this behavior centralized in `resolve_profiles()`.
 - `all run_all` clears each selected profile's `meta/outputs` and `fanvue/outputs` before planning/generation by default. Pass `--keep-local-outputs` only when intentionally preserving previous outputs.
-- Run the resumable DAG instead: `uv run python apps/ai-content-pipeline/main.py jobs run` (`--skip-schedule` to skip publishing). See the Jobs DAG section of the root `AGENTS.md`.
+- Run the resumable DAG instead: `uv run python apps/ai-content-pipeline/main.py jobs run` (`--skip-schedule` to skip publishing). See `docs/agents/jobs-dag.md`.
 
 ## Local Notes
 - Profile resources are loaded from the repository root `resources/` tree; follow the root resource-editing restrictions.

@@ -343,7 +343,7 @@ async def test_a_mid_chain_story_failure_blocks_the_rest_of_the_chain_then_a_rer
 ):
     """
     Week 2 of a 3-week run fails once, in the **story** step — `plan` no
-    longer chains weeks itself (see the Jobs DAG section of `AGENTS.md`).
+    longer chains weeks itself (see `docs/agents/jobs-dag.md`).
     Week 3 must not be seeded in that same run: `seed_story` only seeds
     week 1, and `run_story` only enqueues week k+1 once week k's arc+chapter
     are secured. Re-running must redo week 2's story (now succeeding) and
